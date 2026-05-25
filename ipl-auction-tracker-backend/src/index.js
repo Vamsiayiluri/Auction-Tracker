@@ -17,7 +17,13 @@ import Bid from "./models/bid.model.js";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+app.use(
+  cors({
+    origin: "*",
+    credentials: true,
+  })
+);
 
 const server = http.createServer(app);
 
