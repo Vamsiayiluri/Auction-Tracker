@@ -20,9 +20,9 @@ const app = express();
 
 app.use(
   cors({
-    origin: "*",
+    origin: true,
     credentials: true,
-  })
+  }),
 );
 
 const server = http.createServer(app);
@@ -43,14 +43,22 @@ app.use("/api/tournament", TournamentRoutes);
 app.get("/", (req, res) => {
   res.send("IPL Auction Backend Running...");
 });
-
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Backend healthy",
+  });
+});
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: true,
+    methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
 io.on("connection", (socket) => {
+  console.log("Socket connected:", socket.id);
   // socket.on("", (chatId) => {});
 
   // socket.on("");
@@ -89,6 +97,10 @@ io.on("connection", (socket) => {
       });
     } catch (err) {
       console.error("Error placing bid:", err);
+
+      socket.emit("bid-error", {
+        message: "Failed to place bid",
+      });
     }
   });
   socket.on("disconnect", () => {
