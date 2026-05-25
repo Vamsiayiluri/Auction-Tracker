@@ -6,6 +6,9 @@ import Team from "./team.model.js";
 import Player from "./player.model.js";
 import Tournament from "./tournment.model.js";
 
-await sequelizeDb.sync({ force: false, alter: true });
-console.log("Database and tables are synced");
+export const syncDB = async () => {
+  await sequelizeDb.sync({ force: false, alter: true });
+  console.log("Database and tables are synced");
+};
+
 export { User, Team, Player, Auction, Bid, Tournament };

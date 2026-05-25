@@ -1,8 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import bodyParser from "body-parser";
 import { connectDB } from "./config/dbconfig.js";
+import { syncDB } from "./models/index.js";
 import authRoutes from "./routes/authRoutes.js";
 import TeamRoutes from "./routes/teamRoutes.js";
 import PlayerRoutes from "./routes/playerRoutes.js";
@@ -24,11 +24,9 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
-app.use(bodyParser.json());
 app.use(express.text());
 
 app.use(express.urlencoded({ extended: true }));
-connectDB();
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", TeamRoutes);
 app.use("/api/players", PlayerRoutes);
@@ -94,6 +92,17 @@ io.on("connection", (socket) => {
 
 export { io };
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    await syncDB();
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Backend failed to start:", error.message);
+    process.exitCode = 1;
+  }
+};
+
+startServer();
