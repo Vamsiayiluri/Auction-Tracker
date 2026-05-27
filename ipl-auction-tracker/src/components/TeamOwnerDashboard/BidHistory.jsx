@@ -1,160 +1,199 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
+  Card,
+  CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Button,
-  Select,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  List,
-  ListItem,
-  ListItemText,
+  Typography,
+  Chip,
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
 import api from "../../utils/api";
 
-const mockPlayers = [
-  {
-    id: 1,
-    name: "Virat Kohli",
-    role: "Batsman",
-    status: "Sold",
-    finalPrice: 800000,
-    winningTeam: "RCB",
-    bidHistory: [
-      { bidder: "MI", amount: 500000 },
-      { bidder: "CSK", amount: 700000 },
-      { bidder: "RCB", amount: 800000 },
-    ],
-  },
-  {
-    id: 2,
-    name: "MS Dhoni",
-    role: "Wicket Keeper",
-    status: "Unsold",
-    finalPrice: 0,
-    winningTeam: null,
-    bidHistory: [],
-  },
-];
+const formatAmount = (amount) =>
+  amount
+    ? new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 0,
+      }).format(Number(amount))
+    : "-";
 
-const BidHistory = () => {
+const BidHistory = ({ tournamentId: providedTournamentId }) => {
   const [players, setPlayers] = useState([]);
   const [filter, setFilter] = useState("All");
-  const [openModal, setOpenModal] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchParams] = useSearchParams();
-  const id = searchParams.get("id");
-  const [teams, setTeams] = useState();
-  useEffect(() => {
-    const getData = async () => {
-      try {
-        const pRes = await api.get(`/players/playerBids/${id}`);
+  const tournamentId = providedTournamentId ?? searchParams.get("id");
 
-        setPlayers(pRes.data);
-        console.log(pRes.data, "data");
-      } catch (error) {
-        console.error("Error fetching data:", error);
+  useEffect(() => {
+    let active = true;
+
+    const getData = async () => {
+      if (!tournamentId) {
+        if (active) {
+          setError("Select a tournament to view its bid history.");
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await api.get(`/players/playerBids/${tournamentId}`);
+        if (active) setPlayers(response.data || []);
+      } catch (requestError) {
+        if (!active) return;
+        if (requestError.response?.status === 404) {
+          setPlayers([]);
+          return;
+        }
+        setError("Unable to load auction history.");
+      } finally {
+        if (active) setLoading(false);
       }
     };
+
     getData();
-    // setPlayers(mockPlayers);
-  }, []);
 
-  const handleOpenModal = (player) => {
-    setSelectedPlayer(player);
-    setOpenModal(true);
-  };
+    return () => {
+      active = false;
+    };
+  }, [tournamentId]);
 
-  const handleCloseModal = () => {
-    setSelectedPlayer(null);
-    setOpenModal(false);
-  };
+  const auctionedPlayers = useMemo(
+    () => players.filter((player) => player.auctionId),
+    [players]
+  );
 
-  const filteredPlayers = players.filter((player) => {
-    if (filter === "All") return true;
-    else if (filter === "Sold") return player.isSold;
-    else if (filter === "Unsold") return !player.isSold;
-  });
+  const filteredPlayers = useMemo(
+    () =>
+      auctionedPlayers.filter((player) => {
+        if (filter === "Sold") return player.isSold;
+        if (filter === "Unsold") return !player.isSold;
+        return true;
+      }),
+    [auctionedPlayers, filter]
+  );
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
+        <CircularProgress size={30} />
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        📋 Bid History
+      <Typography variant="h5">Bid History</Typography>
+      <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
+        Review player outcomes and every bid submitted for this tournament.
       </Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Select
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        sx={{ mb: 2, minWidth: 200 }}
-      >
-        <MenuItem value="All">All Players</MenuItem>
-        <MenuItem value="Sold">Sold</MenuItem>
-        <MenuItem value="Unsold">Unsold</MenuItem>
-      </Select>
+      {!error && (
+        <>
+          <Select
+            size="small"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            sx={{ mb: 2.5, minWidth: 180 }}
+          >
+            <MenuItem value="All">All Players</MenuItem>
+            <MenuItem value="Sold">Sold</MenuItem>
+            <MenuItem value="Unsold">Unsold</MenuItem>
+          </Select>
 
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>Player Name</TableCell>
-            <TableCell>Role</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell>Final Price</TableCell>
-            <TableCell>Winning Team</TableCell>
-            <TableCell>Details</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {filteredPlayers
-            .filter((player) => player.auctionId)
-            .map((player) => (
-              <TableRow key={player.id}>
-                <TableCell>{player.name}</TableCell>
-                <TableCell>{player.role}</TableCell>
-                <TableCell>{player.isSold ? "Sold" : "Unsold"}</TableCell>
-                <TableCell>
-                  ₹{player.soldPrice ? player.soldPrice : "—"}
-                </TableCell>
-                <TableCell>
-                  {player.bids.length ? player.bids[0].teamName : "—"}
-                </TableCell>
-                <TableCell>
-                  <Button onClick={() => handleOpenModal(player)}>View</Button>
-                </TableCell>
-              </TableRow>
-            ))}
-        </TableBody>
-      </Table>
+          <Card variant="outlined">
+            {filteredPlayers.length ? (
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Player</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Final Price</TableCell>
+                    <TableCell>Winning Team</TableCell>
+                    <TableCell align="right">Details</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredPlayers.map((player) => (
+                    <TableRow key={player.id} hover>
+                      <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
+                      <TableCell>{player.role}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={player.isSold ? "success" : "default"}
+                          label={player.isSold ? "Sold" : "Unsold"}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatAmount(player.soldPrice)}
+                      </TableCell>
+                      <TableCell>
+                        {player.bids[0]?.teamName || "-"}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button onClick={() => setSelectedPlayer(player)}>
+                          View Bids
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <Box sx={{ py: 6, textAlign: "center" }}>
+                <Typography variant="h6">No player results yet</Typography>
+                <Typography color="text.secondary">
+                  Completed player bidding rounds will appear here.
+                </Typography>
+              </Box>
+            )}
+          </Card>
+        </>
+      )}
 
       <Dialog
-        open={openModal}
-        onClose={handleCloseModal}
-        maxWidth="sm"
+        open={Boolean(selectedPlayer)}
+        onClose={() => setSelectedPlayer(null)}
         fullWidth
+        maxWidth="sm"
       >
         <DialogTitle>Bid History - {selectedPlayer?.name}</DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           {selectedPlayer?.bids.length ? (
-            <List>
-              {selectedPlayer.bids.map((bid, index) => (
-                <ListItem key={index}>
+            <List disablePadding>
+              {selectedPlayer.bids.map((bid) => (
+                <ListItem key={bid.id} disableGutters divider>
                   <ListItemText
-                    primary={`₹${bid.bidAmount.toLocaleString()} - ${
-                      bid.teamName
-                    }`}
+                    primary={bid.teamName}
+                    secondary={formatAmount(bid.bidAmount)}
                   />
                 </ListItem>
               ))}
             </List>
           ) : (
-            <Typography>No bids placed.</Typography>
+            <Typography color="text.secondary">No bids were placed.</Typography>
           )}
         </DialogContent>
       </Dialog>

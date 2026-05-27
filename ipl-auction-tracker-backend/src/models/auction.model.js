@@ -3,6 +3,7 @@ import sequelize from "../config/dbconfig.js";
 import Player from "./player.model.js";
 
 const Auction = sequelize.define("Auction", {
+  // Live bid deadlines are held by the server until a schema migration is added.
   id: {
     type: DataTypes.STRING,
     primaryKey: true,

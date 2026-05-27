@@ -1,7 +1,5 @@
-// import LiveAuction from "../components/LiveAuction";
-
 import SpectatorAuction from "../components/SpectatorDashboard/SpectatorAuction";
 
-export default function LiveAuctionPage() {
+export default function SpectatorAuctionPage() {
   return <SpectatorAuction />;
 }

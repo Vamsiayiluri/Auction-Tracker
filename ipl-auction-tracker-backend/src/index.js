@@ -9,10 +9,16 @@ import PlayerRoutes from "./routes/playerRoutes.js";
 // import BidRoutes from "./routes/bidRoutes.js";
 import AuctionRoutes from "./routes/auctionRoutes.js";
 import TournamentRoutes from "./routes/tournmentRoutes.js";
+import {
+  isBiddingOpen,
+  resetAuctionTimer,
+  restoreAuctionTimers,
+} from "./controllers/auction.controller.js";
 import { Server } from "socket.io";
 import http from "http";
-import Auction from "./models/auction.model.js";
 import Bid from "./models/bid.model.js";
+import Player from "./models/player.model.js";
+import Team from "./models/team.model.js";
 
 dotenv.config();
 
@@ -63,18 +69,54 @@ io.on("connection", (socket) => {
 
   // socket.on("");
   socket.on("place-bid", async (data) => {
-    console.log(data, "data");
     const { id, playerId, teamId, teamName, ownerId, bidAmount } = data;
 
     try {
+      if (!(await isBiddingOpen(playerId))) {
+        socket.emit("bid-rejected", {
+          message: "Bidding has closed for this player.",
+        });
+        return;
+      }
+
+      const [player, biddingTeam] = await Promise.all([
+        Player.findByPk(playerId),
+        Team.findByPk(teamId),
+      ]);
+
+      if (!player || !biddingTeam || biddingTeam.ownerId !== ownerId) {
+        socket.emit("bid-rejected", {
+          message: "This team cannot bid for the selected player.",
+        });
+        return;
+      }
+
+      if (
+        player.tournamentId &&
+        biddingTeam.tournamentId !== player.tournamentId
+      ) {
+        socket.emit("bid-rejected", {
+          message: "Your team is not participating in this tournament.",
+        });
+        return;
+      }
+
       const latestBid = await Bid.findOne({
         where: { playerId },
-        order: [["createdAt", "DESC"]],
+        order: [["bidAmount", "DESC"]],
       });
 
-      if (latestBid && bidAmount <= latestBid.bidAmount) {
+      const minimumBid = latestBid?.bidAmount || player.basePrice;
+      if (!Number.isFinite(Number(bidAmount)) || bidAmount <= minimumBid) {
         socket.emit("bid-rejected", {
           message: "Bid must be higher than current bid.",
+        });
+        return;
+      }
+
+      if (bidAmount > biddingTeam.totalAmount - biddingTeam.amountSpent) {
+        socket.emit("bid-rejected", {
+          message: "This bid exceeds your remaining purse.",
         });
         return;
       }
@@ -87,9 +129,12 @@ io.on("connection", (socket) => {
         bidAmount,
         ownerId,
       });
+      await resetAuctionTimer(playerId);
 
       io.emit("new-bid", {
         id,
+        playerId,
+        tournamentId: player.tournamentId,
         bidAmount,
         teamId,
         teamName,
@@ -114,6 +159,7 @@ const startServer = async () => {
   try {
     await connectDB();
     await syncDB();
+    await restoreAuctionTimers();
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });

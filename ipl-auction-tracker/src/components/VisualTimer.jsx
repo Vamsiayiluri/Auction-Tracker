@@ -1,20 +1,8 @@
-import React, { useEffect, useState } from "react";
 import { Box, CircularProgress, Typography } from "@mui/material";
 
-const VisualTimer = ({ initialTime = 20 }) => {
-  const [timeLeft, setTimeLeft] = useState(initialTime);
-
-  useEffect(() => {
-    if (timeLeft <= 0) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft]);
-
-  const progress = (timeLeft / initialTime) * 100;
+const VisualTimer = ({ timeLeft, duration = 20 }) => {
+  const safeTime = Math.max(0, Number(timeLeft) || 0);
+  const progress = Math.min(100, (safeTime / duration) * 100);
 
   return (
     <Box
@@ -26,9 +14,16 @@ const VisualTimer = ({ initialTime = 20 }) => {
       <CircularProgress
         variant="determinate"
         value={progress}
-        size={50}
+        size={58}
         thickness={5}
-        sx={{ color: "#ff5252" }}
+        sx={{
+          color:
+            safeTime <= 5
+              ? "error.main"
+              : safeTime <= 10
+                ? "secondary.main"
+                : "success.main",
+        }}
       />
       <Box
         position="absolute"
@@ -40,8 +35,8 @@ const VisualTimer = ({ initialTime = 20 }) => {
         alignItems="center"
         justifyContent="center"
       >
-        <Typography variant="h6" component="div">
-          {timeLeft}
+        <Typography variant="body1" fontWeight={700}>
+          {safeTime}
         </Typography>
       </Box>
     </Box>

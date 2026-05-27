@@ -1,7 +1,5 @@
-// import LiveAuction from "../components/LiveAuction";
-
 import AdminAuctionDashboard from "../components/AdminDashboardLayout/AdminAuctionDashboard";
 
-export default function LiveAuctionPage() {
+export default function AdminLiveAuctionPage() {
   return <AdminAuctionDashboard />;
 }

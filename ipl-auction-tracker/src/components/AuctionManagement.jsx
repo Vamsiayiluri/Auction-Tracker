@@ -1,534 +1,720 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
+import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import SportsCricketRoundedIcon from "@mui/icons-material/SportsCricketRounded";
 import {
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
+  Alert,
+  Autocomplete,
+  Box,
   Button,
-  TextField,
-  Typography,
-  Container,
-  Select,
-  MenuItem,
+  Card,
+  CardContent,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   FormControl,
   InputLabel,
-  Checkbox,
-  ListItemText,
-  Box,
-  Autocomplete,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   List,
   ListItem,
-  Stack,
+  ListItemText,
+  MenuItem,
   Paper,
-  Chip,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import api from "../utils/api";
 import { uid } from "uid";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/auth-context";
+import api from "../utils/api";
 
-const roles = ["Batsman", "Bowler", "All-rounder", "Wicketkeeper"];
+const playerRoles = ["Batsman", "Bowler", "All-rounder", "Wicketkeeper"];
+
+const statusConfig = {
+  upcoming: { label: "Upcoming", color: "default" },
+  live: { label: "Live", color: "error" },
+  completed: { label: "Completed", color: "success" },
+};
+
+const formatAmount = (amount) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number(amount) || 0);
+
+const blankPlayer = {
+  name: "",
+  role: "",
+  basePrice: "",
+};
+
+const StatCard = ({ icon, label, value }) => (
+  <Card variant="outlined">
+    <CardContent>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Box>
+          <Typography color="text.secondary" variant="body2">
+            {label}
+          </Typography>
+          <Typography variant="h5" sx={{ mt: 0.5 }}>
+            {value}
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            width: 46,
+            height: 46,
+            borderRadius: 2.5,
+            bgcolor: "primary.light",
+            color: "primary.main",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          {icon}
+        </Box>
+      </Stack>
+    </CardContent>
+  </Card>
+);
 
 export default function AuctionManagement() {
-  const [auctions, setAuctions] = useState([]);
-  const [showAuction, setShowAuction] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [tournaments, setTournaments] = useState([]);
+  const [teamsList, setTeamsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [auctionName, setAuctionName] = useState("");
   const [budget, setBudget] = useState("");
-  const [teamsList, setTeamsList] = useState("");
-
-  const { user } = useAuth();
   const [selectedTeams, setSelectedTeams] = useState([]);
-  const [players, setPlayers] = useState([]);
-  const [playerName, setPlayerName] = useState("");
-  const [playerRole, setPlayerRole] = useState("");
-  const [playerBasePrice, setPlayerBasePrice] = useState("");
-  const [open, setOpen] = useState(false);
-  const [selectedAuctionId, setSelectedAuctionId] = useState();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [openTeamsDialog, setOpenTeamsDialog] = useState(false);
+  const [draftPlayers, setDraftPlayers] = useState([]);
+  const [formError, setFormError] = useState("");
+  const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
+  const [playerTargetId, setPlayerTargetId] = useState(null);
+  const [playerForm, setPlayerForm] = useState(blankPlayer);
+  const [playerError, setPlayerError] = useState("");
+  const [detailsTournament, setDetailsTournament] = useState(null);
+  const [startTournament, setStartTournament] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  const [selectedPlayers, setSelectedPlayers] = useState([]);
+  const loadTournaments = async () => {
+    setLoading(true);
+    setError("");
 
-  const viewPlayers = (players) => {
-    setSelectedPlayers(players);
-    setModalOpen(true);
+    try {
+      const tournamentResponse = await api.get("/tournament");
+      const enriched = await Promise.all(
+        tournamentResponse.data.map(async (tournament) => {
+          const [playersResponse, teamsResponse] = await Promise.all([
+            api.get(`/players?tournamentId=${tournament.id}`),
+            api.get(`/teams?tournamentId=${tournament.id}`),
+          ]);
+
+          return {
+            ...tournament,
+            players: playersResponse.data || [],
+            teams: teamsResponse.data || [],
+          };
+        })
+      );
+      setTournaments(enriched);
+    } catch {
+      setError("Unable to load tournaments. Please refresh and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
-  const handleClose = () => {
-    setOpen(false);
-  };
-
-  const handleAddPlayer = () => {
-    console.log({ playerName, playerRole, playerBasePrice });
-    addPlayer();
-    // You can call addPlayer() function here
-    handleClose(); // Close the dialog after adding the player
-  };
-
-  const navigate = useNavigate();
 
   useEffect(() => {
-    const getTournaments = async () => {
-      try {
-        const res = await api.get("/tournament");
-        let tournaments = res.data;
-
-        // Extract all tournamentIds
-        const tournamentIds = tournaments.map((tournament) => tournament.id);
-
-        // Fetch players and teams for each tournament
-        const playerRequests = tournamentIds.map((tournamentId) =>
-          api.get(`/players?tournamentId=${tournamentId}`)
-        );
-        const teamRequests = tournamentIds.map((tournamentId) =>
-          api.get(`/teams?tournamentId=${tournamentId}`)
-        );
-
-        // Wait for all requests to complete
-        const [playersResponses, teamsResponses] = await Promise.all([
-          Promise.all(playerRequests),
-          Promise.all(teamRequests),
-        ]);
-
-        // Convert responses into usable data
-        const playersData = playersResponses.map((res) => res.data);
-        const teamsData = teamsResponses.map((res) => res.data);
-
-        // Merge players and teams into tournaments
-        const updatedTournaments = tournaments.map((tournament, index) => ({
-          ...tournament,
-          players: playersData[index] || [], // Attach players
-          teams: teamsData[index] || [], // Attach teams
-        }));
-
-        // Update state
-        console.log(updatedTournaments);
-        setAuctions(updatedTournaments);
-
-        console.log(
-          "Updated Tournaments with Players & Teams:",
-          updatedTournaments
-        );
-      } catch (error) {
-        console.error("Error fetching tournaments:", error);
-      }
-    };
-
-    getTournaments();
+    loadTournaments();
   }, []);
 
-  const createAuction = async () => {
-    const auctionId = uid();
+  const summary = useMemo(
+    () => ({
+      total: tournaments.length,
+      live: tournaments.filter((tournament) => tournament.status === "live")
+        .length,
+      teams: new Set(
+        tournaments.flatMap((tournament) =>
+          tournament.teams.map((team) => team.id || team.name)
+        )
+      ).size,
+      players: tournaments.reduce(
+        (count, tournament) => count + tournament.players.length,
+        0
+      ),
+    }),
+    [tournaments]
+  );
 
-    const updatedPlayers = players.map((player) => ({
-      ...player,
-      tournamentId: auctionId,
-    }));
+  const openCreatePanel = async () => {
+    setError("");
+    setNotice("");
 
-    const newAuction = {
-      id: auctionId,
-      name: auctionName,
-      budget: budget,
-      createdBy: user.id,
-      teams: selectedTeams,
-      players: updatedPlayers, // Use the updated players array
-    };
-
-    const res = await api.post("/tournament/create", newAuction);
-    console.log(newAuction);
-    const teamObjects = newAuction.teams.map((name) => ({ name }));
-    const updatedAuction = { ...newAuction, teams: teamObjects };
-    console.log(updatedAuction);
-    setAuctions([...auctions, updatedAuction]);
-
-    console.log([...auctions, newAuction], "auction data");
-    setAuctionName("");
-    setSelectedTeams([]);
+    try {
+      const response = await api.get("/teams");
+      setTeamsList(response.data || []);
+      setShowCreatePanel(true);
+    } catch {
+      setError("Teams could not be loaded. A tournament needs registered teams.");
+    }
   };
-  const createNewAuction = async () => {
-    const res = await api.get("/teams");
-    console.log(res.data);
-    setTeamsList(res.data);
-    setShowAuction(!showAuction);
+
+  const openPlayerDialog = (tournamentId = null) => {
+    setPlayerTargetId(tournamentId);
+    setPlayerForm(blankPlayer);
+    setPlayerError("");
+    setPlayerDialogOpen(true);
   };
-  const addPlayerByAuctionId = (auctionId) => {
-    console.log("check", auctionId);
-    setSelectedAuctionId(auctionId);
-    setOpen(true);
-  };
-  const addPlayer = async () => {
-    if (!playerName || !playerRole || !playerBasePrice) {
-      alert("Please fill all player details.");
+
+  const savePlayer = async () => {
+    const name = playerForm.name.trim();
+    const price = Number(playerForm.basePrice);
+
+    if (!name || !playerForm.role || !price || price <= 0) {
+      setPlayerError("Enter a player name, role, and a valid base price.");
       return;
     }
 
     const newPlayer = {
       id: uid(),
-      name: playerName,
-      role: playerRole,
-      basePrice: playerBasePrice,
+      name,
+      role: playerForm.role,
+      basePrice: price,
       soldPrice: null,
       isSold: false,
       teamId: null,
     };
 
-    if (selectedAuctionId) {
-      // Update auctions state by adding the player to the correct auction
-      try {
-        newPlayer.tournamentId = selectedAuctionId;
-        await api.post("/players", newPlayer);
-
-        setAuctions((prevAuctions) =>
-          prevAuctions.map((auction) =>
-            auction.id === selectedAuctionId
-              ? { ...auction, players: [...(auction.players || []), newPlayer] }
-              : auction
+    try {
+      if (playerTargetId) {
+        await api.post("/players", {
+          ...newPlayer,
+          tournamentId: playerTargetId,
+        });
+        setTournaments((current) =>
+          current.map((tournament) =>
+            tournament.id === playerTargetId
+              ? { ...tournament, players: [...tournament.players, newPlayer] }
+              : tournament
           )
         );
-      } catch (e) {
-        console.log(e);
+        setNotice(`${name} was added to the tournament.`);
+      } else {
+        setDraftPlayers((current) => [...current, newPlayer]);
       }
-    } else {
-      setPlayers([...players, newPlayer]);
+      setPlayerDialogOpen(false);
+    } catch {
+      setPlayerError("Unable to add this player. Please try again.");
+    }
+  };
+
+  const createTournament = async () => {
+    const name = auctionName.trim();
+    const tournamentBudget = Number(budget);
+
+    if (!name || !tournamentBudget || tournamentBudget <= 0) {
+      setFormError("Enter a tournament name and a valid team budget.");
+      return;
+    }
+    if (!selectedTeams.length) {
+      setFormError("Select at least one participating team.");
+      return;
+    }
+    if (!draftPlayers.length) {
+      setFormError("Add at least one player before creating a tournament.");
+      return;
     }
 
-    // Clear input fields
-    setPlayerName("");
-    setPlayerRole("");
-    setPlayerBasePrice("");
+    const id = uid();
+    const payload = {
+      id,
+      name,
+      budget: tournamentBudget,
+      createdBy: user.id,
+      teams: selectedTeams,
+      players: draftPlayers.map((player) => ({ ...player, tournamentId: id })),
+    };
+
+    setBusy(true);
+    setFormError("");
+    try {
+      await api.post("/tournament/create", payload);
+      setNotice(`${name} was created successfully.`);
+      setShowCreatePanel(false);
+      setAuctionName("");
+      setBudget("");
+      setSelectedTeams([]);
+      setDraftPlayers([]);
+      await loadTournaments();
+    } catch {
+      setFormError("Unable to create the tournament. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const startAuction = async (id) => {
-    await api.patch(`/tournament/${id}/status`, { status: "live" });
-    navigate(`/start-live-auction?id=${id}`);
+  const confirmStartTournament = async () => {
+    if (!startTournament) return;
+
+    setBusy(true);
+    try {
+      await api.patch(`/tournament/${startTournament.id}/status`, {
+        status: "live",
+      });
+      navigate(`/start-live-auction?id=${startTournament.id}`);
+    } catch {
+      setError("Unable to start this auction. Please try again.");
+      setStartTournament(null);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const openTournamentControl = (tournament) => {
+    navigate(`/start-live-auction?id=${tournament.id}`);
+  };
+
+  if (loading && !tournaments.length) {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
+        <CircularProgress size={34} />
+        <Typography color="text.secondary" sx={{ mt: 2 }}>
+          Loading tournament workspace...
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
-    <Container>
-      {/* Active Auctions List */}
-      <Typography variant="h6">Active Auctions</Typography>
+    <Box>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "repeat(2, minmax(0, 1fr))",
+            lg: "repeat(4, minmax(0, 1fr))",
+          },
+          gap: 2,
+          mb: 4,
+        }}
+      >
+        <StatCard
+          icon={<SportsCricketRoundedIcon />}
+          label="Tournaments"
+          value={summary.total}
+        />
+        <StatCard
+          icon={<PlayArrowRoundedIcon />}
+          label="Live auctions"
+          value={summary.live}
+        />
+        <StatCard
+          icon={<GroupsOutlinedIcon />}
+          label="Participating teams"
+          value={summary.teams}
+        />
+        <StatCard
+          icon={<PaymentsOutlinedIcon />}
+          label="Registered players"
+          value={summary.players}
+        />
+      </Box>
 
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>
-              <strong>Name</strong>
-            </TableCell>
-            <TableCell>
-              <strong>Budget</strong>
-            </TableCell>
-            <TableCell>
-              <strong>Teams</strong>
-            </TableCell>
-            <TableCell>
-              <strong>Players</strong>
-            </TableCell>
-            <TableCell>
-              <strong>Actions</strong>
-            </TableCell>
-          </TableRow>
-        </TableHead>
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {notice && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setNotice("")}>
+          {notice}
+        </Alert>
+      )}
 
-        <TableBody>
-          {auctions.map((auction) => (
-            <TableRow key={auction.id} hover>
-              <TableCell>
-                <Typography fontWeight="500">{auction.name}</Typography>
-              </TableCell>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        alignItems={{ xs: "flex-start", sm: "center" }}
+        justifyContent="space-between"
+        spacing={2}
+        sx={{ mb: 3 }}
+      >
+        <Box>
+          <Typography variant="h5">Tournaments</Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Prepare player pools and start auctions when teams are ready.
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddRoundedIcon />}
+          onClick={openCreatePanel}
+        >
+          Create Tournament
+        </Button>
+      </Stack>
 
-              <TableCell>
-                <Chip
-                  label={`₹${auction.budget}`}
-                  color="success"
-                  variant="outlined"
-                />
-              </TableCell>
+      {showCreatePanel && (
+        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3.5 }, mb: 4 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ mb: 3 }}
+          >
+            <Box>
+              <Typography variant="h6">New tournament</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Configure the budget, invited teams, and initial player pool.
+              </Typography>
+            </Box>
+            <Button color="inherit" onClick={() => setShowCreatePanel(false)}>
+              Cancel
+            </Button>
+          </Stack>
 
-              <TableCell>
-                {auction?.teams?.length > 3 ? (
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2">
-                      {auction.teams
-                        .slice(0, 2)
-                        .map((team) => team.name)
-                        .join(", ")}{" "}
-                      +{auction.teams.length - 2} more
+          {formError && <Alert severity="error" sx={{ mb: 2.5 }}>{formError}</Alert>}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+              gap: 2,
+            }}
+          >
+            <TextField
+              label="Tournament name"
+              value={auctionName}
+              onChange={(event) => {
+                setAuctionName(event.target.value);
+                setFormError("");
+              }}
+              fullWidth
+            />
+            <TextField
+              label="Budget per team"
+              type="number"
+              value={budget}
+              onChange={(event) => {
+                setBudget(event.target.value);
+                setFormError("");
+              }}
+              fullWidth
+            />
+          </Box>
+          <Autocomplete
+            multiple
+            disableCloseOnSelect
+            options={teamsList.map((team) => team.name)}
+            value={selectedTeams}
+            onChange={(_, values) => {
+              setSelectedTeams(values);
+              setFormError("");
+            }}
+            getOptionLabel={(option) => option}
+            renderOption={(props, option, { selected }) => (
+              <li {...props}>
+                <Checkbox sx={{ mr: 1 }} checked={selected} />
+                {option}
+              </li>
+            )}
+            renderInput={(params) => (
+              <TextField {...params} label="Participating teams" />
+            )}
+            sx={{ mt: 2 }}
+          />
+
+          <Divider sx={{ my: 3 }} />
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+            sx={{ mb: 2 }}
+          >
+            <Typography variant="h6">Players ({draftPlayers.length})</Typography>
+            <Button
+              variant="outlined"
+              startIcon={<AddRoundedIcon />}
+              onClick={() => openPlayerDialog()}
+            >
+              Add Player
+            </Button>
+          </Stack>
+          {draftPlayers.length ? (
+            <Stack spacing={1}>
+              {draftPlayers.map((player) => (
+                <Stack
+                  key={player.id}
+                  direction="row"
+                  justifyContent="space-between"
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    px: 2,
+                    py: 1.5,
+                  }}
+                >
+                  <Typography fontWeight={500}>
+                    {player.name}{" "}
+                    <Typography component="span" color="text.secondary">
+                      ({player.role})
                     </Typography>
-                    <Button
+                  </Typography>
+                  <Typography>{formatAmount(player.basePrice)}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          ) : (
+            <Typography color="text.secondary" sx={{ py: 1 }}>
+              Add players to create the initial auction pool.
+            </Typography>
+          )}
+          <Button
+            variant="contained"
+            onClick={createTournament}
+            disabled={busy}
+            sx={{ mt: 3 }}
+          >
+            {busy ? "Creating..." : "Create Tournament"}
+          </Button>
+        </Paper>
+      )}
+
+      {!tournaments.length ? (
+        <Paper variant="outlined" sx={{ py: 8, textAlign: "center" }}>
+          <SportsCricketRoundedIcon
+            sx={{ fontSize: 48, color: "text.secondary", mb: 1.5 }}
+          />
+          <Typography variant="h6">No tournaments created yet</Typography>
+          <Typography color="text.secondary">
+            Create your first tournament to start inviting teams and players.
+          </Typography>
+        </Paper>
+      ) : (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              lg: "repeat(2, minmax(0, 1fr))",
+            },
+            gap: 2.5,
+          }}
+        >
+          {tournaments.map((tournament) => {
+            const status =
+              statusConfig[tournament.status] || statusConfig.upcoming;
+            const canStart =
+              tournament.status === "upcoming" &&
+              tournament.players.length > 0 &&
+              tournament.teams.length > 0;
+
+            return (
+              <Card variant="outlined" key={tournament.id}>
+                <CardContent sx={{ p: 3 }}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="flex-start"
+                    spacing={2}
+                  >
+                    <Box>
+                      <Typography variant="h6">{tournament.name}</Typography>
+                      <Typography color="text.secondary" variant="body2">
+                        Budget: {formatAmount(tournament.budget)}
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={status.label}
+                      color={status.color}
                       size="small"
-                      variant="text"
-                      onClick={() => setOpenTeamsDialog(true)}
+                      variant={tournament.status === "live" ? "filled" : "outlined"}
+                    />
+                  </Stack>
+                  <Stack direction="row" spacing={3} sx={{ mt: 3, mb: 3 }}>
+                    <Typography variant="body2">
+                      <strong>{tournament.teams.length}</strong> Teams
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>{tournament.players.length}</strong> Players
+                    </Typography>
+                  </Stack>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button
+                      variant="contained"
+                      startIcon={<PlayArrowRoundedIcon />}
+                      disabled={!canStart}
+                      onClick={() => setStartTournament(tournament)}
                     >
-                      View All
+                      Start Auction
+                    </Button>
+                    {tournament.status === "live" && (
+                      <Button
+                        variant="contained"
+                        color="secondary"
+                        startIcon={<PlayArrowRoundedIcon />}
+                        onClick={() => openTournamentControl(tournament)}
+                      >
+                        Resume Auction
+                      </Button>
+                    )}
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddRoundedIcon />}
+                      onClick={() => openPlayerDialog(tournament.id)}
+                      disabled={tournament.status === "completed"}
+                    >
+                      Add Player
+                    </Button>
+                    <Button
+                      color="inherit"
+                      onClick={() => setDetailsTournament(tournament)}
+                    >
+                      Details
                     </Button>
                   </Stack>
-                ) : (
-                  <Typography variant="body2">
-                    {auction.teams.map((team) => team.name).join(", ")}
-                  </Typography>
-                )}
-              </TableCell>
-
-              <TableCell>
-                <Stack spacing={0.5}>
-                  <Typography variant="body2">
-                    🏏 <strong>Batsmen</strong>:{" "}
-                    {
-                      auction?.players?.filter((p) => p.role === "Batsman")
-                        .length
-                    }
-                  </Typography>
-                  <Typography variant="body2">
-                    ⚾ <strong>Bowlers</strong>:{" "}
-                    {
-                      auction?.players?.filter((p) => p.role === "Bowler")
-                        .length
-                    }
-                  </Typography>
-                  <Typography variant="body2">
-                    🔄 <strong>All-rounders</strong>:{" "}
-                    {
-                      auction?.players?.filter((p) => p.role === "All-rounder")
-                        .length
-                    }
-                  </Typography>
-                  <Typography variant="body2">
-                    🧤 <strong>Wicketkeepers</strong>:{" "}
-                    {
-                      auction?.players?.filter((p) => p.role === "Wicketkeeper")
-                        .length
-                    }
-                  </Typography>
-                </Stack>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => viewPlayers(auction.players)}
-                  sx={{ mt: 1 }}
-                >
-                  View Players
-                </Button>
-              </TableCell>
-
-              <TableCell>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="contained"
-                    color="error"
-                    size="small"
-                    onClick={() => startAuction(auction.id)}
-                  >
-                    Start
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="small"
-                    onClick={() => addPlayerByAuctionId(auction.id)}
-                  >
-                    Add Player
-                  </Button>
-                </Stack>
-              </TableCell>
-
-              {/* Teams Dialog */}
-              <Dialog
-                open={openTeamsDialog}
-                onClose={() => setOpenTeamsDialog(false)}
-                fullWidth
-                maxWidth="sm"
-              >
-                <DialogTitle>All Teams</DialogTitle>
-                <DialogContent dividers>
-                  <List>
-                    {auction.teams.map((team) => (
-                      <ListItem key={team.id}>{team.name}</ListItem>
-                    ))}
-                  </List>
-                  <Box display="flex" justifyContent="flex-end" mt={2}>
-                    <Button
-                      onClick={() => setOpenTeamsDialog(false)}
-                      variant="contained"
-                      color="primary"
-                    >
-                      Close
-                    </Button>
-                  </Box>
-                </DialogContent>
-              </Dialog>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      <>
-        <Box mb={2}>
-          <Button variant="contained" color="error" onClick={createNewAuction}>
-            Create New Auction
-          </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </Box>
+      )}
 
-        {showAuction && (
-          <Paper elevation={3} sx={{ p: 3, mt: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              New Auction Details
-            </Typography>
-
-            <Stack spacing={2}>
-              <TextField
-                label="Auction Name"
-                value={auctionName}
-                onChange={(e) => setAuctionName(e.target.value)}
-                fullWidth
-              />
-
-              <TextField
-                label="Budget"
-                type="number"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                fullWidth
-              />
-
-              <Autocomplete
-                multiple
-                options={teamsList?.map((team) => team?.name)}
-                value={selectedTeams}
-                onChange={(event, newValue) => setSelectedTeams(newValue)}
-                disableCloseOnSelect
-                getOptionLabel={(option) => option}
-                renderOption={(props, option, { selected }) => (
-                  <li {...props}>
-                    <Checkbox style={{ marginRight: 8 }} checked={selected} />
-                    {option}
-                  </li>
-                )}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Select Teams"
-                    placeholder="Teams"
-                  />
-                )}
-              />
-
-              <Stack direction="row" spacing={2}>
-                <Button variant="outlined" onClick={() => setOpen(true)}>
-                  Add Player
-                </Button>
-
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={createAuction}
-                >
-                  Create Auction
-                </Button>
-              </Stack>
-            </Stack>
-
-            {/* Players List */}
-            {players.length > 0 && (
-              <Box mt={4}>
-                <Typography variant="h6" gutterBottom>
-                  Players List
-                </Typography>
-
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Name</strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>Role</strong>
-                      </TableCell>
-                      <TableCell>
-                        <strong>Base Price</strong>
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {players.map((player) => (
-                      <TableRow key={player.id} hover>
-                        <TableCell>{player.name}</TableCell>
-                        <TableCell>{player.role}</TableCell>
-                        <TableCell>₹{player.basePrice}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
-          </Paper>
-        )}
-      </>
-
-      {/* Dialog for player details */}
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-        <DialogTitle>Add Player</DialogTitle>
+      <Dialog
+        open={playerDialogOpen}
+        onClose={() => setPlayerDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {playerTargetId ? "Add player to tournament" : "Add player"}
+        </DialogTitle>
         <DialogContent>
-          <TextField
-            label="Player Name"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            fullWidth
-            margin="dense"
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Role</InputLabel>
-            <Select
-              value={playerRole}
-              onChange={(e) => setPlayerRole(e.target.value)}
-            >
-              {roles.map((role) => (
-                <MenuItem key={role} value={role}>
-                  {role}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="Base Price"
-            type="number"
-            value={playerBasePrice}
-            onChange={(e) => setPlayerBasePrice(e.target.value)}
-            fullWidth
-            margin="dense"
-          />
+          {playerError && <Alert severity="error" sx={{ mb: 2 }}>{playerError}</Alert>}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Player name"
+              value={playerForm.name}
+              onChange={(event) =>
+                setPlayerForm((current) => ({ ...current, name: event.target.value }))
+              }
+              fullWidth
+            />
+            <FormControl fullWidth>
+              <InputLabel>Role</InputLabel>
+              <Select
+                label="Role"
+                value={playerForm.role}
+                onChange={(event) =>
+                  setPlayerForm((current) => ({ ...current, role: event.target.value }))
+                }
+              >
+                {playerRoles.map((role) => (
+                  <MenuItem key={role} value={role}>
+                    {role}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Base price"
+              type="number"
+              value={playerForm.basePrice}
+              onChange={(event) =>
+                setPlayerForm((current) => ({
+                  ...current,
+                  basePrice: event.target.value,
+                }))
+              }
+              fullWidth
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose} color="secondary">
+          <Button color="inherit" onClick={() => setPlayerDialogOpen(false)}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleAddPlayer} color="primary">
+          <Button variant="contained" onClick={savePlayer}>
             Add Player
           </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
-        <DialogTitle>Players in Auction</DialogTitle>
-        <DialogContent>
-          <List>
-            {selectedPlayers.map((player) => (
-              <ListItem key={player.id}>
-                <ListItemText
-                  primary={`${player.name} (${player.role})`}
-                  secondary={`Base Price: ₹${player.basePrice} `}
-                />
-              </ListItem>
-            ))}
+
+      <Dialog
+        open={Boolean(detailsTournament)}
+        onClose={() => setDetailsTournament(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>{detailsTournament?.name}</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Participating Teams
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            {detailsTournament?.teams.map((team) => team.name).join(", ") ||
+              "No teams selected."}
+          </Typography>
+          <Typography variant="subtitle2">Players</Typography>
+          <List disablePadding>
+            {detailsTournament?.players.length ? (
+              detailsTournament.players.map((player) => (
+                <ListItem key={player.id} disableGutters>
+                  <ListItemText
+                    primary={player.name}
+                    secondary={`${player.role} | Base price: ${formatAmount(
+                      player.basePrice
+                    )}`}
+                  />
+                </ListItem>
+              ))
+            ) : (
+              <Typography color="text.secondary" sx={{ mt: 1 }}>
+                No players added.
+              </Typography>
+            )}
           </List>
         </DialogContent>
-        <Button onClick={() => setModalOpen(false)} color="primary">
-          Close
-        </Button>
+        <DialogActions>
+          <Button onClick={() => setDetailsTournament(null)}>Close</Button>
+        </DialogActions>
       </Dialog>
-    </Container>
+
+      <Dialog
+        open={Boolean(startTournament)}
+        onClose={() => !busy && setStartTournament(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Start live auction?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            Starting {startTournament?.name} will make the auction visible to
+            invited team owners and spectators.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" disabled={busy} onClick={() => setStartTournament(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={busy}
+            onClick={confirmStartTournament}
+          >
+            {busy ? "Starting..." : "Start Auction"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

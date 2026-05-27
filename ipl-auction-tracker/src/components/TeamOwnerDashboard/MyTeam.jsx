@@ -1,110 +1,209 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
-  Typography,
   Card,
   CardContent,
+  CircularProgress,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
+  Typography,
 } from "@mui/material";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../context/auth-context";
 import api from "../../utils/api";
 
-const mockTeamPlayers = [
-  { id: 1, name: "Jasprit Bumrah", role: "Bowler", price: 450000 },
-  { id: 2, name: "Hardik Pandya", role: "All-Rounder", price: 600000 },
-  { id: 3, name: "Shreyas Iyer", role: "Batsman", price: 300000 },
-];
+const formatAmount = (amount) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Number(amount) || 0);
 
-const MyTeam = () => {
-  const [team, setTeam] = useState([]);
-  const [players, setPlayers] = useState([]);
+const SummaryCard = ({ label, value, color = "text.primary" }) => (
+  <Card variant="outlined">
+    <CardContent>
+      <Typography variant="body2" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography variant="h6" color={color} sx={{ mt: 0.5 }}>
+        {value}
+      </Typography>
+    </CardContent>
+  </Card>
+);
+
+const MyTeam = ({ tournamentId }) => {
   const { user } = useAuth();
+  const [team, setTeam] = useState(null);
+  const [players, setPlayers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [roleFilter, setRoleFilter] = useState("all");
 
   useEffect(() => {
-    // In real app, fetch players using teamId
+    let active = true;
+
     const fetchCurrentTeam = async () => {
       try {
-        console.log(user, "data");
-        const res = await api.get(`/teams/getTeamAndPlayers/${user.id}`);
-        setTeam(res.data.team);
-        setPlayers(res.data.players);
-
-        console.log(res.data);
-      } catch (err) {
-        console.log("No current auction:", err);
+        const response = await api.get(`/teams/getTeamAndPlayers/${user.id}`);
+        if (active) {
+          setTeam(response.data.team);
+          setPlayers(response.data.players || []);
+        }
+      } catch {
+        if (active) setError("Unable to load your team details.");
+      } finally {
+        if (active) setLoading(false);
       }
     };
+
     fetchCurrentTeam();
-  }, [user]);
 
-  const handleSortChange = (e) => {
-    const value = e.target.value;
-    setSortBy(value);
-    let sortedPlayers = [...players];
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
 
-    if (value === "role") {
-      sortedPlayers.sort((a, b) => a.role.localeCompare(b.role));
-    } else if (value === "price") {
-      sortedPlayers.sort((a, b) => b.price - a.price);
-    } else {
-      sortedPlayers = mockTeamPlayers;
-    }
+  const visiblePlayers = useMemo(() => {
+    const tournamentPlayers = tournamentId
+      ? players.filter((player) => player.tournamentId === tournamentId)
+      : players;
 
-    setPlayers(sortedPlayers);
-  };
+    const filtered =
+      roleFilter === "all"
+        ? tournamentPlayers
+        : tournamentPlayers.filter((player) => player.role === roleFilter);
+
+    return [...filtered].sort((first, second) => {
+      if (sortBy === "price") {
+        return Number(second.soldPrice || 0) - Number(first.soldPrice || 0);
+      }
+      return String(first[sortBy] || "").localeCompare(
+        String(second[sortBy] || "")
+      );
+    });
+  }, [players, roleFilter, sortBy, tournamentId]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
+        <CircularProgress size={30} />
+      </Box>
+    );
+  }
+
+  if (error) return <Alert severity="error">{error}</Alert>;
+
+  const amountLeft =
+    team?.amountLeft ?? Number(team?.totalAmount || 0) - Number(team?.amountSpent || 0);
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        🧢 My Team
+      <Typography variant="h5">{team?.name || "My Team"}</Typography>
+      <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
+        {tournamentId
+          ? "Your purchased players for this selected tournament."
+          : "Your purchased players and remaining auction purse."}
       </Typography>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
+          gap: 2,
+          mb: 4,
+        }}
+      >
+        <SummaryCard label="Total budget" value={formatAmount(team?.totalAmount)} />
+        <SummaryCard
+          label="Amount spent"
+          value={formatAmount(team?.amountSpent)}
+          color="primary.main"
+        />
+        <SummaryCard
+          label="Remaining purse"
+          value={formatAmount(amountLeft)}
+          color="success.main"
+        />
+      </Box>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography>Total Budget: ₹{team.totalAmount}</Typography>
-          <Typography>Total Spent: ₹{team.amountSpent}</Typography>
-          <Typography>
-            Remaining: ₹{team.totalAmount - team.amountSpent}
-          </Typography>
-        </CardContent>
-      </Card>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "flex-start", sm: "center" }}
+        spacing={2}
+        sx={{ mb: 2 }}
+      >
+        <Typography variant="h6">Squad ({visiblePlayers.length})</Typography>
+        <Stack direction="row" spacing={1.5}>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Role</InputLabel>
+            <Select
+              value={roleFilter}
+              label="Role"
+              onChange={(event) => setRoleFilter(event.target.value)}
+            >
+              <MenuItem value="all">All roles</MenuItem>
+              <MenuItem value="Batsman">Batsman</MenuItem>
+              <MenuItem value="Bowler">Bowler</MenuItem>
+              <MenuItem value="All-rounder">All-rounder</MenuItem>
+              <MenuItem value="Wicketkeeper">Wicketkeeper</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Sort by</InputLabel>
+            <Select
+              value={sortBy}
+              label="Sort by"
+              onChange={(event) => setSortBy(event.target.value)}
+            >
+              <MenuItem value="name">Name</MenuItem>
+              <MenuItem value="role">Role</MenuItem>
+              <MenuItem value="price">Price</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+      </Stack>
 
-      {/* <FormControl sx={{ mb: 2, minWidth: 200 }}>
-        <InputLabel>Sort By</InputLabel>
-        <Select value={sortBy} onChange={handleSortChange} label="Sort By">
-          <MenuItem value="default">Default</MenuItem>
-          <MenuItem value="role">Role</MenuItem>
-          <MenuItem value="price">Price (High to Low)</MenuItem>
-        </Select>
-      </FormControl> */}
-
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>Player Name</TableCell>
-            <TableCell>Role</TableCell>
-            <TableCell>Price</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {players.length &&
-            players?.map((player) => (
-              <TableRow key={player.id}>
-                <TableCell>{player.name}</TableCell>
-                <TableCell>{player.role}</TableCell>
-                <TableCell>₹{player.soldPrice}</TableCell>
+      <Card variant="outlined">
+        {visiblePlayers.length ? (
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Player</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell align="right">Bought For</TableCell>
               </TableRow>
-            ))}
-        </TableBody>
-      </Table>
+            </TableHead>
+            <TableBody>
+              {visiblePlayers.map((player) => (
+                <TableRow key={player.id} hover>
+                  <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
+                  <TableCell>{player.role}</TableCell>
+                  <TableCell align="right">
+                    {formatAmount(player.soldPrice)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <Box sx={{ py: 6, textAlign: "center" }}>
+            <Typography variant="h6">No players found</Typography>
+            <Typography color="text.secondary">
+              Purchased players will appear here after a winning bid.
+            </Typography>
+          </Box>
+        )}
+      </Card>
     </Box>
   );
 };

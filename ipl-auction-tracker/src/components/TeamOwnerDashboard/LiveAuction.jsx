@@ -1,325 +1,385 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import GavelRoundedIcon from "@mui/icons-material/GavelRounded";
+import SensorsRoundedIcon from "@mui/icons-material/SensorsRounded";
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  TextField,
-  Button,
-  Grid,
+  Chip,
+  CircularProgress,
+  Divider,
   List,
   ListItem,
   ListItemText,
-  Divider,
+  Stack,
+  Typography,
 } from "@mui/material";
+import { uid } from "uid";
+import { useSearchParams } from "react-router-dom";
 import VisualTimer from "../VisualTimer";
 import { socket } from "../../webSocket/socket";
 import api from "../../utils/api";
-import { getNextBidAmount } from "../../utils/bidUtils";
-import { useAuth } from "../../context/AuthContext";
-import { uid } from "uid";
+import {
+  formatCurrency,
+  getNextBidAmount,
+  getRemainingSeconds,
+} from "../../utils/bidUtils";
+import { useAuth } from "../../context/auth-context";
 
 const LiveAuction = ({ userRole = "spectator" }) => {
-  console.log(userRole, "userRole");
-  const [timeLeft, setTimeLeft] = useState(60);
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const tournamentId = searchParams.get("id");
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [endsAt, setEndsAt] = useState(null);
   const [highestBid, setHighestBid] = useState(null);
   const [highestBidder, setHighestBidder] = useState("");
   const [bidHistory, setBidHistory] = useState([]);
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [currentTeam, setCurrentTeam] = useState(null);
-  const [auctionCompleted, setAuctionCompleted] = useState(false);
-  const { user } = useAuth();
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(socket.connected);
+  const [feedback, setFeedback] = useState(null);
+  const [placingBid, setPlacingBid] = useState(false);
 
   useEffect(() => {
-    socket.on("new-bid", ({ id, bidAmount, teamId, teamName, ownerId }) => {
-      setHighestBid(bidAmount);
-      setHighestBidder(teamName);
+    let active = true;
 
-      setBidHistory((prev) => {
-        const alreadyExists = prev.some((bid) => bid.id === id);
-        if (alreadyExists) return prev;
-
-        return [
-          { id, bidAmount, teamId, ownerId, teamName, timestamp: new Date() },
-          ...prev,
-        ];
-      });
-    });
     const fetchCurrentPlayer = async () => {
+      if (!tournamentId) {
+        setCurrentPlayer(null);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await api.get("/auction/currentPlayer");
-
-        const player = res.data.player;
-        const bids = res.data.bids;
-
-        setCurrentPlayer(player);
-        setHighestBid(bids.length ? bids[0].bidAmount : player.basePrice);
-        setHighestBidder(bids.length ? bids[0].teamName : "");
-        if (bids.length) setBidHistory(bids);
-        setTimeLeft(60);
-      } catch (err) {
-        console.log("No current auction:", err);
+        const response = await api.get(
+          `/auction/currentPlayer?tournamentId=${tournamentId}`
+        );
+        if (!active) return;
+        setCurrentPlayer(response.data.player);
+        setBidHistory(response.data.bids || []);
+        setHighestBid(
+          response.data.bids.length
+            ? response.data.bids[0].bidAmount
+            : response.data.player.basePrice
+        );
+        setHighestBidder(response.data.bids[0]?.teamName || "");
+        setEndsAt(response.data.endsAt);
+        setResult(null);
+      } catch {
+        if (active) setCurrentPlayer(null);
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
-    fetchCurrentPlayer();
-    socket.on("auction-started", (player) => {
-      console.log("Auction started for:", player);
-      setAuctionCompleted(false);
+    const handleNewBid = (bid) => {
+      if (bid.tournamentId !== tournamentId) return;
+      setHighestBid(bid.bidAmount);
+      setHighestBidder(bid.teamName);
+      setPlacingBid(false);
+      setBidHistory((current) =>
+        current.some((item) => item.id === bid.id) ? current : [bid, ...current]
+      );
+    };
+
+    const handleAuctionStarted = (player) => {
+      if (player.tournamentId !== tournamentId) return;
       setCurrentPlayer(player);
       setHighestBid(player.basePrice);
       setHighestBidder("");
       setBidHistory([]);
-      setTimeLeft(60);
-    });
-    socket.on("auction-finalized", (data) => {
-      console.log("Auction finalized:", data);
-      alert(
-        `${data.playerName} has been sold to ${data.soldToTeamName} for ₹${(
-          data.finalPrice / 100000
-        ).toFixed(2)} Lakhs`
-      );
-      setAuctionCompleted(true);
-    });
-    return () => {
-      socket.off("auction-started");
+      setEndsAt(player.endsAt);
+      setResult(null);
+      setFeedback(null);
     };
-  }, []);
+
+    const handleTimerUpdated = ({
+      tournamentId: updatedTournamentId,
+      endsAt: updatedEndsAt,
+    }) => {
+      if (updatedTournamentId !== tournamentId) return;
+      setEndsAt(updatedEndsAt);
+    };
+
+    const handleAuctionFinalized = (auctionResult) => {
+      if (auctionResult.tournamentId !== tournamentId) return;
+      setResult(auctionResult);
+      setEndsAt(null);
+      setTimeLeft(0);
+      setPlacingBid(false);
+    };
+
+    const handleBidRejected = ({ message }) => {
+      setPlacingBid(false);
+      setFeedback({ severity: "warning", message });
+    };
+
+    const handleBidError = ({ message }) => {
+      setPlacingBid(false);
+      setFeedback({ severity: "error", message });
+    };
+
+    const handleConnect = () => setConnected(true);
+    const handleDisconnect = () => setConnected(false);
+
+    fetchCurrentPlayer();
+    socket.on("new-bid", handleNewBid);
+    socket.on("auction-started", handleAuctionStarted);
+    socket.on("auction-timer-updated", handleTimerUpdated);
+    socket.on("auction-finalized", handleAuctionFinalized);
+    socket.on("bid-rejected", handleBidRejected);
+    socket.on("bid-error", handleBidError);
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+
+    return () => {
+      active = false;
+      socket.off("new-bid", handleNewBid);
+      socket.off("auction-started", handleAuctionStarted);
+      socket.off("auction-timer-updated", handleTimerUpdated);
+      socket.off("auction-finalized", handleAuctionFinalized);
+      socket.off("bid-rejected", handleBidRejected);
+      socket.off("bid-error", handleBidError);
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+    };
+  }, [tournamentId]);
 
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const timer = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [timeLeft]);
+    if (!endsAt || result) return undefined;
+
+    const updateTimer = () => setTimeLeft(getRemainingSeconds(endsAt));
+    updateTimer();
+    const timer = setInterval(updateTimer, 250);
+    return () => clearInterval(timer);
+  }, [endsAt, result]);
+
   useEffect(() => {
+    if (userRole !== "team_owner") return undefined;
+
+    let active = true;
     const fetchCurrentTeam = async () => {
       try {
-        console.log(user, "data");
-        const res = await api.get(`/teams/getTeamByid/${user.id}`);
-
-        setCurrentTeam(res.data.team);
-        console.log(res.data);
-      } catch (err) {
-        console.log("No current auction:", err);
+        const response = await api.get(`/teams/getTeamByid/${user.id}`);
+        if (active) setCurrentTeam(response.data.team);
+      } catch {
+        if (active) {
+          setFeedback({
+            severity: "error",
+            message: "Your team could not be loaded for bidding.",
+          });
+        }
       }
     };
-    fetchCurrentTeam();
-  }, [user]);
-  const isBidDisabled = () => {
-    if (highestBidder === currentTeam.name) return true;
 
-    return false;
-  };
-  const handleBid = () => {
-    const amount = getNextBidAmount(highestBid);
-    console.log(currentTeam, "current team");
-    const newBid = {
+    fetchCurrentTeam();
+    return () => {
+      active = false;
+    };
+  }, [user.id, userRole]);
+
+  const canBid =
+    userRole === "team_owner" &&
+    connected &&
+    currentTeam &&
+    currentPlayer &&
+    currentTeam.tournamentId === currentPlayer.tournamentId &&
+    timeLeft > 0 &&
+    !result &&
+    !placingBid &&
+    highestBidder !== currentTeam.name;
+
+  const placeBid = () => {
+    if (!canBid) return;
+
+    setFeedback(null);
+    setPlacingBid(true);
+    socket.emit("place-bid", {
       id: uid(),
       playerId: currentPlayer.id,
       teamId: currentTeam.id,
       ownerId: currentTeam.ownerId,
       teamName: currentTeam.name,
-      bidAmount: amount,
-    };
-    console.log(newBid);
-    socket.emit("place-bid", newBid);
-
-    setHighestBid(amount);
-    setHighestBidder(newBid.teamName);
+      bidAmount: getNextBidAmount(highestBid),
+    });
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
+        <CircularProgress size={32} />
+      </Box>
+    );
+  }
+
+  if (!currentPlayer) {
+    return (
+      <Card variant="outlined">
+        <CardContent sx={{ py: 8, textAlign: "center" }}>
+          <GavelRoundedIcon sx={{ fontSize: 48, color: "text.secondary" }} />
+          <Typography variant="h6" sx={{ mt: 1 }}>
+            Waiting for the next player
+          </Typography>
+          <Typography color="text.secondary">
+            {tournamentId
+              ? "The live bidding panel will appear when the admin starts a round."
+              : "Choose a live auction from your dashboard to open the correct tournament room."}
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        🏏 Live Auction
-      </Typography>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "flex-start", sm: "center" }}
+        spacing={2}
+        sx={{ mb: 3 }}
+      >
+        <Box>
+          <Typography variant="h5">Live Auction</Typography>
+          <Typography color="text.secondary">
+            {userRole === "team_owner"
+              ? "Place the next valid bid before the timer expires."
+              : "You are watching this bidding round in real time."}
+          </Typography>
+        </Box>
+        <Chip
+          icon={<SensorsRoundedIcon />}
+          label={connected ? "Connected Live" : "Reconnecting"}
+          color={connected ? "success" : "warning"}
+          variant="outlined"
+        />
+      </Stack>
 
-      {/* Player Info */}
-      {currentPlayer ? (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6">Player: {currentPlayer.name}</Typography>
-            <Typography>Role: {currentPlayer.role}</Typography>
-            <Typography>
-              Base Price: ₹{currentPlayer.basePrice.toLocaleString()}
+      {feedback && (
+        <Alert
+          severity={feedback.severity}
+          sx={{ mb: 3 }}
+          onClose={() => setFeedback(null)}
+        >
+          {feedback.message}
+        </Alert>
+      )}
+      {result && (
+        <Alert severity={result.status === "sold" ? "success" : "info"} sx={{ mb: 3 }}>
+          {result.status === "sold"
+            ? `${result.playerName} sold to ${result.soldToTeamName} for ${formatCurrency(
+                result.finalPrice
+              )}.`
+            : `${result.playerName} went unsold. No bids were placed.`}
+        </Alert>
+      )}
+
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "minmax(320px, 1fr) 1fr" },
+          gap: 2.5,
+        }}
+      >
+        <Stack spacing={2.5}>
+          <Card variant="outlined">
+            <CardContent sx={{ p: 3 }}>
+              <Typography color="text.secondary" variant="body2">
+                Current Player
+              </Typography>
+              <Typography variant="h5" sx={{ mt: 0.5 }}>
+                {currentPlayer.name}
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                <Chip label={currentPlayer.role} variant="outlined" />
+                <Chip
+                  label={`Base ${formatCurrency(currentPlayer.basePrice)}`}
+                  variant="outlined"
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined">
+            <CardContent sx={{ p: 3 }}>
+              <Stack direction="row" justifyContent="space-between">
+                <Box>
+                  <Typography color="text.secondary" variant="body2">
+                    Current Highest Bid
+                  </Typography>
+                  <Typography variant="h4" color="primary.main" sx={{ mt: 0.5 }}>
+                    {formatCurrency(highestBid)}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                    {highestBidder || "No bids submitted yet"}
+                  </Typography>
+                </Box>
+                {!result && <VisualTimer timeLeft={timeLeft} />}
+              </Stack>
+              {userRole === "team_owner" && !result && (
+                <>
+                  <Divider sx={{ my: 2.5 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Next bid amount
+                  </Typography>
+                  <Typography variant="h6" sx={{ mt: 0.25, mb: 2 }}>
+                    {formatCurrency(getNextBidAmount(highestBid))}
+                  </Typography>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    disabled={!canBid}
+                    onClick={placeBid}
+                  >
+                    {placingBid ? "Placing Bid..." : "Place Bid"}
+                  </Button>
+                  {!canBid && highestBidder === currentTeam?.name && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                      Your team currently holds the highest bid.
+                    </Typography>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Stack>
+
+        <Card variant="outlined">
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Bid Stream
             </Typography>
+            {bidHistory.length ? (
+              <List disablePadding>
+                {bidHistory.map((bid, index) => (
+                  <ListItem
+                    key={bid.id}
+                    disableGutters
+                    divider={index < bidHistory.length - 1}
+                  >
+                    <ListItemText
+                      primary={bid.teamName}
+                      secondary={`Bid ${formatCurrency(bid.bidAmount)}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Box sx={{ py: 6, textAlign: "center" }}>
+                <Typography fontWeight={600}>No bids yet</Typography>
+                <Typography color="text.secondary" variant="body2">
+                  The first accepted bid will appear here instantly.
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          Waiting for auction to start...
-        </Typography>
-      )}
-
-      {currentPlayer && (
-        <Grid container spacing={4}>
-          {/* Timer and Highest Bid Info */}
-          {!auctionCompleted ? (
-            <Grid item xs={12} md={auctionCompleted ? 12 : 6}>
-              <Card
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  boxShadow: 3,
-                  backgroundColor: "#f5f5f5",
-                }}
-              >
-                {/* Time Left Section */}
-                <Box mb={2}>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    fontWeight="bold"
-                  >
-                    Time Left:
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    color={timeLeft > 10 ? "success.main" : "error.main"}
-                    fontWeight="bold"
-                  >
-                    <VisualTimer timeLeft={timeLeft} />
-                  </Typography>
-                </Box>
-
-                {/* Current Highest Bid Section */}
-                <Box mb={2}>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    fontWeight="bold"
-                  >
-                    Current Highest Bid:
-                  </Typography>
-                  <Typography
-                    variant="h6"
-                    fontWeight={600}
-                    color={highestBid ? "primary.main" : "text.secondary"}
-                  >
-                    ₹{highestBid ?? "0"}
-                  </Typography>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    fontWeight="bold"
-                  >
-                    By:{" "}
-                  </Typography>
-                  <Typography
-                    variant="h6"
-                    fontWeight={600}
-                    color={highestBid ? "primary.main" : "text.secondary"}
-                  >
-                    {highestBidder || "No bids yet"}
-                  </Typography>
-                </Box>
-
-                {/* Next bid amount */}
-                <Box mb={2}>
-                  <Typography
-                    variant="body1"
-                    color="text.secondary"
-                    fontWeight="bold"
-                  >
-                    Next bid amount:
-                  </Typography>
-                  <Typography
-                    variant="h6"
-                    fontWeight="bold"
-                    color="primary.main"
-                  >
-                    ₹{getNextBidAmount(highestBid)}
-                  </Typography>
-                </Box>
-
-                {/* Place Bid Button */}
-                {userRole === "team_owner" && (
-                  <Box>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="large"
-                      onClick={handleBid}
-                      disabled={isBidDisabled()}
-                    >
-                      Place Bid
-                    </Button>
-                  </Box>
-                )}
-              </Card>
-            </Grid>
-          ) : (
-            <Box
-              sx={{
-                width: "80%",
-                margin: "0 auto",
-              }}
-            >
-              <Card
-                sx={{
-                  p: 3,
-                  m: 4,
-                  borderRadius: 3,
-                  boxShadow: 3,
-                  backgroundColor: "#fff",
-                  overflowY: "auto",
-                }}
-              >
-                <Typography
-                  sx={{
-                    textAlign: "center",
-                    marginTop: "16px",
-                  }}
-                  variant="h6"
-                >
-                  {` ${
-                    currentPlayer.name
-                  } has been sold to ${highestBidder} for ₹${(
-                    highestBid / 100000
-                  ).toFixed(2)} Lakhs`}
-                </Typography>
-              </Card>
-            </Box>
-          )}
-          {/* Bid History */}
-          <Grid item xs={12} md={auctionCompleted ? 12 : 6}>
-            <Card
-              sx={{
-                p: 3,
-                borderRadius: 3,
-                boxShadow: 3,
-                backgroundColor: "#fff",
-                maxHeight: "400px",
-                overflowY: "auto",
-                margin: "0 auto",
-              }}
-            >
-              <Typography variant="h5" fontWeight={600} gutterBottom>
-                Bid History
-              </Typography>
-
-              <List dense>
-                {bidHistory.length === 0 ? (
-                  <ListItem>
-                    <ListItemText primary="No bids yet." />
-                  </ListItem>
-                ) : (
-                  bidHistory.map((bid, index) => (
-                    <React.Fragment key={index}>
-                      <ListItem alignItems="flex-start">
-                        <ListItemText
-                          primary={`₹${bid.bidAmount} by ${bid.teamName}`}
-                        />
-                      </ListItem>
-                      {index < bidHistory.length - 1 && <Divider />}
-                    </React.Fragment>
-                  ))
-                )}
-              </List>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
+      </Box>
     </Box>
   );
 };

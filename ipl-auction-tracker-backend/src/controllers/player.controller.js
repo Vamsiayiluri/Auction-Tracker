@@ -33,7 +33,6 @@ export const getPlayers = async (req, res) => {
 export const getPlayersWithBidsByTournamentId = async (req, res) => {
   try {
     const { tournamentId } = req.params;
-    console.log(tournamentId, "tid");
     const players = await Player.findAll({
       where: { tournamentId },
     });

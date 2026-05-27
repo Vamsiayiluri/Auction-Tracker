@@ -1,15 +1,5 @@
-import React, { useState } from "react";
-import {
-  Box,
-  Tabs,
-  Tab,
-  Typography,
-  Container,
-  Paper,
-  AppBar,
-} from "@mui/material";
-
-// import LiveAuction from "./LiveAuction";
+import { useState } from "react";
+import { Box, Paper, Tab, Tabs } from "@mui/material";
 import AuctionLive from "./AuctionLive";
 import TeamsOverview from "./TeamsOverview";
 import BidHistory from "../TeamOwnerDashboard/BidHistory";
@@ -22,31 +12,28 @@ const AdminDashboardLayout = () => {
   };
 
   return (
-    <>
-      <AppBar
-        position="static"
-        sx={{ backgroundColor: "#1e1e1e", boxShadow: 3 }}
-      >
+    <Box>
+      <Paper variant="outlined" sx={{ px: { xs: 1, sm: 2 } }}>
         <Tabs
           value={tabIndex}
           onChange={handleTabChange}
-          centered
-          textColor="inherit"
-          indicatorColor="secondary"
-          sx={{ backgroundColor: "#1e1e1e" }}
+          textColor="primary"
+          indicatorColor="primary"
+          variant="scrollable"
+          allowScrollButtonsMobile
         >
           <Tab label="Live Auction" />
           <Tab label="Teams" />
           <Tab label="Bid History" />
         </Tabs>
-      </AppBar>
+      </Paper>
 
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ mt: 3 }}>
         {tabIndex === 0 && <AuctionLive />}
         {tabIndex === 1 && <TeamsOverview />}
         {tabIndex === 2 && <BidHistory />}
       </Box>
-    </>
+    </Box>
   );
 };
 
