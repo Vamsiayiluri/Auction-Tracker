@@ -1,13 +1,33 @@
-import { Player, Team, Tournament } from "../models/index.js";
+import { Op } from "sequelize";
+import crypto from "crypto";
+import { Player, Team, Tournament, TournamentTeam } from "../models/index.js";
 
 export const createTournament = async (req, res) => {
   try {
     const { id, name, budget, createdBy, teams, players } = req.body;
 
-    if (!name || !budget) {
+    if (
+      !id ||
+      !name ||
+      !budget ||
+      !Array.isArray(teams) ||
+      !teams.length ||
+      !Array.isArray(players) ||
+      !players.length
+    ) {
       return res
         .status(400)
-        .json({ message: "Tournament name and budget are required" });
+        .json({ message: "Tournament name, budget, teams, and players are required" });
+    }
+
+    const participatingTeams = await Team.findAll({
+      where: { name: { [Op.in]: teams } },
+    });
+
+    if (participatingTeams.length !== teams.length) {
+      return res
+        .status(400)
+        .json({ message: "One or more selected teams do not exist" });
     }
 
     const newTournament = await Tournament.create({
@@ -17,12 +37,27 @@ export const createTournament = async (req, res) => {
       createdBy: createdBy,
     });
 
-    await Team.update(
-      { tournamentId: id, totalAmount: budget },
-      { where: { name: teams } }
+    await TournamentTeam.bulkCreate(
+      participatingTeams.map((team) => ({
+        id: crypto.randomUUID(),
+        tournamentId: id,
+        teamId: team.id,
+        totalAmount: budget,
+        amountSpent: 0,
+      }))
     );
 
-    await Player.bulkCreate(players);
+    await Player.bulkCreate(
+      players.map((player) => ({
+        ...player,
+        tournamentId: id,
+        isSold: false,
+        isInAuction: false,
+        soldPrice: null,
+        teamId: null,
+        auctionId: "",
+      }))
+    );
 
     res.status(201).json({
       message: "Tournament created successfully",

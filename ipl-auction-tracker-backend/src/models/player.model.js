@@ -53,7 +53,8 @@ const Player = sequelize.define("Player", {
   },
 });
 
-Tournament.hasMany(Team, { foreignKey: "tournamentId" });
 Player.belongsTo(Team, { foreignKey: "teamId", as: "team" });
+Player.belongsTo(Tournament, { foreignKey: "tournamentId", as: "tournament" });
+Tournament.hasMany(Player, { foreignKey: "tournamentId", as: "players" });
 
 export default Player;

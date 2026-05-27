@@ -3,6 +3,7 @@ import sequelize from "../config/dbconfig.js";
 import Player from "./player.model.js";
 import Team from "./team.model.js";
 import User from "./user.model.js";
+import Tournament from "./tournment.model.js";
 
 const Bid = sequelize.define("Bid", {
   id: {
@@ -12,6 +13,10 @@ const Bid = sequelize.define("Bid", {
   playerId: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  tournamentId: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   teamName: {
     type: DataTypes.STRING,
@@ -31,7 +36,9 @@ const Bid = sequelize.define("Bid", {
 });
 
 Bid.belongsTo(Player, { foreignKey: "playerId", as: "player" });
+Bid.belongsTo(Tournament, { foreignKey: "tournamentId", as: "tournament" });
 Bid.belongsTo(Team, { foreignKey: "teamId", as: "team" });
 Bid.belongsTo(User, { foreignKey: "ownerId", as: "user" });
+Tournament.hasMany(Bid, { foreignKey: "tournamentId", as: "bids" });
 
 export default Bid;

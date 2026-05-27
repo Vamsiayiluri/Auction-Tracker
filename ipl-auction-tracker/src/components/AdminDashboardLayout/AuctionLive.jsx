@@ -43,6 +43,8 @@ const AuctionLive = () => {
   const [bidHistory, setBidHistory] = useState([]);
   const [highestBid, setHighestBid] = useState(null);
   const [highestBidder, setHighestBidder] = useState("");
+  const [nextMinimumBid, setNextMinimumBid] = useState(null);
+  const [auctionStatus, setAuctionStatus] = useState("idle");
   const [endsAt, setEndsAt] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [result, setResult] = useState(null);
@@ -91,12 +93,12 @@ const AuctionLive = () => {
         setCurrentPlayer(response.data.player);
         setBidHistory(response.data.bids || []);
         setHighestBid(
-          response.data.bids.length
-            ? response.data.bids[0].bidAmount
-            : response.data.player.basePrice
+          response.data.highestBid ?? response.data.player.basePrice
         );
-        setHighestBidder(response.data.bids[0]?.teamName || "");
+        setHighestBidder(response.data.highestBidder || "");
+        setNextMinimumBid(response.data.nextMinimumBid);
         setEndsAt(response.data.endsAt);
+        setAuctionStatus(response.data.auctionStatus || "live");
       } catch {
         if (active) setCurrentPlayer(null);
       } finally {
@@ -108,6 +110,9 @@ const AuctionLive = () => {
       if (bid.tournamentId !== tournamentId) return;
       setHighestBid(bid.bidAmount);
       setHighestBidder(bid.teamName);
+      setNextMinimumBid(bid.nextMinimumBid);
+      if (bid.endsAt) setEndsAt(bid.endsAt);
+      setAuctionStatus("live");
       setBidHistory((current) =>
         current.some((item) => item.id === bid.id) ? current : [bid, ...current]
       );
@@ -119,14 +124,44 @@ const AuctionLive = () => {
       setBidHistory([]);
       setHighestBid(player.basePrice);
       setHighestBidder("");
+      setNextMinimumBid(player.nextMinimumBid);
       setEndsAt(player.endsAt);
+      setAuctionStatus("live");
       setResult(null);
       setBusy(false);
     };
 
-    const handleTimerUpdate = ({ tournamentId: updatedTournamentId, endsAt: updatedEndsAt }) => {
+    const handleTimerUpdate = ({
+      tournamentId: updatedTournamentId,
+      endsAt: updatedEndsAt,
+      highestBid: updatedHighestBid,
+      highestBidder: updatedHighestBidder,
+      nextMinimumBid: updatedNextMinimumBid,
+    }) => {
       if (updatedTournamentId !== tournamentId) return;
       setEndsAt(updatedEndsAt);
+      setAuctionStatus("live");
+      if (typeof updatedHighestBid !== "undefined") {
+        setHighestBid(updatedHighestBid);
+      }
+      if (typeof updatedHighestBidder !== "undefined") {
+        setHighestBidder(updatedHighestBidder || "");
+      }
+      if (typeof updatedNextMinimumBid !== "undefined") {
+        setNextMinimumBid(updatedNextMinimumBid);
+      }
+      setBusy(false);
+    };
+
+    const handlePendingFinalization = (payload) => {
+      if (payload.tournamentId !== tournamentId) return;
+      setAuctionStatus("pending");
+      setEndsAt(null);
+      setTimeLeft(0);
+      setHighestBid(payload.highestBid);
+      setHighestBidder(payload.highestBidder || "");
+      setNextMinimumBid(payload.nextMinimumBid);
+      setBusy(false);
     };
 
     const handleRoundFinalized = (roundResult) => {
@@ -136,28 +171,38 @@ const AuctionLive = () => {
       setTimeLeft(0);
       setCurrentPlayer(null);
       setSelectedPlayerId("");
+      setAuctionStatus("idle");
       setBusy(false);
       loadPlayers();
     };
 
-    const handleConnect = () => setConnected(true);
+    const handleConnect = () => {
+      setConnected(true);
+      if (tournamentId) socket.emit("join-tournament", { tournamentId });
+    };
     const handleDisconnect = () => setConnected(false);
 
     loadTournaments();
     loadPlayers();
     loadCurrentRound();
+    if (tournamentId) socket.emit("join-tournament", { tournamentId });
     socket.on("new-bid", handleNewBid);
     socket.on("auction-started", handleRoundStart);
     socket.on("auction-timer-updated", handleTimerUpdate);
+    socket.on("auction-extended", handleTimerUpdate);
+    socket.on("auction-pending-finalization", handlePendingFinalization);
     socket.on("auction-finalized", handleRoundFinalized);
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
 
     return () => {
       active = false;
+      if (tournamentId) socket.emit("leave-tournament", { tournamentId });
       socket.off("new-bid", handleNewBid);
       socket.off("auction-started", handleRoundStart);
       socket.off("auction-timer-updated", handleTimerUpdate);
+      socket.off("auction-extended", handleTimerUpdate);
+      socket.off("auction-pending-finalization", handlePendingFinalization);
       socket.off("auction-finalized", handleRoundFinalized);
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
@@ -207,18 +252,39 @@ const AuctionLive = () => {
     }
   };
 
-  const closeRoundNow = async () => {
+  const extendRound = async () => {
     if (!currentPlayer) return;
     setBusy(true);
     setError("");
     try {
-      await api.post(`/auction/stop/${currentPlayer.id}`);
+      await api.post(`/auction/extend/${currentPlayer.id}`);
     } catch (requestError) {
       setBusy(false);
-      setError(
-        requestError.response?.data?.message ||
-          "Unable to close this player auction."
-      );
+      setError(requestError.response?.data?.message || "Unable to extend auction.");
+    }
+  };
+
+  const sellPlayer = async () => {
+    if (!currentPlayer) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auction/sell/${currentPlayer.id}`);
+    } catch (requestError) {
+      setBusy(false);
+      setError(requestError.response?.data?.message || "Unable to sell player.");
+    }
+  };
+
+  const markUnsold = async () => {
+    if (!currentPlayer) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/auction/unsold/${currentPlayer.id}`);
+    } catch (requestError) {
+      setBusy(false);
+      setError(requestError.response?.data?.message || "Unable to mark unsold.");
     }
   };
 
@@ -294,6 +360,8 @@ const AuctionLive = () => {
                   setBidHistory([]);
                   setHighestBid(null);
                   setHighestBidder("");
+                  setNextMinimumBid(null);
+                  setAuctionStatus("idle");
                   setEndsAt(null);
                   setTimeLeft(0);
                   setResult(null);
@@ -408,9 +476,18 @@ const AuctionLive = () => {
                       label={`Base ${formatCurrency(currentPlayer.basePrice)}`}
                       variant="outlined"
                     />
+                    <Chip
+                      label={auctionStatus === "pending" ? "Pending Finalization" : "Live"}
+                      color={auctionStatus === "pending" ? "warning" : "success"}
+                      variant="outlined"
+                    />
                   </Stack>
                 </Box>
-                <VisualTimer timeLeft={timeLeft} />
+                {auctionStatus === "live" ? (
+                  <VisualTimer timeLeft={timeLeft} />
+                ) : (
+                  <Chip color="warning" label="Bidding locked" />
+                )}
               </Stack>
               <Divider sx={{ my: 3 }} />
               <Typography color="text.secondary" variant="body2">
@@ -422,16 +499,54 @@ const AuctionLive = () => {
               <Typography color="text.secondary">
                 {highestBidder || "No bids submitted yet"}
               </Typography>
-              <Button
-                variant="outlined"
-                color="error"
-                fullWidth
-                sx={{ mt: 3 }}
-                disabled={busy}
-                onClick={closeRoundNow}
-              >
-                {busy ? "Closing..." : "Close Round Now"}
-              </Button>
+              {auctionStatus === "live" && (
+                <Typography color="text.secondary" variant="body2" sx={{ mt: 1 }}>
+                  Next minimum bid {formatCurrency(nextMinimumBid)}
+                </Typography>
+              )}
+              {auctionStatus === "pending" && (
+                <Alert severity="warning" sx={{ mt: 3 }}>
+                  Timer ended. Bidding is locked until you extend, sell, or mark
+                  the player unsold.
+                </Alert>
+              )}
+              <Stack spacing={1} sx={{ mt: 3 }}>
+                {auctionStatus === "live" ? (
+                  <Alert severity="info" variant="outlined">
+                    Waiting for bids. The timer restarts automatically after
+                    each valid bid.
+                  </Alert>
+                ) : (
+                  <>
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      disabled={busy}
+                      onClick={extendRound}
+                    >
+                      Extend 20 Seconds
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      fullWidth
+                      disabled={busy || !highestBidder}
+                      onClick={sellPlayer}
+                    >
+                      Sell to Highest Bidder
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      fullWidth
+                      disabled={busy}
+                      onClick={markUnsold}
+                    >
+                      Mark Unsold
+                    </Button>
+                  </>
+                )}
+              </Stack>
             </CardContent>
           </Card>
 

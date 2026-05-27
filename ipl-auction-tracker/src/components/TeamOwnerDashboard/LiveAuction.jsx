@@ -36,6 +36,8 @@ const LiveAuction = ({ userRole = "spectator" }) => {
   const [endsAt, setEndsAt] = useState(null);
   const [highestBid, setHighestBid] = useState(null);
   const [highestBidder, setHighestBidder] = useState("");
+  const [nextMinimumBid, setNextMinimumBid] = useState(null);
+  const [auctionStatus, setAuctionStatus] = useState("idle");
   const [bidHistory, setBidHistory] = useState([]);
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [currentTeam, setCurrentTeam] = useState(null);
@@ -63,12 +65,12 @@ const LiveAuction = ({ userRole = "spectator" }) => {
         setCurrentPlayer(response.data.player);
         setBidHistory(response.data.bids || []);
         setHighestBid(
-          response.data.bids.length
-            ? response.data.bids[0].bidAmount
-            : response.data.player.basePrice
+          response.data.highestBid ?? response.data.player.basePrice
         );
-        setHighestBidder(response.data.bids[0]?.teamName || "");
+        setHighestBidder(response.data.highestBidder || "");
+        setNextMinimumBid(response.data.nextMinimumBid);
         setEndsAt(response.data.endsAt);
+        setAuctionStatus(response.data.auctionStatus || "live");
         setResult(null);
       } catch {
         if (active) setCurrentPlayer(null);
@@ -81,6 +83,9 @@ const LiveAuction = ({ userRole = "spectator" }) => {
       if (bid.tournamentId !== tournamentId) return;
       setHighestBid(bid.bidAmount);
       setHighestBidder(bid.teamName);
+      setNextMinimumBid(bid.nextMinimumBid);
+      if (bid.endsAt) setEndsAt(bid.endsAt);
+      setAuctionStatus("live");
       setPlacingBid(false);
       setBidHistory((current) =>
         current.some((item) => item.id === bid.id) ? current : [bid, ...current]
@@ -92,8 +97,10 @@ const LiveAuction = ({ userRole = "spectator" }) => {
       setCurrentPlayer(player);
       setHighestBid(player.basePrice);
       setHighestBidder("");
+      setNextMinimumBid(player.nextMinimumBid);
       setBidHistory([]);
       setEndsAt(player.endsAt);
+      setAuctionStatus("live");
       setResult(null);
       setFeedback(null);
     };
@@ -101,9 +108,33 @@ const LiveAuction = ({ userRole = "spectator" }) => {
     const handleTimerUpdated = ({
       tournamentId: updatedTournamentId,
       endsAt: updatedEndsAt,
+      highestBid: updatedHighestBid,
+      highestBidder: updatedHighestBidder,
+      nextMinimumBid: updatedNextMinimumBid,
     }) => {
       if (updatedTournamentId !== tournamentId) return;
       setEndsAt(updatedEndsAt);
+      setAuctionStatus("live");
+      if (typeof updatedHighestBid !== "undefined") {
+        setHighestBid(updatedHighestBid);
+      }
+      if (typeof updatedHighestBidder !== "undefined") {
+        setHighestBidder(updatedHighestBidder || "");
+      }
+      if (typeof updatedNextMinimumBid !== "undefined") {
+        setNextMinimumBid(updatedNextMinimumBid);
+      }
+    };
+
+    const handlePendingFinalization = (payload) => {
+      if (payload.tournamentId !== tournamentId) return;
+      setAuctionStatus("pending");
+      setEndsAt(null);
+      setTimeLeft(0);
+      setHighestBid(payload.highestBid);
+      setHighestBidder(payload.highestBidder || "");
+      setNextMinimumBid(payload.nextMinimumBid);
+      setPlacingBid(false);
     };
 
     const handleAuctionFinalized = (auctionResult) => {
@@ -111,6 +142,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
       setResult(auctionResult);
       setEndsAt(null);
       setTimeLeft(0);
+      setAuctionStatus("completed");
       setPlacingBid(false);
     };
 
@@ -124,13 +156,19 @@ const LiveAuction = ({ userRole = "spectator" }) => {
       setFeedback({ severity: "error", message });
     };
 
-    const handleConnect = () => setConnected(true);
+    const handleConnect = () => {
+      setConnected(true);
+      if (tournamentId) socket.emit("join-tournament", { tournamentId });
+    };
     const handleDisconnect = () => setConnected(false);
 
     fetchCurrentPlayer();
+    if (tournamentId) socket.emit("join-tournament", { tournamentId });
     socket.on("new-bid", handleNewBid);
     socket.on("auction-started", handleAuctionStarted);
     socket.on("auction-timer-updated", handleTimerUpdated);
+    socket.on("auction-extended", handleTimerUpdated);
+    socket.on("auction-pending-finalization", handlePendingFinalization);
     socket.on("auction-finalized", handleAuctionFinalized);
     socket.on("bid-rejected", handleBidRejected);
     socket.on("bid-error", handleBidError);
@@ -139,9 +177,12 @@ const LiveAuction = ({ userRole = "spectator" }) => {
 
     return () => {
       active = false;
+      if (tournamentId) socket.emit("leave-tournament", { tournamentId });
       socket.off("new-bid", handleNewBid);
       socket.off("auction-started", handleAuctionStarted);
       socket.off("auction-timer-updated", handleTimerUpdated);
+      socket.off("auction-extended", handleTimerUpdated);
+      socket.off("auction-pending-finalization", handlePendingFinalization);
       socket.off("auction-finalized", handleAuctionFinalized);
       socket.off("bid-rejected", handleBidRejected);
       socket.off("bid-error", handleBidError);
@@ -160,12 +201,14 @@ const LiveAuction = ({ userRole = "spectator" }) => {
   }, [endsAt, result]);
 
   useEffect(() => {
-    if (userRole !== "team_owner") return undefined;
+    if (userRole !== "team_owner" || !tournamentId) return undefined;
 
     let active = true;
     const fetchCurrentTeam = async () => {
       try {
-        const response = await api.get(`/teams/getTeamByid/${user.id}`);
+        const response = await api.get(
+          `/teams/getTeamByid/${user.id}?tournamentId=${tournamentId}`
+        );
         if (active) setCurrentTeam(response.data.team);
       } catch {
         if (active) {
@@ -181,7 +224,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
     return () => {
       active = false;
     };
-  }, [user.id, userRole]);
+  }, [tournamentId, user.id, userRole]);
 
   const canBid =
     userRole === "team_owner" &&
@@ -189,6 +232,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
     currentTeam &&
     currentPlayer &&
     currentTeam.tournamentId === currentPlayer.tournamentId &&
+    auctionStatus === "live" &&
     timeLeft > 0 &&
     !result &&
     !placingBid &&
@@ -205,7 +249,8 @@ const LiveAuction = ({ userRole = "spectator" }) => {
       teamId: currentTeam.id,
       ownerId: currentTeam.ownerId,
       teamName: currentTeam.name,
-      bidAmount: getNextBidAmount(highestBid),
+      tournamentId: currentPlayer.tournamentId,
+      bidAmount: nextMinimumBid ?? getNextBidAmount(highestBid),
     });
   };
 
@@ -248,7 +293,9 @@ const LiveAuction = ({ userRole = "spectator" }) => {
           <Typography variant="h5">Live Auction</Typography>
           <Typography color="text.secondary">
             {userRole === "team_owner"
-              ? "Place the next valid bid before the timer expires."
+              ? auctionStatus === "pending"
+                ? "Bidding is locked. Waiting for admin finalization."
+                : "Place the next valid bid before the timer expires."
               : "You are watching this bidding round in real time."}
           </Typography>
         </Box>
@@ -275,7 +322,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
             ? `${result.playerName} sold to ${result.soldToTeamName} for ${formatCurrency(
                 result.finalPrice
               )}.`
-            : `${result.playerName} went unsold. No bids were placed.`}
+            : `${result.playerName} was marked unsold by the admin.`}
         </Alert>
       )}
 
@@ -301,6 +348,17 @@ const LiveAuction = ({ userRole = "spectator" }) => {
                   label={`Base ${formatCurrency(currentPlayer.basePrice)}`}
                   variant="outlined"
                 />
+                <Chip
+                  label={
+                    auctionStatus === "pending"
+                      ? "Pending Finalization"
+                      : auctionStatus === "live"
+                        ? "Live"
+                        : "Completed"
+                  }
+                  color={auctionStatus === "pending" ? "warning" : "success"}
+                  variant="outlined"
+                />
               </Stack>
             </CardContent>
           </Card>
@@ -319,8 +377,19 @@ const LiveAuction = ({ userRole = "spectator" }) => {
                     {highestBidder || "No bids submitted yet"}
                   </Typography>
                 </Box>
-                {!result && <VisualTimer timeLeft={timeLeft} />}
+                {!result &&
+                  (auctionStatus === "live" ? (
+                    <VisualTimer timeLeft={timeLeft} />
+                  ) : (
+                    <Chip color="warning" label="Bidding locked" />
+                  ))}
               </Stack>
+              {auctionStatus === "pending" && !result && (
+                <Alert severity="warning" sx={{ mt: 2.5 }}>
+                  Timer ended. Highest bid is held while the admin decides to
+                  extend, sell, or mark unsold.
+                </Alert>
+              )}
               {userRole === "team_owner" && !result && (
                 <>
                   <Divider sx={{ my: 2.5 }} />
@@ -328,7 +397,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
                     Next bid amount
                   </Typography>
                   <Typography variant="h6" sx={{ mt: 0.25, mb: 2 }}>
-                    {formatCurrency(getNextBidAmount(highestBid))}
+                    {formatCurrency(nextMinimumBid ?? getNextBidAmount(highestBid))}
                   </Typography>
                   <Button
                     fullWidth

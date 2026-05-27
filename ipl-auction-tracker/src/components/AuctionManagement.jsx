@@ -567,6 +567,15 @@ export default function AuctionManagement() {
                         Resume Auction
                       </Button>
                     )}
+                    {tournament.status === "completed" && (
+                      <Button
+                        variant="outlined"
+                        color="success"
+                        onClick={() => openTournamentControl(tournament)}
+                      >
+                        View Auction Details
+                      </Button>
+                    )}
                     <Button
                       variant="outlined"
                       startIcon={<AddRoundedIcon />}

@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/dbconfig.js";
 import Player from "./player.model.js";
+import Tournament from "./tournment.model.js";
 
 const Auction = sequelize.define("Auction", {
   // Live bid deadlines are held by the server until a schema migration is added.
@@ -17,11 +18,23 @@ const Auction = sequelize.define("Auction", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  tournamentId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 });
 
 Auction.belongsTo(Player, {
   foreignKey: "currentPlayerId",
   as: "currentPlayer",
+});
+Auction.belongsTo(Tournament, {
+  foreignKey: "tournamentId",
+  as: "tournament",
+});
+Tournament.hasMany(Auction, {
+  foreignKey: "tournamentId",
+  as: "auctions",
 });
 
 export default Auction;

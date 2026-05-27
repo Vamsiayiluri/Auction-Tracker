@@ -1,8 +1,10 @@
 export const getNextBidAmount = (currentBid) => {
   const amount = Number(currentBid) || 0;
-  if (amount < 10000000) return amount + 500000;
-  if (amount < 40000000) return amount + 1000000;
-  return amount + 2500000;
+  if (amount < 1000000) return amount + 25000;
+  if (amount < 2500000) return amount + 50000;
+  if (amount < 5000000) return amount + 100000;
+  if (amount < 10000000) return amount + 200000;
+  return amount + 500000;
 };
 
 export const formatCurrency = (amount) =>

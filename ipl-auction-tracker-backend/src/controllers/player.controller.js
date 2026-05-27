@@ -1,7 +1,16 @@
-import { Bid, Player, Team } from "../models/index.js";
+import { Bid, Player, Team, Tournament } from "../models/index.js";
 
 export const createPlayer = async (req, res) => {
   try {
+    if (!req.body.tournamentId) {
+      return res.status(400).json({ message: "Tournament id is required" });
+    }
+
+    const tournament = await Tournament.findByPk(req.body.tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
     const player = await Player.create(req.body);
 
     res.status(201).json(player);
@@ -46,7 +55,7 @@ export const getPlayersWithBidsByTournamentId = async (req, res) => {
     const playersWithBids = await Promise.all(
       players.map(async (player) => {
         const bids = await Bid.findAll({
-          where: { playerId: player.id },
+          where: { playerId: player.id, tournamentId },
           order: [["bidAmount", "DESC"]],
         });
 

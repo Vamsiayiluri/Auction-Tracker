@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import { connectDB } from "./config/dbconfig.js";
+import sequelizeDb from "./config/dbconfig.js";
 import { syncDB } from "./models/index.js";
 import authRoutes from "./routes/authRoutes.js";
 import TeamRoutes from "./routes/teamRoutes.js";
@@ -16,9 +17,8 @@ import {
 } from "./controllers/auction.controller.js";
 import { Server } from "socket.io";
 import http from "http";
-import Bid from "./models/bid.model.js";
-import Player from "./models/player.model.js";
-import Team from "./models/team.model.js";
+import { Auction, Bid, Player, Team, TournamentTeam } from "./models/index.js";
+import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
 
 dotenv.config();
 
@@ -65,14 +65,29 @@ const io = new Server(server, {
 
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
-  // socket.on("", (chatId) => {});
 
-  // socket.on("");
+  socket.on("join-tournament", ({ tournamentId }) => {
+    if (tournamentId) socket.join(`tournament:${tournamentId}`);
+  });
+
+  socket.on("leave-tournament", ({ tournamentId }) => {
+    if (tournamentId) socket.leave(`tournament:${tournamentId}`);
+  });
+
   socket.on("place-bid", async (data) => {
-    const { id, playerId, teamId, teamName, ownerId, bidAmount } = data;
+    const { id, playerId, teamId, ownerId, bidAmount, tournamentId } = data;
+    const roomName = tournamentId ? `tournament:${tournamentId}` : "";
 
     try {
-      if (!(await isBiddingOpen(playerId))) {
+      if (!roomName || !socket.rooms.has(roomName)) {
+        socket.emit("bid-rejected", {
+          message: "Join the tournament room before placing bids.",
+        });
+        return;
+      }
+
+      const biddingOpen = await isBiddingOpen(playerId);
+      if (!biddingOpen) {
         socket.emit("bid-rejected", {
           message: "Bidding has closed for this player.",
         });
@@ -84,61 +99,146 @@ io.on("connection", (socket) => {
         Team.findByPk(teamId),
       ]);
 
-      if (!player || !biddingTeam || biddingTeam.ownerId !== ownerId) {
+      if (
+        !player ||
+        !biddingTeam ||
+        biddingTeam.ownerId !== ownerId ||
+        player.tournamentId !== tournamentId ||
+        player.isSold
+      ) {
         socket.emit("bid-rejected", {
           message: "This team cannot bid for the selected player.",
         });
         return;
       }
 
-      if (
-        player.tournamentId &&
-        biddingTeam.tournamentId !== player.tournamentId
-      ) {
+      const liveAuction = await Auction.findOne({
+        where: {
+          currentPlayerId: player.id,
+          tournamentId: player.tournamentId,
+          status: "live",
+        },
+      });
+      if (!liveAuction) {
+        socket.emit("bid-rejected", {
+          message: "This auction round is not accepting bids.",
+        });
+        return;
+      }
+
+      const tournamentTeam = await TournamentTeam.findOne({
+        where: { tournamentId: player.tournamentId, teamId: biddingTeam.id },
+      });
+
+      if (!tournamentTeam) {
         socket.emit("bid-rejected", {
           message: "Your team is not participating in this tournament.",
         });
         return;
       }
 
-      const latestBid = await Bid.findOne({
-        where: { playerId },
-        order: [["bidAmount", "DESC"]],
-      });
-
-      const minimumBid = latestBid?.bidAmount || player.basePrice;
-      if (!Number.isFinite(Number(bidAmount)) || bidAmount <= minimumBid) {
+      const numericBidAmount = Number(bidAmount);
+      if (!Number.isFinite(numericBidAmount)) {
         socket.emit("bid-rejected", {
-          message: "Bid must be higher than current bid.",
+          message: "Bid amount is invalid.",
         });
         return;
       }
 
-      if (bidAmount > biddingTeam.totalAmount - biddingTeam.amountSpent) {
+      const acceptedBid = await sequelizeDb.transaction(async (transaction) => {
+        const lockedAuction = await Auction.findOne({
+          where: {
+            currentPlayerId: player.id,
+            tournamentId: player.tournamentId,
+            status: "live",
+          },
+          transaction,
+          lock: true,
+        });
+        if (!lockedAuction) {
+          return { error: "This auction round is not accepting bids." };
+        }
+
+        const lockedTournamentTeam = await TournamentTeam.findOne({
+          where: { tournamentId: player.tournamentId, teamId: biddingTeam.id },
+          transaction,
+          lock: true,
+        });
+        if (!lockedTournamentTeam) {
+          return { error: "Your team is not participating in this tournament." };
+        }
+
+        const latestBid = await Bid.findOne({
+          where: { playerId, tournamentId: player.tournamentId },
+          order: [["bidAmount", "DESC"]],
+          transaction,
+          lock: true,
+        });
+
+        const currentBid = latestBid?.bidAmount || player.basePrice;
+        const validation = validateBidAmount({
+          bidAmount: numericBidAmount,
+          currentBid,
+          tournamentBudget: lockedTournamentTeam.totalAmount,
+        });
+
+        if (!validation.valid) {
+          return {
+            error: validation.message,
+            nextMinimumBid: validation.nextMinimumBid,
+          };
+        }
+
+        const amountLeft =
+          Number(lockedTournamentTeam.totalAmount || 0) -
+          Number(lockedTournamentTeam.amountSpent || 0);
+
+        if (numericBidAmount > amountLeft) {
+          return { error: "This bid exceeds your remaining purse." };
+        }
+
+        const bid = await Bid.create(
+          {
+            id,
+            playerId,
+            tournamentId: player.tournamentId,
+            teamId,
+            teamName: biddingTeam.name,
+            bidAmount: numericBidAmount,
+            ownerId,
+          },
+          { transaction }
+        );
+
+        return {
+          bid,
+          nextMinimumBid: getNextMinimumBid(
+            numericBidAmount,
+            lockedTournamentTeam.totalAmount
+          ),
+        };
+      });
+
+      if (acceptedBid.error) {
         socket.emit("bid-rejected", {
-          message: "This bid exceeds your remaining purse.",
+          message: acceptedBid.error,
+          nextMinimumBid: acceptedBid.nextMinimumBid,
         });
         return;
       }
 
-      await Bid.create({
-        id,
-        playerId,
-        teamId,
-        teamName,
-        bidAmount,
-        ownerId,
-      });
-      await resetAuctionTimer(playerId);
+      const endsAt = await resetAuctionTimer(player.id);
 
-      io.emit("new-bid", {
+      io.to(`tournament:${player.tournamentId}`).emit("new-bid", {
         id,
         playerId,
         tournamentId: player.tournamentId,
-        bidAmount,
+        bidAmount: numericBidAmount,
         teamId,
-        teamName,
+        teamName: biddingTeam.name,
         ownerId,
+        endsAt,
+        nextMinimumBid: acceptedBid.nextMinimumBid,
       });
     } catch (err) {
       console.error("Error placing bid:", err);

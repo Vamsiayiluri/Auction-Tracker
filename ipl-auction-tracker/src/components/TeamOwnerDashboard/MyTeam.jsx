@@ -54,7 +54,8 @@ const MyTeam = ({ tournamentId }) => {
 
     const fetchCurrentTeam = async () => {
       try {
-        const response = await api.get(`/teams/getTeamAndPlayers/${user.id}`);
+        const query = tournamentId ? `?tournamentId=${tournamentId}` : "";
+        const response = await api.get(`/teams/getTeamAndPlayers/${user.id}${query}`);
         if (active) {
           setTeam(response.data.team);
           setPlayers(response.data.players || []);
@@ -71,7 +72,7 @@ const MyTeam = ({ tournamentId }) => {
     return () => {
       active = false;
     };
-  }, [user.id]);
+  }, [tournamentId, user.id]);
 
   const visiblePlayers = useMemo(() => {
     const tournamentPlayers = tournamentId

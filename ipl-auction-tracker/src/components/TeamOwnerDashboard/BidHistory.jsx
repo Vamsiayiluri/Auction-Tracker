@@ -150,7 +150,7 @@ const BidHistory = ({ tournamentId: providedTournamentId }) => {
                         {formatAmount(player.soldPrice)}
                       </TableCell>
                       <TableCell>
-                        {player.bids[0]?.teamName || "-"}
+                        {player.isSold ? player.bids[0]?.teamName || "-" : "-"}
                       </TableCell>
                       <TableCell align="right">
                         <Button onClick={() => setSelectedPlayer(player)}>
