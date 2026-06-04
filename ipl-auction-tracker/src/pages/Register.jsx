@@ -140,7 +140,7 @@ const Register = () => {
       navigate("/login", {
         replace: true,
         state: {
-          registrationSuccess: "Account created successfully. Sign in to continue.",
+          registrationSuccess: "Verification email sent. Please check your inbox.",
         },
       });
     } catch (error) {

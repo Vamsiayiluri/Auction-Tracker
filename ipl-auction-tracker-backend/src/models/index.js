@@ -10,10 +10,23 @@ import TournamentTeam from "./tournamentTeam.model.js";
 
 export const syncDB = async () => {
   await sequelizeDb.sync({ force: false });
+  await backfillExistingUsers();
   await ensureTournamentScopedColumns();
   await backfillTournamentTeams();
   await backfillTournamentScopedColumns();
   console.log("Database and tables are synced");
+};
+
+const backfillExistingUsers = async () => {
+  try {
+    await sequelizeDb.query(`
+      UPDATE Users
+      SET isVerified = true
+      WHERE isVerified = false AND verificationToken IS NULL
+    `);
+  } catch (error) {
+    console.warn("Backfill existing users skipped or failed:", error.message);
+  }
 };
 
 const ensureColumn = async (tableName, columnName, definition) => {

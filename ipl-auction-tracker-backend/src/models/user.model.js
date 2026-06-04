@@ -27,6 +27,19 @@ const User = sequelize.define("User", {
     allowNull: false,
     defaultValue: "spectator",
   },
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  verificationToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  verificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 });
 
 export default User;

@@ -47,10 +47,35 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendSeverity, setResendSeverity] = useState("info");
+
   const handleChange = ({ target: { name, value } }) => {
     setFormData((current) => ({ ...current, [name]: value }));
     setErrors((current) => ({ ...current, [name]: "" }));
     setApiError("");
+    setResendMessage("");
+  };
+
+  const handleResendVerification = async () => {
+    if (!formData.email.trim()) return;
+    setIsResending(true);
+    setResendMessage("");
+    try {
+      const response = await api.post("/auth/resend-verification", {
+        email: formData.email.trim(),
+      });
+      setResendSeverity("success");
+      setResendMessage(response.data.message || "Verification email sent.");
+    } catch (error) {
+      setResendSeverity("error");
+      setResendMessage(
+        error.response?.data?.message || "Failed to resend verification email."
+      );
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const handleSubmit = async (event) => {
@@ -64,6 +89,7 @@ export default function Login() {
 
     setIsSubmitting(true);
     setApiError("");
+    setResendMessage("");
 
     try {
       const response = await api.post("/auth/login", {
@@ -91,7 +117,29 @@ export default function Login() {
         {location.state?.registrationSuccess && (
           <Alert severity="success">{location.state.registrationSuccess}</Alert>
         )}
-        {apiError && <Alert severity="error">{apiError}</Alert>}
+        {apiError && (
+          <Stack spacing={1}>
+            <Alert severity="error">{apiError}</Alert>
+            {apiError.toLowerCase().includes("verify your email") && (
+              <Box sx={{ textAlign: "left" }}>
+                <Button
+                  size="small"
+                  onClick={handleResendVerification}
+                  disabled={isResending}
+                  sx={{ mt: 0.5 }}
+                >
+                  {isResending ? (
+                    <CircularProgress size={16} color="inherit" sx={{ mr: 1 }} />
+                  ) : null}
+                  Resend verification link to {formData.email.trim()}
+                </Button>
+              </Box>
+            )}
+          </Stack>
+        )}
+        {resendMessage && (
+          <Alert severity={resendSeverity}>{resendMessage}</Alert>
+        )}
 
         <TextField
           fullWidth

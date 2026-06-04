@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
 import AuctionPage from "./pages/AuctionPage";
 
 import AuthProvider from "./context/AuthContext";
@@ -43,6 +44,12 @@ export default function AppRouter() {
               <GuestRoute>
                 <Register />
               </GuestRoute>
+            }
+          />
+          <Route
+            path="/verify-email/:token"
+            element={
+              <VerifyEmail />
             }
           />
           <Route
