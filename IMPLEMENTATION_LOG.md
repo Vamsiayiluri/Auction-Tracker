@@ -613,4 +613,60 @@ npm test
 - Migrations require a backup and production-data preflight before deployment.
 - No automated backup/restore workflow or migration gate exists.
 
+## F-002 Tournament Status Transition Validation
+
+Status: COMPLETE
+
+Completed on: 2026-06-08
+
+Scope:
+
+- Replace arbitrary tournament status changes with a controlled state machine.
+- Preserve the existing admin-only status mutation route.
+- Reuse one transition validator across controller and tests.
+
+### Findings
+
+- The tournament model supports only `upcoming`, `live`, and `completed`.
+- The Phase 5 integrity migration enforces the same database enum values.
+- `archived` is not currently supported by the schema and was not added.
+- The status update route already used Zod enum validation and admin
+  authorization, but the controller still allowed any enum-valid status jump.
+
+### Transition Rules
+
+- `upcoming` can transition only to `live`.
+- `live` can transition only to `completed`.
+- `completed` is terminal.
+- Unknown status values are rejected by validation and by the reusable
+  transition helper.
+
+### Changes
+
+- Added centralized tournament status constants and transition validation.
+- Reused the centralized status list in the Zod tournament status schema.
+- Updated `PATCH /api/tournament/:id/status` to reject invalid transitions with
+  the standard validation error envelope before saving.
+- Added F-002 regression tests for valid transitions, invalid transitions,
+  invalid enum values, and endpoint wiring.
+
+Files:
+
+- `ipl-auction-tracker-backend/src/utils/tournamentStatus.js`
+- `ipl-auction-tracker-backend/src/validation/common.validation.js`
+- `ipl-auction-tracker-backend/src/controllers/tournment.controller.js`
+- `ipl-auction-tracker-backend/test/tournament-status-f002.test.js`
+- `API.md`
+- `Database.md`
+- `IMPLEMENTATION_LOG.md`
+
+### F-002 Validation Notes
+
+Run validation with:
+
+```powershell
+cd ipl-auction-tracker-backend
+npm test
+```
+
 Phase 6 Reliability was not started.

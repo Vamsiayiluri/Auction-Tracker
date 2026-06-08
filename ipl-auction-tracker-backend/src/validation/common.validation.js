@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TOURNAMENT_STATUSES } from "../utils/tournamentStatus.js";
 
 export const nonEmptyString = (fieldName) =>
   z
@@ -29,7 +30,7 @@ export const playerRoleSchema = z.enum(
 );
 
 export const tournamentStatusSchema = z.enum(
-  ["upcoming", "live", "completed"],
+  TOURNAMENT_STATUSES,
   {
     required_error: "Tournament status is required",
     invalid_type_error: "Tournament status is invalid",

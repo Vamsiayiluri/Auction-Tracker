@@ -168,9 +168,13 @@ Errors: `400` validation failure or team mismatch; `401`; `403`; `500`.
 
 Auth: bearer JWT and admin role.
 Body: `{"status":"live"}`.
-Purpose: writes a validated status string. Allowed status values are
-`upcoming`, `live`, and `completed`. Response: updated tournament.
-Errors: `400` validation failure; `401`; `403`; `404`; `500`.
+Purpose: advances tournament status through the controlled state machine.
+Allowed status values are `upcoming`, `live`, and `completed`; `archived` is
+not currently supported by the schema. Allowed transitions are `upcoming` to
+`live`, then `live` to `completed`. `completed` is terminal. Invalid enum
+values and invalid transitions return the standard `400` validation envelope.
+Response: updated tournament. Errors: `400` validation failure or invalid
+transition; `401`; `403`; `404`; `500`.
 
 ### `GET /api/tournament`
 

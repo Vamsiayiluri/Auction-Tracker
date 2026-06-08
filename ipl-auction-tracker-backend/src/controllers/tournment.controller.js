@@ -1,6 +1,10 @@
 import { Op } from "sequelize";
 import crypto from "crypto";
 import { Player, Team, Tournament, TournamentTeam } from "../models/index.js";
+import {
+  isValidTournamentTransition,
+  tournamentTransitionValidationError,
+} from "../utils/tournamentStatus.js";
 
 export const createTournament = async (req, res) => {
   try {
@@ -91,7 +95,12 @@ export const updateStatus = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    // Update only the status field
+    if (!isValidTournamentTransition(tournament.status, status)) {
+      return res
+        .status(400)
+        .json(tournamentTransitionValidationError(tournament.status, status));
+    }
+
     tournament.status = status;
     await tournament.save();
 

@@ -47,6 +47,9 @@ Purpose: tournament identity, budget, status, and creator identifier.
 
 Columns: `id` string PK; `name` required; `budget` integer required; `status`
 string default `upcoming`; `createdBy` required string; timestamps.
+Supported status values are `upcoming`, `live`, and `completed`; `archived` is
+not currently in the schema. Application transition rules allow only
+`upcoming` -> `live` -> `completed`, with `completed` as a terminal state.
 
 Relationships: has many players, auctions, bids, tournament teams, and teams.
 `createdBy` belongs to `Users`.
