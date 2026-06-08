@@ -27,6 +27,9 @@ const clearAuctionTimer = (playerId) => {
   }
 };
 
+const getAuctionDeadline = (auction) =>
+  auction?.endsAt ? new Date(auction.endsAt) : null;
+
 const emitToTournament = (tournamentId, event, payload) => {
   io.to(tournamentRoom(tournamentId)).emit(event, payload);
 };
@@ -205,11 +208,17 @@ const finalizePlayerAuctionWithOutcome = async (playerId, outcome) => {
 const scheduleAuctionEnd = (playerId, endsAt) => {
   clearAuctionTimer(playerId);
 
-  const remainingTime = Math.max(0, new Date(endsAt).getTime() - Date.now());
+  const deadline = new Date(endsAt);
+  const remainingTime = Math.max(0, deadline.getTime() - Date.now());
   const timer = setTimeout(async () => {
     try {
       const activeTimer = auctionTimers.get(playerId);
-      if (!activeTimer || activeTimer.endsAt !== endsAt) return;
+      if (
+        !activeTimer ||
+        new Date(activeTimer.endsAt).getTime() !== deadline.getTime()
+      ) {
+        return;
+      }
 
       await markAuctionPendingFinalization(playerId);
     } catch (error) {
@@ -217,15 +226,16 @@ const scheduleAuctionEnd = (playerId, endsAt) => {
     }
   }, remainingTime);
 
-  auctionTimers.set(playerId, { timer, endsAt });
+  auctionTimers.set(playerId, { timer, endsAt: deadline });
 };
 
 export const resetAuctionTimer = async (playerId) => {
   const player = await Player.findByPk(playerId);
   if (!player?.isInAuction) return null;
 
+  const endsAt = new Date(Date.now() + AUCTION_DURATION_MS);
   const [updatedCount] = await Auction.update(
-    { status: AUCTION_STATUS.LIVE },
+    { status: AUCTION_STATUS.LIVE, endsAt },
     {
       where: {
         currentPlayerId: playerId,
@@ -237,7 +247,6 @@ export const resetAuctionTimer = async (playerId) => {
 
   if (!updatedCount) return null;
 
-  const endsAt = new Date(Date.now() + AUCTION_DURATION_MS);
   scheduleAuctionEnd(playerId, endsAt);
   const { currentBid, nextMinimumBid, highestBid } =
     await getAuctionBidState(player);
@@ -259,7 +268,6 @@ export const isBiddingOpen = async (playerId) => {
   const player = await Player.findByPk(playerId);
   if (!player?.isInAuction) return false;
 
-  const deadline = auctionTimers.get(playerId)?.endsAt;
   const liveAuction = await Auction.findOne({
     where: {
       currentPlayerId: playerId,
@@ -267,6 +275,7 @@ export const isBiddingOpen = async (playerId) => {
       status: AUCTION_STATUS.LIVE,
     },
   });
+  const deadline = getAuctionDeadline(liveAuction);
 
   return Boolean(
     liveAuction &&
@@ -291,10 +300,13 @@ export const restoreAuctionTimers = async () => {
         return;
       }
 
-      scheduleAuctionEnd(
-        player.id,
-        new Date(Date.now() + AUCTION_DURATION_MS)
-      );
+      const endsAt = getAuctionDeadline(auction);
+      if (!endsAt || endsAt.getTime() <= Date.now()) {
+        await markAuctionPendingFinalization(player.id);
+        return;
+      }
+
+      scheduleAuctionEnd(player.id, endsAt);
     })
   );
 };
@@ -359,7 +371,8 @@ export const startAuction = async (req, res) => {
       });
     }
 
-    const endsAt = new Date(Date.now() + AUCTION_DURATION_MS);
+    const startedAt = new Date();
+    const endsAt = new Date(startedAt.getTime() + AUCTION_DURATION_MS);
     player.isInAuction = true;
     player.auctionId = auctionId;
     await player.save();
@@ -368,6 +381,8 @@ export const startAuction = async (req, res) => {
       currentPlayerId: player.id,
       tournamentId: player.tournamentId,
       status: AUCTION_STATUS.LIVE,
+      startedAt,
+      endsAt,
     });
     await Tournament.update(
       { status: AUCTION_STATUS.LIVE },
@@ -510,7 +525,7 @@ export const getCurrentPlayerInAuction = async (req, res) => {
       highestBid: currentBid,
       highestBidder: highestBid?.teamName || "",
       nextMinimumBid,
-      endsAt: auctionTimers.get(player.id)?.endsAt || null,
+      endsAt: liveAuction.endsAt || null,
     });
   } catch (error) {
     console.error("Error fetching current player in auction:", error);

@@ -57,6 +57,32 @@ Completed items:
 
 Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 
+## Phase 5 Database Status
+
+Status: COMPLETE
+
+Completed items:
+
+- Versioned Sequelize migration runner and `SequelizeMeta` tracking.
+- Baseline schema/backfill migration for fresh and existing databases.
+- Query-driven indexes for teams, players, auctions, bids, tournament teams,
+  and tournament creators.
+- Foreign-key constraints with explicit cascade/restrict/set-null policies.
+- Database enum enforcement for user role, tournament status, player role, and
+  auction status.
+- Removal of `sequelize.sync()` and startup schema/backfill mutation.
+- Focused migration and integrity regression tests.
+
+Deferred database risks:
+
+- Persisted auction deadlines.
+- Integer normalization for player prices.
+- Resolution of `Player.auctionId` versus `Auction.currentPlayerId`.
+- Removal of deprecated team tournament/purse columns.
+- Backup/restore automation and deployment migration gates.
+
+Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
+
 ## Critical Path
 
 1. Lock down sensitive read APIs and sanitize response DTOs.
@@ -74,7 +100,7 @@ Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 | Security | Replace permissive HTTP and Socket.IO CORS `origin: true` with environment-specific allowlists. | Critical | Reduces cross-origin abuse and credential exposure risk. | Low | Deployment origin inventory, env configuration. | 0.5-1 day |
 | Security | SEC-005 complete: access JWTs now expire after one hour. Remaining work is safer session handling, preferably refresh rotation in HttpOnly/SameSite cookies with server-side revocation. | Critical | Further reduces token theft impact and supports revocation/logout policy beyond access-token expiry. | High | Auth flow redesign, frontend API changes, CSRF strategy if cookies are used. | 4-8 days |
 | Architecture | Persist auction `endsAt` in the database and restore timers from stored deadlines instead of issuing fresh 20-second windows after restart. | Critical | Prevents incorrect auction outcomes after backend restart and supports operational reliability. | Medium | Migration framework, auction model change, timer restore tests. | 3-5 days |
-| Architecture | Replace `sequelize.sync()` and startup backfills with versioned migrations. | Critical | Makes schema changes auditable and deployment-safe; reduces startup risk. | Medium | Migration tool selection, baseline migration, deployment process. | 4-7 days |
+| Architecture | COMPLETE (Phase 5): replaced `sequelize.sync()` and startup backfills with versioned migrations and deployment commands. | Critical | Makes schema changes auditable and deployment-safe; reduces startup risk. | Medium | Backup/restore and CI migration gates remain. | Complete |
 | Security | Phase 4 complete: Zod validation now covers auth, tournament, player, auction mutation, and socket bid payloads with a standard validation error envelope. Remaining work is extending validation to currently public read query/params and future endpoints. | Critical | Reduces malformed input, bad states, and security bypasses. | Low-Medium | Read authorization/API contract work. | 1-2 days |
 | Security | Add rate limiting for login, registration, resend verification, health abuse, and socket bid events. | Critical | Reduces brute-force login, spam, and bid flood risk. | Medium | Redis or shared rate-limit store for multi-instance support. | 2-4 days |
 | Correctness | Wrap auction start in a transaction covering player state, auction row creation, tournament status update, and initial timer state. | High | Prevents partial live auctions and inconsistent player state. | Medium | Persisted timer design, transaction test coverage. | 2-3 days |
@@ -85,7 +111,7 @@ Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 | Architecture | Move socket bid handling out of `src/index.js` into a dedicated socket/controller/service module. | High | Improves testability and reduces startup file complexity. | Medium | Socket auth design, integration tests. | 2-4 days |
 | Architecture | Introduce an auction service layer for start, bid, timer, finalization, and tournament-completion logic. | High | Makes high-risk business rules testable and easier to reason about. | Medium | Existing controller refactor plan, tests to prevent regressions. | 4-7 days |
 | Scalability | Add Redis-backed Socket.IO adapter and shared timer/rate-limit coordination before running multiple backend instances. | High | Enables horizontal scaling and safer failover. | High | Persisted timers, Redis infrastructure, deployment changes. | 5-10 days |
-| Scalability | Add database indexes for common player, bid, auction, tournament-team, and owner queries. | High | Improves query latency as tournaments, players, and bids grow. | Low-Medium | Migration framework, query plan validation. | 1-2 days |
+| Scalability | COMPLETE (Phase 5): added query-driven player, bid, auction, tournament-team, creator, and owner indexes. Production query-plan validation remains operational follow-up. | High | Improves query latency as tournaments, players, and bids grow. | Low-Medium | Production-like data and `EXPLAIN` verification. | Complete |
 | Performance | Replace N+1 bid-history query in `getPlayersWithBidsByTournamentId` with a joined or batched query. | High | Improves completed-auction and reporting performance for large player pools. | Medium | Sequelize include/batching design, response shape compatibility. | 2-3 days |
 | Performance | Replace N+1 all-teams-with-players query with eager loading or batch retrieval. | High | Improves team overview performance as team count grows. | Medium | Team/player association review, response DTOs. | 2-3 days |
 | Performance | Add backend tournament summary endpoints so dashboards do not fetch players and teams for each tournament client-side. | High | Reduces frontend load time and API request volume. | Medium | API design, frontend dashboard refactor. | 3-5 days |
@@ -96,10 +122,10 @@ Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 | Operations | Add database backup, restore, retention, and rollback runbooks. | High | Protects tournament data and supports disaster recovery. | Medium | Hosting/database provider, restore test environment. | 2-5 days |
 | Testing | Add backend integration tests for auth, protected admin routes, tournament creation, auction lifecycle, bid validation, purse enforcement, and authorization failures. | High | Converts current security/correctness assumptions into enforceable guarantees. | High | Test database strategy, service extraction helpful but not mandatory. | 7-12 days |
 | Testing | Add frontend tests for route guards, dashboard filtering, live auction states, bid button enablement, and API/socket event handling. | Medium | Reduces UI regressions during hardening and refactors. | Medium | Test framework setup, mocked API/socket layer. | 5-8 days |
-| Correctness | Add allowed enum values and transition validation for tournament status, auction status, player role, and player state. | High | Prevents invalid states that can break auction flow and reporting. | Medium | Validation layer, migration/model constraints. | 2-4 days |
+| Correctness | PARTIAL: Phase 5 added database/model enum enforcement for tournament status, auction status, user role, and player role. State-transition rules remain. | High | Prevents invalid persisted values; transition correctness still needs service-level rules. | Medium | Auction service and lifecycle tests. | 1-2 days remaining |
 | Correctness | Normalize monetary fields to integer minor units and remove float use for player prices. | High | Prevents rounding inconsistencies in bids, purses, and sale prices. | Medium | Migration, API compatibility, display formatting audit. | 3-6 days |
 | Correctness | Clarify and enforce source of truth between `Player.auctionId` and `Auction.currentPlayerId`. | Medium | Reduces state drift and simplifies available-player queries. | Medium | Data cleanup migration, auction lifecycle tests. | 2-4 days |
-| Correctness | Add foreign-key associations for `Tournament.createdBy` and other logical relationships not currently modeled. | Medium | Improves referential integrity and admin auditability. | Medium | Migration framework, existing data cleanup. | 2-4 days |
+| Correctness | COMPLETE (Phase 5): added `Tournament.createdBy` and other active logical foreign keys with orphan preflight checks. | Medium | Improves referential integrity and admin auditability. | Medium | Legacy `Team.tournamentId` and `Player.auctionId` remain intentionally unconstrained. | Complete |
 | Missing functionality | Add admin user management: invite/provision admins, disable accounts, reset credentials, and role changes. | High | Required for operating beyond a single manually provisioned admin. | Medium-High | Auth/session hardening, audit logs. | 5-9 days |
 | Missing functionality | Add team management after registration: edit team, reassign owner, disable/delete team, and resolve duplicate/renamed team flows. | Medium | Supports real tournament administration and corrections. | Medium | Authorization model, audit logs, historical bid snapshot policy. | 4-7 days |
 | Missing functionality | Add tournament edit/archive/delete controls with safe restrictions after players or bids exist. | Medium | Supports operational cleanup and mistake correction. | Medium | State transition rules, audit logs, archival policy. | 4-7 days |

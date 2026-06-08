@@ -1,8 +1,14 @@
 # Database Analysis
 
-The backend uses Sequelize with MySQL and `sequelize.sync({force:false})`.
-There are no migration files. Startup code also conditionally adds columns and
-runs backfill SQL. Evidence: `ipl-auction-tracker-backend/src/models/index.js`.
+Phase 5 Database status: COMPLETE (2026-06-08)
+F-001 Auction Timer Persistence status: COMPLETE (2026-06-08)
+
+The backend uses Sequelize with MySQL and versioned ESM migrations.
+`sequelize.sync()` and startup schema/backfill mutation were removed. Migrations
+are tracked in `SequelizeMeta` and executed with `npm run db:migrate`.
+
+Evidence: `ipl-auction-tracker-backend/scripts/migrate.js`,
+`src/database/migrator.js`, `migrations/`, and `src/index.js`.
 
 Sequelize adds `createdAt` and `updatedAt` to every model because timestamps are
 not disabled.
@@ -17,7 +23,7 @@ Columns: `id` string PK; `name` string; `email` string required unique;
 `verificationExpires` date nullable; timestamps.
 
 Relationships: referenced by `Teams.ownerId` and `Bids.ownerId`.
-Indexes: PK; Sequelize unique index on email.
+Indexes: PK; unique email index.
 Evidence: `src/models/user.model.js`, `src/models/team.model.js`,
 `src/models/bid.model.js`.
 
@@ -32,7 +38,7 @@ virtual `amountLeft`; `tournamentId` nullable; timestamps.
 
 Relationships: belongs to `User`; referenced by `Players`, `Bids`, and
 `TournamentTeams`; `Tournament.hasMany(Team)` is defined.
-Indexes: PK; unique name.
+Indexes: PK; unique name; `Teams(ownerId)`.
 Evidence: `src/models/team.model.js`.
 
 ## Tournaments
@@ -43,8 +49,8 @@ Columns: `id` string PK; `name` required; `budget` integer required; `status`
 string default `upcoming`; `createdBy` required string; timestamps.
 
 Relationships: has many players, auctions, bids, tournament teams, and teams.
-`createdBy` has no declared association/foreign key to `Users`.
-Indexes: PK only in model definition.
+`createdBy` belongs to `Users`.
+Indexes: PK; `Tournaments(createdBy)`.
 Evidence: `src/models/tournment.model.js` and related models.
 
 ## TournamentTeams
@@ -56,7 +62,8 @@ Columns: `id` string PK; `tournamentId` required; `teamId` required;
 timestamps.
 
 Relationships: belongs to tournament and team; both have many tournament
-teams. Indexes: PK and unique composite `(tournamentId, teamId)`.
+teams. Deleting either parent cascades join-row deletion. Indexes: PK, unique
+composite `(tournamentId, teamId)`, and `TournamentTeams(teamId)`.
 Evidence: `src/models/tournamentTeam.model.js`.
 
 ## Players
@@ -69,8 +76,8 @@ Columns: `id` string UUID/default PK; `name` required; `basePrice` float;
 `auctionId` nullable/default empty string; timestamps.
 
 Relationships: belongs to team and tournament; referenced by auctions and bids.
-Indexes: PK; a reference declaration exists for `teamId`, but no explicit
-indexes are declared for common filters.
+Indexes: PK; `(tournamentId, isInAuction, isSold, auctionId)` and
+`(teamId, tournamentId)`.
 Evidence: `src/models/player.model.js`.
 
 ## Auctions
@@ -78,11 +85,14 @@ Evidence: `src/models/player.model.js`.
 Purpose: player-round state.
 
 Columns: `id` string PK; `status` string default `upcoming`;
-`currentPlayerId` nullable; `tournamentId` nullable; timestamps.
+`currentPlayerId` nullable; `tournamentId` nullable; `startedAt` nullable
+date; `endsAt` nullable date; timestamps.
 
 Relationships: belongs to current player and tournament.
-Indexes: PK only in model definition.
-Missing persisted field: `endsAt`; timer deadline is held in server memory.
+Indexes: PK; `(tournamentId, status)` and
+`(currentPlayerId, tournamentId, status)`.
+Live auction deadlines are persisted in `endsAt`; the process-local timer is
+only a scheduler for the stored deadline.
 Evidence: `src/models/auction.model.js`,
 `src/controllers/auction.controller.js`.
 
@@ -95,7 +105,8 @@ Columns: `id` string PK; `playerId` required; `tournamentId` nullable;
 integer required; `ownerId` nullable; timestamps.
 
 Relationships: belongs to player, tournament, team, and user.
-Indexes: PK only in model definition.
+Indexes: PK; `(playerId, tournamentId, bidAmount)`,
+`(playerId, tournamentId, createdAt)`, `teamId`, and `ownerId`.
 Evidence: `src/models/bid.model.js`.
 
 ## ERD Description
@@ -110,7 +121,7 @@ Tournament 1 --- * Bid * --- 1 Player
 Team 1 --- * Bid
 ```
 
-`Tournament.createdBy` is logically a user ID but is not associated.
+`Tournament.createdBy` is associated with `Users` and constrained.
 `Player.auctionId` is logically an auction ID but is not associated; the
 declared auction-to-player relation uses `Auction.currentPlayerId`.
 
@@ -126,17 +137,19 @@ Unused/legacy structures:
   `Auction.currentPlayerId`.
 - Empty bid REST route/controller are unused, but `Bids` itself is active.
 
-Potential normalization issues:
+Remaining normalization issues:
 
 - `Bids.teamName` duplicates `Teams.name`; useful as a historical snapshot but
   no explicit snapshot policy exists.
 - `Bids.ownerId` duplicates ownership derivable from team and may become stale.
-- `Tournament.createdBy` lacks a foreign key.
-- Status and role fields are unrestricted strings.
+- `Bids.ownerId` is retained as bid-time audit context and uses `SET NULL` if
+  its user is removed.
+- User role, tournament status, player role, and auction status are database
+  ENUMs. Transition rules are still application concerns.
 - Monetary player fields use floating point while bid/team/tournament amounts
   use integer.
 
-Missing/recommended indexes:
+Implemented high-value indexes:
 
 - `Players(tournamentId, isInAuction, isSold, auctionId)`
 - `Players(teamId, tournamentId)`
@@ -145,12 +158,64 @@ Missing/recommended indexes:
 - `Auctions(tournamentId, status)`
 - `Auctions(currentPlayerId, tournamentId, status)`
 - `Teams(ownerId)`
-- Foreign-key indexes for all association columns
+- Supporting foreign-key indexes for tournament creator, bid team/owner, and
+  tournament-team team lookup.
+
+## Foreign-Key Policy
+
+- `Teams.ownerId -> Users.id`: `RESTRICT`
+- `Tournaments.createdBy -> Users.id`: `RESTRICT`
+- `TournamentTeams.tournamentId -> Tournaments.id`: `CASCADE`
+- `TournamentTeams.teamId -> Teams.id`: `CASCADE`
+- `Players.teamId -> Teams.id`: `SET NULL`
+- `Players.tournamentId -> Tournaments.id`: `RESTRICT`
+- `Auctions.currentPlayerId -> Players.id`: `SET NULL`
+- `Auctions.tournamentId -> Tournaments.id`: `RESTRICT`
+- `Bids.playerId -> Players.id`: `RESTRICT`
+- `Bids.tournamentId -> Tournaments.id`: `RESTRICT`
+- `Bids.teamId -> Teams.id`: `RESTRICT`
+- `Bids.ownerId -> Users.id`: `SET NULL`
+
+The integrity migration checks for orphaned legacy references before adding
+constraints. It fails with a targeted message rather than deleting data.
+
+## Migration Workflow
+
+```powershell
+cd ipl-auction-tracker-backend
+npm run db:migrate -- status
+npm run db:migrate
+npm run db:migrate -- down
+```
+
+The baseline migration:
+
+- Creates the full schema when tables do not exist.
+- Adds password-reset and tournament-scope columns when upgrading legacy
+  databases.
+- Moves existing user verification, tournament-team, bid tournament, and
+  auction tournament backfills out of startup.
+
+The Phase 5 integrity migration:
+
+- Normalizes known lowercase legacy player roles.
+- Rejects unsupported enum values and orphaned references.
+- Adds query-driven indexes, enum columns, and foreign keys.
+
+The F-001 auction timer migration:
+
+- Adds nullable `Auctions.startedAt` and `Auctions.endsAt`.
+- Keeps legacy rows valid while new live auctions persist start and deadline
+  timestamps.
+- Allows backend startup recovery to schedule timers from stored deadlines or
+  move overdue live auctions to pending finalization.
+
+The baseline is intentionally non-destructive and cannot be rolled back.
 
 Correctness/scale concerns:
 
 - `getPlayersWithBidsByTournamentId` runs one query per player.
 - `getAllTeamsWithPlayers` runs one query per team.
 - List endpoints are unpaginated.
-- Runtime `sync` and startup backfills are not a controlled migration strategy.
+- Production-like `EXPLAIN` verification has not been run for the new indexes.
 - No database backup, retention, or restore implementation is present.

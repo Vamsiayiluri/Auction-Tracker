@@ -249,7 +249,8 @@ Files: `src/routes/auctionRoutes.js`,
 Auth: bearer JWT and admin role.
 Body: `{"auctionId":"round-id","tournamentId":"tournament-id"}`.
 Purpose: validates player/tournament/participation/active-round state, creates a
-live auction, starts a 20-second timer, and broadcasts `auction-started`.
+live auction, stores `startedAt` and `endsAt`, starts a 20-second timer from the
+persisted deadline, and broadcasts `auction-started`.
 Validation: `playerId` path param and `auctionId` are required; `tournamentId`
 is optional but must be non-empty when supplied.
 Errors: `400` validation failure or invalid auction state; `404`, `500`.
@@ -257,7 +258,7 @@ Errors: `400` validation failure or invalid auction state; `404`, `500`.
 ### `GET /api/auction/currentPlayer?tournamentId=:id`
 
 Auth: no. Returns active live or pending player, bids, state, next minimum bid,
-and process-local `endsAt`. Errors: `404`, `500`.
+and persisted `endsAt`. Errors: `404`, `500`.
 
 Example response:
 
@@ -283,7 +284,8 @@ logic. Validation: `playerId` path param is required. Errors: `400`, `500`.
 
 ### `POST /api/auction/extend/:playerId`
 
-Auth: bearer JWT and admin. Restarts a pending round for 20 seconds.
+Auth: bearer JWT and admin. Restarts a pending round for 20 seconds and
+persists the new `endsAt`.
 Validation: `playerId` path param is required. Errors: `400`, `500`.
 
 ### `POST /api/auction/sell/:playerId`
@@ -335,7 +337,8 @@ loads the owner team from the database, confirms the team participates in the
 player's tournament, and writes `Bids.ownerId` and `Bids.teamId` from those
 server-side records.
 
-Server validates room membership, live timer, player/tournament relationship,
+Server validates room membership, persisted live timer deadline,
+player/tournament relationship,
 tournament membership, minimum amount, and purse.
 
 Validation: `id`, `playerId`, and `tournamentId` are required non-empty

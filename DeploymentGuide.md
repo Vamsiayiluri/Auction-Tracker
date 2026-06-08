@@ -1,8 +1,9 @@
 # Deployment Guide
 
 This is a code-evidence deployment guide, not a claim that a production
-deployment pipeline exists. No Dockerfile, CI/CD workflow, migration scripts,
-process manager, monitoring, or backup automation is present.
+deployment pipeline exists. Database migration scripts are present, but no
+Dockerfile, CI/CD workflow, process manager, monitoring, or backup automation
+is present.
 
 ## Prerequisites
 
@@ -86,6 +87,8 @@ Backend:
 ```powershell
 cd ipl-auction-tracker-backend
 npm install --omit=dev
+npm run db:migrate -- status
+npm run db:migrate
 npm start
 ```
 
@@ -96,18 +99,37 @@ changes.
 
 ## Database Initialization
 
-On startup the backend:
+Before each backend deployment:
 
-1. Authenticates to MySQL.
-2. Runs `sequelize.sync({force:false})`.
-3. Runs user and tournament-scope backfills.
-4. Restores every live auction with a fresh 20-second timer.
+1. Take and verify a database backup.
+2. Run `npm run db:migrate -- status`.
+3. Run `npm run db:migrate`.
+4. Start the backend only after migrations succeed.
 
-Evidence: `src/index.js`, `src/models/index.js`,
-`src/controllers/auction.controller.js`.
+Migrations are tracked in the `SequelizeMeta` table and run in filename order.
+The baseline migration supports fresh databases and additively upgrades the
+legacy schema. The Phase 5 integrity migration fails before adding constraints
+if unsupported enum values or orphaned references exist; it does not delete
+those records.
 
-Production warning: replace this with reviewed migrations and persist timer
-deadlines before production deployment.
+Useful commands:
+
+```powershell
+npm run db:migrate
+npm run db:migrate -- status
+npm run db:migrate -- down
+```
+
+`down` reverts only the latest migration. The initial baseline is intentionally
+non-destructive and cannot be reverted. Restore a tested backup for baseline
+rollback.
+
+Backend startup now authenticates to MySQL and starts the application without
+running `sequelize.sync()` or schema backfills. It still restores every live
+auction with a fresh 20-second timer because deadlines are not persisted.
+
+Evidence: `scripts/migrate.js`, `src/database/migrator.js`, `migrations/`,
+`src/index.js`, `src/controllers/auction.controller.js`.
 
 ## Health and Operations
 
@@ -120,13 +142,13 @@ Required production additions:
 - Structured logs, request IDs, metrics, traces, alerting, and dependency-aware
   health/readiness endpoints.
 - Database backups, retention policy, and restore drills.
-- CI/CD with lint, tests, build, dependency scanning, migrations, and rollback.
+- CI/CD with lint, tests, build, dependency scanning, migration gates, and rollback.
 - Secret manager and rotation.
 - Graceful shutdown and process supervision.
 
 ## Current Verification Limitation
 
-During the 2026-06-05 audit and Phase 1 refactor, npm commands could not run
-because `npm` is not installed or not available on `PATH` in the audit
-environment. The backend now includes focused Phase 1 security tests under
+During the 2026-06-08 Phase 5 work, npm commands could not run because `npm`
+and Node.js are not installed or not available on `PATH` in the audit
+environment. The backend includes focused tests under
 `ipl-auction-tracker-backend/test`; run them with `npm test`.

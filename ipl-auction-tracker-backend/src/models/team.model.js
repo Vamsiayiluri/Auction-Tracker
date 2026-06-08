@@ -37,9 +37,16 @@ const Team = sequelize.define("Team", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+}, {
+  indexes: [{ name: "teams_owner_id_idx", fields: ["ownerId"] }],
 });
 
 Tournament.hasMany(Team, { foreignKey: "tournamentId" });
-Team.belongsTo(User, { foreignKey: "ownerId", as: "owner" });
+Team.belongsTo(User, {
+  foreignKey: "ownerId",
+  as: "owner",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
 
 export default Team;

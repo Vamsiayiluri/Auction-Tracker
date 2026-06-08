@@ -426,3 +426,191 @@ The following are outside Phase 4 and were intentionally not implemented:
 - CORS allowlist hardening.
 - Rate limiting for HTTP and socket events.
 - Validation for read endpoint query/path params not listed in Phase 4 scope.
+
+## Phase 5 Database
+
+Status: COMPLETE
+
+Completed on: 2026-06-08
+
+Scope:
+
+- Versioned Sequelize migration workflow.
+- Initial schema and legacy backfill migration.
+- Query-driven database indexes.
+- Foreign-key and enum-like integrity constraints.
+- Removal of runtime schema synchronization and startup backfills.
+- Database migration and integrity regression tests.
+
+### Findings
+
+- Backend startup used `sequelize.sync({ force: false })`, conditionally added
+  columns, and ran four data backfills.
+- Existing model associations did not provide a controlled production
+  migration strategy.
+- Current player availability, bid history/highest-bid, active auction, team
+  ownership, and tournament-team queries justified the indexes documented in
+  `Database.md`.
+- `Tournament.createdBy` had no declared association or database foreign key.
+- User role, tournament status, player role, and auction status were
+  unrestricted strings.
+
+### Migration Strategy
+
+- Added an ESM migration runner backed by the standard `SequelizeMeta` table.
+- Added `npm run db:migrate` with `up`, `status`, and single-step `down`
+  commands.
+- The baseline migration creates missing tables for fresh databases and
+  additively upgrades existing databases.
+- Legacy startup backfills now run once in the baseline migration.
+- The integrity migration validates enum values and orphan references before
+  applying constraints. Invalid legacy data stops the migration without
+  deleting records.
+- The baseline migration is intentionally non-destructive and cannot be
+  reverted.
+
+### Indexes
+
+- `Teams(ownerId)`
+- `Players(tournamentId, isInAuction, isSold, auctionId)`
+- `Players(teamId, tournamentId)`
+- `Auctions(tournamentId, status)`
+- `Auctions(currentPlayerId, tournamentId, status)`
+- `Bids(playerId, tournamentId, bidAmount)`
+- `Bids(playerId, tournamentId, createdAt)`
+- Supporting FK indexes for bid team/owner, tournament creator, and
+  tournament-team team lookup.
+
+### Integrity Changes
+
+- Added foreign keys for team owner, tournament creator, tournament-team
+  membership, player team/tournament, auction player/tournament, and bid
+  player/tournament/team/owner relationships.
+- Join rows cascade when a tournament or team is removed.
+- Optional historical ownership/player references use `SET NULL` where
+  compatible.
+- Core historical and ownership relationships use `RESTRICT`.
+- Added database ENUMs and matching model ENUMs for user role, tournament
+  status, player role, and auction status.
+- Normalized known legacy lowercase player roles before enum enforcement.
+
+### Technical Debt Decisions
+
+- `Teams.tournamentId`, `Teams.totalAmount`, and `Teams.amountSpent` remain for
+  backward compatibility but are deprecated. `TournamentTeams` remains the
+  source of truth for tournament purse state.
+- `Bids.teamName` remains as an intentional historical snapshot.
+- `Bids.ownerId` remains for bid-time audit context and can become null if the
+  user is removed.
+- `Player.auctionId` remains for compatibility. Its duplication with
+  `Auction.currentPlayerId` still requires a future state-model decision.
+- Player prices remain floating point; monetary normalization is deferred.
+
+Files:
+
+- `ipl-auction-tracker-backend/package.json`
+- `ipl-auction-tracker-backend/scripts/migrate.js`
+- `ipl-auction-tracker-backend/migrations/202606080001-initial-schema.js`
+- `ipl-auction-tracker-backend/migrations/202606080002-phase5-integrity-indexes.js`
+- `ipl-auction-tracker-backend/src/database/migrator.js`
+- `ipl-auction-tracker-backend/src/index.js`
+- `ipl-auction-tracker-backend/src/models/index.js`
+- `ipl-auction-tracker-backend/src/models/user.model.js`
+- `ipl-auction-tracker-backend/src/models/team.model.js`
+- `ipl-auction-tracker-backend/src/models/tournment.model.js`
+- `ipl-auction-tracker-backend/src/models/tournamentTeam.model.js`
+- `ipl-auction-tracker-backend/src/models/player.model.js`
+- `ipl-auction-tracker-backend/src/models/auction.model.js`
+- `ipl-auction-tracker-backend/src/models/bid.model.js`
+- `ipl-auction-tracker-backend/test/database-phase5.test.js`
+- `Database.md`
+- `DeploymentGuide.md`
+- `IMPROVEMENT_ROADMAP.md`
+- `IMPLEMENTATION_LOG.md`
+
+### Phase 5 Validation Notes
+
+- Added focused tests for migration ordering/idempotence, runtime sync removal,
+  index creation declarations, enum constraints, orphan checks, and foreign-key
+  policies.
+- Node.js and npm are not available on PATH in this environment, so automated
+  tests and live MySQL migration execution could not be run.
+- Run migration status, migrations, and tests with:
+
+```powershell
+cd ipl-auction-tracker-backend
+npm run db:migrate -- status
+npm run db:migrate
+npm test
+```
+
+## F-001 Auction Timer Persistence
+
+Status: COMPLETE
+
+Completed on: 2026-06-08
+
+Scope:
+
+- Persist auction start and deadline timestamps.
+- Restore live auction timers after backend restart without granting a fresh
+  timer.
+- Preserve pending-finalization behavior on timer expiry.
+
+### Findings
+
+- `restoreAuctionTimers` existed, but it recreated every live timer with a new
+  20-second deadline on startup.
+- `POST /api/auction/start/:playerId` calculated `endsAt` for broadcasts but
+  did not store it.
+- Bid resets and `POST /api/auction/extend/:playerId` reset the process-local
+  timer without persisting the new deadline.
+- `GET /api/auction/currentPlayer` returned the in-memory timer deadline, so a
+  recovered process could not report the database deadline unless the timer had
+  been rescheduled.
+
+### Changes
+
+- Added `Auctions.startedAt` and `Auctions.endsAt` through a versioned
+  migration.
+- Updated the `Auction` Sequelize model with nullable date fields.
+- Auction start now stores `startedAt` and `endsAt` in the created auction row.
+- Timer reset now updates `Auctions.endsAt`; this covers accepted bid timer
+  resets and admin extension of pending auctions.
+- Startup recovery now reads live auctions with persisted `endsAt`, schedules
+  only the remaining time, and moves missing or overdue deadlines to pending
+  finalization instead of granting a new 20 seconds.
+- Current-auction reads now return persisted `endsAt`.
+
+Files:
+
+- `ipl-auction-tracker-backend/migrations/202606080003-auction-timer-persistence.js`
+- `ipl-auction-tracker-backend/src/models/auction.model.js`
+- `ipl-auction-tracker-backend/src/controllers/auction.controller.js`
+- `ipl-auction-tracker-backend/test/auction-timer-f001.test.js`
+- `Database.md`
+- `API.md`
+- `IMPLEMENTATION_LOG.md`
+
+### F-001 Validation Notes
+
+- Added focused regression tests for auction start persistence, timer reset and
+  extension persistence, persisted deadline reads, startup recovery, and expired
+  auction recovery.
+- Run migrations and tests with:
+
+```powershell
+cd ipl-auction-tracker-backend
+npm run db:migrate
+npm test
+```
+
+## Remaining Database Risks
+
+- Player monetary fields still use floating point.
+- `Player.auctionId` and `Auction.currentPlayerId` can drift.
+- Legacy team tournament/purse columns remain populated for compatibility.
+- Migrations require a backup and production-data preflight before deployment.
+- No automated backup/restore workflow or migration gate exists.
+
+Phase 6 Reliability was not started.

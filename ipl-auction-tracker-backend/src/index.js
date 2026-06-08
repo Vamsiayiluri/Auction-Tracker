@@ -4,7 +4,6 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import { connectDB } from "./config/dbconfig.js";
 import sequelizeDb from "./config/dbconfig.js";
-import { syncDB } from "./models/index.js";
 import authRoutes from "./routes/authRoutes.js";
 import TeamRoutes from "./routes/teamRoutes.js";
 import PlayerRoutes from "./routes/playerRoutes.js";
@@ -327,7 +326,6 @@ export { io };
 const startServer = async () => {
   try {
     await connectDB();
-    await syncDB();
     await restoreAuctionTimers();
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

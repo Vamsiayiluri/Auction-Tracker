@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "test": "node --test",
+    "db:migrate": "node ./scripts/migrate.js",
     "start:dev": "nodemon ./src/index.js",
     "start": "node ./src/index.js"
   },

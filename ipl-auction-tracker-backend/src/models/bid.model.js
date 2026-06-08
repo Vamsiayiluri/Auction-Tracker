@@ -33,12 +33,45 @@ const Bid = sequelize.define("Bid", {
   ownerId: {
     type: DataTypes.STRING,
   },
+}, {
+  indexes: [
+    {
+      name: "bids_player_tournament_amount_idx",
+      fields: ["playerId", "tournamentId", "bidAmount"],
+    },
+    {
+      name: "bids_player_tournament_created_at_idx",
+      fields: ["playerId", "tournamentId", "createdAt"],
+    },
+    { name: "bids_team_id_idx", fields: ["teamId"] },
+    { name: "bids_owner_id_idx", fields: ["ownerId"] },
+  ],
 });
 
-Bid.belongsTo(Player, { foreignKey: "playerId", as: "player" });
-Bid.belongsTo(Tournament, { foreignKey: "tournamentId", as: "tournament" });
-Bid.belongsTo(Team, { foreignKey: "teamId", as: "team" });
-Bid.belongsTo(User, { foreignKey: "ownerId", as: "user" });
+Bid.belongsTo(Player, {
+  foreignKey: "playerId",
+  as: "player",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
+Bid.belongsTo(Tournament, {
+  foreignKey: "tournamentId",
+  as: "tournament",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
+Bid.belongsTo(Team, {
+  foreignKey: "teamId",
+  as: "team",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
+Bid.belongsTo(User, {
+  foreignKey: "ownerId",
+  as: "user",
+  onDelete: "SET NULL",
+  onUpdate: "CASCADE",
+});
 Tournament.hasMany(Bid, { foreignKey: "tournamentId", as: "bids" });
 
 export default Bid;

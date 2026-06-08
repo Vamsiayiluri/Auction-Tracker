@@ -22,9 +22,14 @@ const Player = sequelize.define("Player", {
     allowNull: true,
   },
   role: {
-    type: DataTypes.STRING,
+    type: DataTypes.ENUM(
+      "Batsman",
+      "Bowler",
+      "All-rounder",
+      "Wicketkeeper"
+    ),
     allowNull: false,
-    defaultValue: "batsman",
+    defaultValue: "Batsman",
   },
   isSold: {
     type: DataTypes.BOOLEAN,
@@ -51,10 +56,31 @@ const Player = sequelize.define("Player", {
     allowNull: true,
     defaultValue: "",
   },
+}, {
+  indexes: [
+    {
+      name: "players_tournament_auction_state_idx",
+      fields: ["tournamentId", "isInAuction", "isSold", "auctionId"],
+    },
+    {
+      name: "players_team_tournament_idx",
+      fields: ["teamId", "tournamentId"],
+    },
+  ],
 });
 
-Player.belongsTo(Team, { foreignKey: "teamId", as: "team" });
-Player.belongsTo(Tournament, { foreignKey: "tournamentId", as: "tournament" });
+Player.belongsTo(Team, {
+  foreignKey: "teamId",
+  as: "team",
+  onDelete: "SET NULL",
+  onUpdate: "CASCADE",
+});
+Player.belongsTo(Tournament, {
+  foreignKey: "tournamentId",
+  as: "tournament",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
 Tournament.hasMany(Player, { foreignKey: "tournamentId", as: "players" });
 
 export default Player;

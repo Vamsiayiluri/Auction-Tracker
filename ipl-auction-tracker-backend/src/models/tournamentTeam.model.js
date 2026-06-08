@@ -38,9 +38,11 @@ const TournamentTeam = sequelize.define(
   {
     indexes: [
       {
+        name: "tournament_teams_tournament_team_uq",
         unique: true,
         fields: ["tournamentId", "teamId"],
       },
+      { name: "tournament_teams_team_id_idx", fields: ["teamId"] },
     ],
   }
 );
@@ -48,8 +50,15 @@ const TournamentTeam = sequelize.define(
 TournamentTeam.belongsTo(Tournament, {
   foreignKey: "tournamentId",
   as: "tournament",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
 });
-TournamentTeam.belongsTo(Team, { foreignKey: "teamId", as: "team" });
+TournamentTeam.belongsTo(Team, {
+  foreignKey: "teamId",
+  as: "team",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 Tournament.hasMany(TournamentTeam, {
   foreignKey: "tournamentId",
   as: "tournamentTeams",
