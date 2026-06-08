@@ -6,20 +6,6 @@ export const createTournament = async (req, res) => {
   try {
     const { id, name, budget, teams, players } = req.body;
 
-    if (
-      !id ||
-      !name ||
-      !budget ||
-      !Array.isArray(teams) ||
-      !teams.length ||
-      !Array.isArray(players) ||
-      !players.length
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Tournament name, budget, teams, and players are required" });
-    }
-
     const participatingTeams = await Team.findAll({
       where: { name: { [Op.in]: teams } },
     });

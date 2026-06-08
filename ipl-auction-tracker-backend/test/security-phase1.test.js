@@ -43,11 +43,11 @@ test("tournament mutations require authentication and admin role", async () => {
 
   assert.match(
     tournamentRoutes,
-    /router\.post\("\/create",\s*authMiddleware,\s*adminMiddleware,\s*createTournament\);/
+    /router\.post\(\s*"\/create",\s*authMiddleware,\s*adminMiddleware,[\s\S]*createTournament\s*\);/
   );
   assert.match(
     tournamentRoutes,
-    /router\.patch\("\/:id\/status",\s*authMiddleware,\s*adminMiddleware,\s*updateStatus\);/
+    /router\.patch\(\s*"\/:id\/status",\s*authMiddleware,\s*adminMiddleware,[\s\S]*updateStatus\s*\);/
   );
 });
 
@@ -56,7 +56,7 @@ test("player creation requires authentication and admin role", async () => {
 
   assert.match(
     playerRoutes,
-    /router\.post\("\/",\s*authMiddleware,\s*adminMiddleware,\s*createPlayer\);/
+    /router\.post\(\s*"\/",\s*authMiddleware,\s*adminMiddleware,[\s\S]*createPlayer\s*\);/
   );
 });
 

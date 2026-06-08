@@ -304,10 +304,6 @@ export const startAuction = async (req, res) => {
     const { playerId } = req.params;
     const { auctionId, tournamentId } = req.body;
 
-    if (!auctionId) {
-      return res.status(400).json({ message: "Auction id is required" });
-    }
-
     const player = await Player.findByPk(playerId);
     if (!player) return res.status(404).json({ message: "Player not found" });
 

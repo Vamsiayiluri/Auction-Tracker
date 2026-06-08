@@ -8,10 +8,18 @@ import {
   authMiddleware,
   adminMiddleware,
 } from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import { createPlayerSchema } from "../validation/player.validation.js";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, adminMiddleware, createPlayer);
+router.post(
+  "/",
+  authMiddleware,
+  adminMiddleware,
+  validate(createPlayerSchema),
+  createPlayer
+);
 
 router.get("/", getPlayers);
 router.get("/playerBids/:tournamentId", getPlayersWithBidsByTournamentId);

@@ -1,14 +1,17 @@
-import sgMail from "@sendgrid/mail";
+import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const apiKey = process.env.SENDGRID_API_KEY;
-if (apiKey) {
-  sgMail.setApiKey(apiKey);
-} else {
-  console.warn("SENDGRID_API_KEY is not defined in environment variables");
-}
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -49,7 +52,7 @@ export const sendVerificationEmail = async (email, name, token) => {
     `,
   };
 
-  await sgMail.send(msg);
+  await transporter.sendMail(msg);
 };
 
 export const sendPasswordResetEmail = async (email, name, token) => {
@@ -84,5 +87,5 @@ export const sendPasswordResetEmail = async (email, name, token) => {
     `,
   };
 
-  await sgMail.send(msg);
+  await transporter.sendMail(msg);
 };

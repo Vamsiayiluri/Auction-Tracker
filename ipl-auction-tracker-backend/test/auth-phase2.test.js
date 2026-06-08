@@ -40,8 +40,14 @@ test("password reset tokens are random, hashed, and time-limited", () => {
 test("password reset API routes are registered", async () => {
   const authRoutes = await readProjectFile("src/routes/authRoutes.js");
 
-  assert.match(authRoutes, /router\.post\("\/forgot-password",\s*forgotPassword\);/);
-  assert.match(authRoutes, /router\.post\("\/reset-password",\s*resetPassword\);/);
+  assert.match(
+    authRoutes,
+    /router\.post\("\/forgot-password",\s*validate\(forgotPasswordSchema\),\s*forgotPassword\);/
+  );
+  assert.match(
+    authRoutes,
+    /router\.post\("\/reset-password",\s*validate\(resetPasswordSchema\),\s*resetPassword\);/
+  );
 });
 
 test("password reset storage fields are present on the user model", async () => {
@@ -66,8 +72,8 @@ test("forgot password stores hashed token and sends reset email", async () => {
 test("reset password rejects invalid or expired tokens and clears token after use", async () => {
   const authController = await readProjectFile("src/controllers/auth.controller.js");
 
-  assert.match(authController, /const normalizedToken = typeof token === "string" \? token\.trim\(\) : token;/);
-  assert.match(authController, /hashPasswordResetToken\(normalizedToken\)/);
+  assert.match(authController, /const \{ token, password \} = req\.body;/);
+  assert.match(authController, /hashPasswordResetToken\(token\)/);
   assert.match(authController, /resetPasswordExpires: \{ \[Op\.gt\]: new Date\(\) \}/);
   assert.match(authController, /Invalid or expired password reset token/);
   assert.match(authController, /user\.password = await bcrypt\.hash\(password, 10\);/);

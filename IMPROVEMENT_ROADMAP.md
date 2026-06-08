@@ -45,11 +45,23 @@ Completed items:
 
 Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 
+## Phase 4 Validation Status
+
+Status: COMPLETE
+
+Completed items:
+
+- Centralized Zod validation middleware
+- Auth, tournament, player, auction, and socket bid schemas
+- Standard validation error response envelope
+
+Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
+
 ## Critical Path
 
 1. Lock down sensitive read APIs and sanitize response DTOs.
 2. Persist auction deadlines and remove process-local timer assumptions.
-3. Introduce migrations, validation, rate limits, safe sessions, and CORS allowlists.
+3. Introduce migrations, rate limits, safe sessions, and CORS allowlists.
 4. Add integration tests around auth, auctions, bidding, purse enforcement, and finalization.
 5. Add observability, backups, and deployment automation.
 
@@ -63,7 +75,7 @@ Implementation notes are tracked in `IMPLEMENTATION_LOG.md`.
 | Security | SEC-005 complete: access JWTs now expire after one hour. Remaining work is safer session handling, preferably refresh rotation in HttpOnly/SameSite cookies with server-side revocation. | Critical | Further reduces token theft impact and supports revocation/logout policy beyond access-token expiry. | High | Auth flow redesign, frontend API changes, CSRF strategy if cookies are used. | 4-8 days |
 | Architecture | Persist auction `endsAt` in the database and restore timers from stored deadlines instead of issuing fresh 20-second windows after restart. | Critical | Prevents incorrect auction outcomes after backend restart and supports operational reliability. | Medium | Migration framework, auction model change, timer restore tests. | 3-5 days |
 | Architecture | Replace `sequelize.sync()` and startup backfills with versioned migrations. | Critical | Makes schema changes auditable and deployment-safe; reduces startup risk. | Medium | Migration tool selection, baseline migration, deployment process. | 4-7 days |
-| Security | Add schema validation for all HTTP bodies, params, query strings, and socket payloads. | Critical | Reduces malformed input, bad states, and security bypasses. | Medium | Validation library choice, endpoint contract updates. | 4-7 days |
+| Security | Phase 4 complete: Zod validation now covers auth, tournament, player, auction mutation, and socket bid payloads with a standard validation error envelope. Remaining work is extending validation to currently public read query/params and future endpoints. | Critical | Reduces malformed input, bad states, and security bypasses. | Low-Medium | Read authorization/API contract work. | 1-2 days |
 | Security | Add rate limiting for login, registration, resend verification, health abuse, and socket bid events. | Critical | Reduces brute-force login, spam, and bid flood risk. | Medium | Redis or shared rate-limit store for multi-instance support. | 2-4 days |
 | Correctness | Wrap auction start in a transaction covering player state, auction row creation, tournament status update, and initial timer state. | High | Prevents partial live auctions and inconsistent player state. | Medium | Persisted timer design, transaction test coverage. | 2-3 days |
 | Correctness | Generate security-sensitive IDs server-side for bids, auctions, players, tournaments, and users where feasible. | High | Prevents collisions and reduces client control over persisted identity. | Medium | API contract changes, frontend payload updates, migration/backward compatibility. | 3-5 days |

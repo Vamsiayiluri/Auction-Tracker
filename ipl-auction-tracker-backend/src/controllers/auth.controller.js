@@ -8,7 +8,6 @@ import {
   sendPasswordResetEmail,
   sendVerificationEmail,
 } from "../utils/emailService.js";
-import { isPublicRegistrationRole } from "../utils/publicRegistrationRoles.js";
 import { toSafeUserResponse } from "../utils/userResponse.js";
 import {
   createPasswordResetToken,
@@ -35,14 +34,7 @@ const parseRequestBody = (body, requiredKey) => {
 
 export const registerUser = async (req, res) => {
   try {
-    const parsed = parseRequestBody(req.body, "id");
-    const { id, name, email, password, role, teamName, teamId } = parsed;
-
-    if (!isPublicRegistrationRole(role)) {
-      return res.status(400).json({
-        message: "Role must be either team_owner or spectator",
-      });
-    }
+    const { id, name, email, password, role, teamName, teamId } = req.body;
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -96,16 +88,7 @@ export const registerUser = async (req, res) => {
 
 export const loginUser = async (req, res) => {
   try {
-    let parsed = req.body;
-
-    if (!parsed || !parsed.email) {
-      try {
-        parsed = JSON.parse(Object.keys(req.body)[0]);
-      } catch (e) {
-        // Safe fallback
-      }
-    }
-    let { email, password } = parsed;
+    const { email, password } = req.body;
 
     const user = await User.findOne({ where: { email } });
     if (!user) {
@@ -248,16 +231,8 @@ export const resendVerification = async (req, res) => {
 
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = parseRequestBody(req.body, "email");
-    const normalizedEmail = typeof email === "string" ? email.trim() : email;
-
-    if (!normalizedEmail) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email is required." });
-    }
-
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const { email } = req.body;
+    const user = await User.findOne({ where: { email } });
     const genericMessage =
       "If an account exists for this email, a password reset link has been sent.";
 
@@ -295,23 +270,8 @@ export const forgotPassword = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
   try {
-    const { token, password } = parseRequestBody(req.body, "token");
-    const normalizedToken = typeof token === "string" ? token.trim() : token;
-
-    if (!normalizedToken) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Reset token is required." });
-    }
-
-    if (!password || password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 8 characters.",
-      });
-    }
-
-    const hashedToken = hashPasswordResetToken(normalizedToken);
+    const { token, password } = req.body;
+    const hashedToken = hashPasswordResetToken(token);
     const user = await User.findOne({
       where: {
         resetPasswordToken: hashedToken,

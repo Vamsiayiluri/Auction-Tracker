@@ -27,6 +27,8 @@ import {
   User,
 } from "./models/index.js";
 import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
+import { validateSocketPayload } from "./middleware/validate.middleware.js";
+import { placeBidSocketSchema } from "./validation/socket.validation.js";
 
 dotenv.config();
 
@@ -114,10 +116,16 @@ io.on("connection", (socket) => {
   });
 
   socket.on("place-bid", async (data) => {
-    const { id, playerId, bidAmount, tournamentId } = data;
-    const roomName = tournamentId ? `tournament:${tournamentId}` : "";
-
     try {
+      const validation = validateSocketPayload(placeBidSocketSchema, data);
+      if (!validation.success) {
+        socket.emit("bid-rejected", validation);
+        return;
+      }
+
+      const { id, playerId, bidAmount, tournamentId } = validation.data;
+      const roomName = tournamentId ? `tournament:${tournamentId}` : "";
+
       if (socket.user?.role !== "team_owner") {
         socket.emit("bid-rejected", {
           message: "Only team owners can place bids.",
@@ -204,13 +212,7 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const numericBidAmount = Number(bidAmount);
-      if (!Number.isFinite(numericBidAmount)) {
-        socket.emit("bid-rejected", {
-          message: "Bid amount is invalid.",
-        });
-        return;
-      }
+      const numericBidAmount = bidAmount;
 
       const acceptedBid = await sequelizeDb.transaction(async (transaction) => {
         const lockedAuction = await Auction.findOne({

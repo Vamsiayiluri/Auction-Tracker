@@ -309,4 +309,120 @@ The following are outside Phase 3 and were intentionally not implemented:
 - Password change while logged in.
 - CORS allowlist hardening.
 - Rate limiting for HTTP and socket events.
-- Schema validation with Joi/Zod or similar.
+
+## Phase 4 Validation
+
+Status: COMPLETE
+
+Completed on: 2026-06-05
+
+Scope:
+
+- Centralized Zod validation layer.
+- Auth validation for register, login, forgot password, and reset password.
+- Tournament validation for create and status update.
+- Player validation for create.
+- Auction validation for start, stop, extend, sell, and unsold actions.
+- Socket validation for `place-bid`.
+
+### Findings
+
+- Auth controllers had duplicated legacy body parsing and inline checks for
+  roles, missing email, reset token, and password length.
+- Tournament creation manually checked required fields and array presence, but
+  status updates accepted arbitrary strings.
+- Player creation only checked `tournamentId`, while player name, role, and base
+  price were left to model/database behavior.
+- Auction start manually checked only `auctionId`; action routes did not
+  validate `playerId` before controller execution.
+- Socket `place-bid` validated bid amount manually after room, timer, player,
+  team, and tournament-team database lookups.
+
+### Validation Architecture
+
+- `src/middleware/validate.middleware.js` provides reusable HTTP validation and
+  socket payload validation.
+- `src/validation/common.validation.js` centralizes reusable string, ID, numeric,
+  role, tournament-status, payload-normalization, and error-format helpers.
+- Feature-specific schemas live in:
+  - `src/validation/auth.validation.js`
+  - `src/validation/tournament.validation.js`
+  - `src/validation/player.validation.js`
+  - `src/validation/auction.validation.js`
+  - `src/validation/socket.validation.js`
+- HTTP validation failures return:
+
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": []
+}
+```
+
+### Changes
+
+- Added `zod` backend dependency declaration.
+- Added centralized validation middleware and schema modules.
+- Wired validation into auth, tournament, player, and auction mutation routes.
+- Removed duplicated inline validation from the covered controller actions while
+  preserving business-state and database-existence checks.
+- Added socket `place-bid` validation before bid authorization/database work.
+- Added enum enforcement for public registration roles, player roles, and
+  tournament status values.
+- Preserved legacy form-encoded JSON body normalization in the validation
+  middleware.
+
+Files:
+
+- `ipl-auction-tracker-backend/package.json`
+- `ipl-auction-tracker-backend/package-lock.json`
+- `ipl-auction-tracker-backend/src/middleware/validate.middleware.js`
+- `ipl-auction-tracker-backend/src/validation/common.validation.js`
+- `ipl-auction-tracker-backend/src/validation/auth.validation.js`
+- `ipl-auction-tracker-backend/src/validation/tournament.validation.js`
+- `ipl-auction-tracker-backend/src/validation/player.validation.js`
+- `ipl-auction-tracker-backend/src/validation/auction.validation.js`
+- `ipl-auction-tracker-backend/src/validation/socket.validation.js`
+- `ipl-auction-tracker-backend/src/routes/authRoutes.js`
+- `ipl-auction-tracker-backend/src/routes/tournmentRoutes.js`
+- `ipl-auction-tracker-backend/src/routes/playerRoutes.js`
+- `ipl-auction-tracker-backend/src/routes/auctionRoutes.js`
+- `ipl-auction-tracker-backend/src/controllers/auth.controller.js`
+- `ipl-auction-tracker-backend/src/controllers/tournment.controller.js`
+- `ipl-auction-tracker-backend/src/controllers/player.controller.js`
+- `ipl-auction-tracker-backend/src/controllers/auction.controller.js`
+- `ipl-auction-tracker-backend/src/index.js`
+- `ipl-auction-tracker-backend/test/validation-phase4.test.js`
+- `ipl-auction-tracker-backend/test/security-phase1.test.js`
+- `ipl-auction-tracker-backend/test/auth-phase2.test.js`
+- `API.md`
+- `IMPROVEMENT_ROADMAP.md`
+
+### Phase 4 Validation Notes
+
+- Automated schema and middleware regression tests were added for valid
+  payloads, invalid payloads, required fields, enum values, malformed socket
+  data, and standard error formatting.
+- Test execution could not be completed in this environment because `npm` and
+  `node` are not available on PATH.
+- Run dependency installation and validation locally with:
+
+```powershell
+cd ipl-auction-tracker-backend
+npm install
+npm test
+```
+
+## Remaining Security Work
+
+The following are outside Phase 4 and were intentionally not implemented:
+
+- Phase 5 database/migration work.
+- Public read API authorization beyond Phase 1 mutation checks.
+- Tournament room membership authorization for non-public tournament visibility.
+- Refresh token rotation and server-side token revocation.
+- Password change while logged in.
+- CORS allowlist hardening.
+- Rate limiting for HTTP and socket events.
+- Validation for read endpoint query/path params not listed in Phase 4 scope.

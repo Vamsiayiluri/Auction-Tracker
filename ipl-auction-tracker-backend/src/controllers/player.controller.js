@@ -2,10 +2,6 @@ import { Bid, Player, Team, Tournament } from "../models/index.js";
 
 export const createPlayer = async (req, res) => {
   try {
-    if (!req.body.tournamentId) {
-      return res.status(400).json({ message: "Tournament id is required" });
-    }
-
     const tournament = await Tournament.findByPk(req.body.tournamentId);
     if (!tournament) {
       return res.status(404).json({ message: "Tournament not found" });

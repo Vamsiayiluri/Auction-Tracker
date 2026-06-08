@@ -11,15 +11,50 @@ import {
   authMiddleware,
   adminMiddleware,
 } from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import {
+  playerAuctionActionSchema,
+  startAuctionSchema,
+} from "../validation/auction.validation.js";
 
 const router = express.Router();
 
-router.post("/start/:playerId", authMiddleware, adminMiddleware, startAuction);
+router.post(
+  "/start/:playerId",
+  authMiddleware,
+  adminMiddleware,
+  validate(startAuctionSchema),
+  startAuction
+);
 router.get("/currentPlayer", getCurrentPlayerInAuction);
 
-router.post("/stop/:playerId", authMiddleware, adminMiddleware, stopAuction);
-router.post("/extend/:playerId", authMiddleware, adminMiddleware, extendAuction);
-router.post("/sell/:playerId", authMiddleware, adminMiddleware, sellPlayer);
-router.post("/unsold/:playerId", authMiddleware, adminMiddleware, markUnsold);
+router.post(
+  "/stop/:playerId",
+  authMiddleware,
+  adminMiddleware,
+  validate(playerAuctionActionSchema),
+  stopAuction
+);
+router.post(
+  "/extend/:playerId",
+  authMiddleware,
+  adminMiddleware,
+  validate(playerAuctionActionSchema),
+  extendAuction
+);
+router.post(
+  "/sell/:playerId",
+  authMiddleware,
+  adminMiddleware,
+  validate(playerAuctionActionSchema),
+  sellPlayer
+);
+router.post(
+  "/unsold/:playerId",
+  authMiddleware,
+  adminMiddleware,
+  validate(playerAuctionActionSchema),
+  markUnsold
+);
 
 export default router;
