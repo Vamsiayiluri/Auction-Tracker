@@ -33,7 +33,6 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { uid } from "uid";
-import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
 
 const playerRoles = ["Batsman", "Bowler", "All-rounder", "Wicketkeeper"];
@@ -89,7 +88,6 @@ const StatCard = ({ icon, label, value }) => (
 
 export default function AuctionManagement() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [tournaments, setTournaments] = useState([]);
   const [teamsList, setTeamsList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -243,7 +241,6 @@ export default function AuctionManagement() {
       id,
       name,
       budget: tournamentBudget,
-      createdBy: user.id,
       teams: selectedTeams,
       players: draftPlayers.map((player) => ({ ...player, tournamentId: id })),
     };

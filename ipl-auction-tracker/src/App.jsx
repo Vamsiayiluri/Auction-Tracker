@@ -6,6 +6,8 @@ import {
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import AuctionPage from "./pages/AuctionPage";
 
 import AuthProvider from "./context/AuthContext";
@@ -19,13 +21,7 @@ import {
   ProtectedRoute,
 } from "./components/RouteGuards";
 
-import { connectSocket } from "./webSocket/socket";
-import { useEffect } from "react";
-
 export default function AppRouter() {
-  useEffect(() => {
-    connectSocket();
-  }, []);
   return (
     <AuthProvider>
       <Router>
@@ -43,6 +39,22 @@ export default function AppRouter() {
             element={
               <GuestRoute>
                 <Register />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <GuestRoute>
+                <ForgotPassword />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/reset-password/:token"
+            element={
+              <GuestRoute>
+                <ResetPassword />
               </GuestRoute>
             }
           />

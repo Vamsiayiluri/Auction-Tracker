@@ -11,6 +11,7 @@ import TournamentTeam from "./tournamentTeam.model.js";
 export const syncDB = async () => {
   await sequelizeDb.sync({ force: false });
   await backfillExistingUsers();
+  await ensureUserPasswordResetColumns();
   await ensureTournamentScopedColumns();
   await backfillTournamentTeams();
   await backfillTournamentScopedColumns();
@@ -46,6 +47,19 @@ const ensureTournamentScopedColumns = async () => {
     }),
     ensureColumn("Bids", "tournamentId", {
       type: DataTypes.STRING,
+      allowNull: true,
+    }),
+  ]);
+};
+
+const ensureUserPasswordResetColumns = async () => {
+  await Promise.all([
+    ensureColumn("Users", "resetPasswordToken", {
+      type: DataTypes.STRING,
+      allowNull: true,
+    }),
+    ensureColumn("Users", "resetPasswordExpires", {
+      type: DataTypes.DATE,
       allowNull: true,
     }),
   ]);

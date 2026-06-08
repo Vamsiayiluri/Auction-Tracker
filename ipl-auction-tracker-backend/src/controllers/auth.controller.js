@@ -2,23 +2,48 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { Op } from "sequelize";
 import { Team, User } from "../models/index.js";
-import { sendVerificationEmail } from "../utils/emailService.js";
+import {
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "../utils/emailService.js";
+import { isPublicRegistrationRole } from "../utils/publicRegistrationRoles.js";
+import { toSafeUserResponse } from "../utils/userResponse.js";
+import {
+  createPasswordResetToken,
+  hashPasswordResetToken,
+} from "../utils/passwordReset.js";
 
 dotenv.config();
 
+const ACCESS_TOKEN_EXPIRES_IN = "1h";
+
+const parseRequestBody = (body, requiredKey) => {
+  let parsed = body;
+
+  if (!parsed || (requiredKey && !parsed[requiredKey])) {
+    try {
+      parsed = JSON.parse(Object.keys(body || {})[0]);
+    } catch (e) {
+      // Safe fallback for legacy form-encoded JSON payloads.
+    }
+  }
+
+  return parsed || {};
+};
+
 export const registerUser = async (req, res) => {
   try {
-    let parsed = req.body;
+    const parsed = parseRequestBody(req.body, "id");
+    const { id, name, email, password, role, teamName, teamId } = parsed;
 
-    if (!parsed || !parsed.id) {
-      try {
-        parsed = JSON.parse(Object.keys(req.body)[0]);
-      } catch (e) {
-        // Safe fallback
-      }
+    if (!isPublicRegistrationRole(role)) {
+      return res.status(400).json({
+        message: "Role must be either team_owner or spectator",
+      });
     }
-    let { id, name, email, password, role } = parsed;
+
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
@@ -42,11 +67,11 @@ export const registerUser = async (req, res) => {
       verificationExpires: tokenExpires,
     });
 
-    if (role === "team_owner" && req.body.teamName) {
+    if (role === "team_owner" && teamName) {
       await Team.create({
-        name: req.body.teamName,
+        name: teamName,
         ownerId: id,
-        id: req.body.teamId,
+        id: teamId,
       });
     }
 
@@ -60,7 +85,7 @@ export const registerUser = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Registration successful. Please verify your email.",
-      user: newUser,
+      user: toSafeUserResponse(newUser),
     });
   } catch (error) {
     res
@@ -107,10 +132,15 @@ export const loginUser = async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
     );
 
-    res.json({ message: "Login successful", token, user });
+    res.json({
+      message: "Login successful",
+      token,
+      user: toSafeUserResponse(user),
+    });
   } catch (error) {
     res.status(500).json({ message: "Login failed", error: error.message });
   }
@@ -161,14 +191,7 @@ export const verifyEmail = async (req, res) => {
 
 export const resendVerification = async (req, res) => {
   try {
-    let parsed = req.body;
-    if (!parsed || !parsed.email) {
-      try {
-        parsed = JSON.parse(Object.keys(req.body)[0]);
-      } catch (e) {
-        // Safe fallback
-      }
-    }
+    const parsed = parseRequestBody(req.body, "email");
     const { email } = parsed;
 
     if (!email) {
@@ -220,5 +243,103 @@ export const resendVerification = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Resending verification email failed.", error: error.message });
+  }
+};
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = parseRequestBody(req.body, "email");
+    const normalizedEmail = typeof email === "string" ? email.trim() : email;
+
+    if (!normalizedEmail) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email is required." });
+    }
+
+    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const genericMessage =
+      "If an account exists for this email, a password reset link has been sent.";
+
+    if (!user) {
+      return res.status(200).json({ success: true, message: genericMessage });
+    }
+
+    const { rawToken, hashedToken, expiresAt } = createPasswordResetToken();
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = expiresAt;
+    await user.save();
+
+    try {
+      await sendPasswordResetEmail(user.email, user.name, rawToken);
+    } catch (emailError) {
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+      await user.save();
+      console.error("Failed to send password reset email:", emailError);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send password reset email. Please try again.",
+      });
+    }
+
+    return res.status(200).json({ success: true, message: genericMessage });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Password reset request failed.",
+      error: error.message,
+    });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = parseRequestBody(req.body, "token");
+    const normalizedToken = typeof token === "string" ? token.trim() : token;
+
+    if (!normalizedToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Reset token is required." });
+    }
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters.",
+      });
+    }
+
+    const hashedToken = hashPasswordResetToken(normalizedToken);
+    const user = await User.findOne({
+      where: {
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { [Op.gt]: new Date() },
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired password reset token.",
+      });
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful. You can now log in.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Password reset failed.",
+      error: error.message,
+    });
   }
 };

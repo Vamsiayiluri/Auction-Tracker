@@ -3,8 +3,12 @@ import { User } from "../models/index.js";
 
 export const authMiddleware = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ message: "Unauthorized" });
+    const authorization = req.headers.authorization || "";
+    const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+
+    if (!token) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = await User.findByPk(decoded.id);
@@ -16,7 +20,7 @@ export const authMiddleware = async (req, res, next) => {
   }
 };
 export const adminMiddleware = (req, res, next) => {
-  if (req.user.role !== "admin") {
+  if (req.user?.role !== "admin") {
     return res
       .status(403)
       .json({ message: "Access denied, Only Admin allowed" });
@@ -24,7 +28,7 @@ export const adminMiddleware = (req, res, next) => {
   next();
 };
 export const teamOwnerMiddleware = (req, res, next) => {
-  if (req.user.role !== "team_owner") {
+  if (req.user?.role !== "team_owner") {
     return res
       .status(403)
       .json({ message: "Access denied, Only Team Owners allowed" });

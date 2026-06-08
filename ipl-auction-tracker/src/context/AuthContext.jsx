@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AuthContext } from "./auth-context";
+import { connectSocket, disconnectSocket } from "../webSocket/socket";
 
 const getStoredUser = () => {
   const token = localStorage.getItem("token");
@@ -26,14 +27,24 @@ const AuthProvider = ({ children }) => {
 
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
+    connectSocket(token);
     setUser(userData);
   };
 
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    disconnectSocket();
     setUser(null);
   };
+
+  useEffect(() => {
+    if (user) {
+      connectSocket();
+    } else {
+      disconnectSocket();
+    }
+  }, [user]);
 
   const value = useMemo(() => ({ user, login, logout }), [user]);
 

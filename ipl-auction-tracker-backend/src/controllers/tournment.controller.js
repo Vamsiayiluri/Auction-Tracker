@@ -4,7 +4,7 @@ import { Player, Team, Tournament, TournamentTeam } from "../models/index.js";
 
 export const createTournament = async (req, res) => {
   try {
-    const { id, name, budget, createdBy, teams, players } = req.body;
+    const { id, name, budget, teams, players } = req.body;
 
     if (
       !id ||
@@ -34,7 +34,7 @@ export const createTournament = async (req, res) => {
       id,
       name,
       budget,
-      createdBy: createdBy,
+      createdBy: req.user.id,
     });
 
     await TournamentTeam.bulkCreate(

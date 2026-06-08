@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import jwt from "jsonwebtoken";
 import { connectDB } from "./config/dbconfig.js";
 import sequelizeDb from "./config/dbconfig.js";
 import { syncDB } from "./models/index.js";
@@ -17,7 +18,14 @@ import {
 } from "./controllers/auction.controller.js";
 import { Server } from "socket.io";
 import http from "http";
-import { Auction, Bid, Player, Team, TournamentTeam } from "./models/index.js";
+import {
+  Auction,
+  Bid,
+  Player,
+  Team,
+  TournamentTeam,
+  User,
+} from "./models/index.js";
 import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
 
 dotenv.config();
@@ -63,8 +71,39 @@ const io = new Server(server, {
   },
 });
 
+io.use(async (socket, next) => {
+  try {
+    const authToken = socket.handshake.auth?.token;
+    const headerToken = socket.handshake.headers?.authorization
+      ?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const token = authToken || headerToken;
+
+    if (!token) {
+      return next(new Error("Socket authentication required"));
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findByPk(decoded.id);
+
+    if (!user) {
+      return next(new Error("Socket user not found"));
+    }
+
+    socket.user = {
+      id: user.id,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+    };
+
+    return next();
+  } catch {
+    return next(new Error("Socket authentication failed"));
+  }
+});
+
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  console.log("Socket connected:", socket.id, socket.user?.id);
 
   socket.on("join-tournament", ({ tournamentId }) => {
     if (tournamentId) socket.join(`tournament:${tournamentId}`);
@@ -75,10 +114,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("place-bid", async (data) => {
-    const { id, playerId, teamId, ownerId, bidAmount, tournamentId } = data;
+    const { id, playerId, bidAmount, tournamentId } = data;
     const roomName = tournamentId ? `tournament:${tournamentId}` : "";
 
     try {
+      if (socket.user?.role !== "team_owner") {
+        socket.emit("bid-rejected", {
+          message: "Only team owners can place bids.",
+        });
+        return;
+      }
+
       if (!roomName || !socket.rooms.has(roomName)) {
         socket.emit("bid-rejected", {
           message: "Join the tournament room before placing bids.",
@@ -94,18 +140,50 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const [player, biddingTeam] = await Promise.all([
-        Player.findByPk(playerId),
-        Team.findByPk(teamId),
-      ]);
+      const player = await Player.findByPk(playerId);
 
       if (
         !player ||
-        !biddingTeam ||
-        biddingTeam.ownerId !== ownerId ||
         player.tournamentId !== tournamentId ||
         player.isSold
       ) {
+        socket.emit("bid-rejected", {
+          message: "This team cannot bid for the selected player.",
+        });
+        return;
+      }
+
+      const ownedTeams = await Team.findAll({
+        where: { ownerId: socket.user.id },
+      });
+      const ownedTeamIds = ownedTeams.map((team) => team.id);
+
+      if (!ownedTeamIds.length) {
+        socket.emit("bid-rejected", {
+          message: "This team cannot bid for the selected player.",
+        });
+        return;
+      }
+
+      const tournamentTeam = await TournamentTeam.findOne({
+        where: {
+          tournamentId: player.tournamentId,
+          teamId: ownedTeamIds,
+        },
+      });
+
+      if (!tournamentTeam) {
+        socket.emit("bid-rejected", {
+          message: "Your team is not participating in this tournament.",
+        });
+        return;
+      }
+
+      const biddingTeam = ownedTeams.find(
+        (team) => team.id === tournamentTeam.teamId
+      );
+
+      if (!biddingTeam) {
         socket.emit("bid-rejected", {
           message: "This team cannot bid for the selected player.",
         });
@@ -122,17 +200,6 @@ io.on("connection", (socket) => {
       if (!liveAuction) {
         socket.emit("bid-rejected", {
           message: "This auction round is not accepting bids.",
-        });
-        return;
-      }
-
-      const tournamentTeam = await TournamentTeam.findOne({
-        where: { tournamentId: player.tournamentId, teamId: biddingTeam.id },
-      });
-
-      if (!tournamentTeam) {
-        socket.emit("bid-rejected", {
-          message: "Your team is not participating in this tournament.",
         });
         return;
       }
@@ -202,10 +269,10 @@ io.on("connection", (socket) => {
             id,
             playerId,
             tournamentId: player.tournamentId,
-            teamId,
+            teamId: biddingTeam.id,
             teamName: biddingTeam.name,
             bidAmount: numericBidAmount,
-            ownerId,
+            ownerId: socket.user.id,
           },
           { transaction }
         );
@@ -234,9 +301,9 @@ io.on("connection", (socket) => {
         playerId,
         tournamentId: player.tournamentId,
         bidAmount: numericBidAmount,
-        teamId,
+        teamId: biddingTeam.id,
         teamName: biddingTeam.name,
-        ownerId,
+        ownerId: socket.user.id,
         endsAt,
         nextMinimumBid: acceptedBid.nextMinimumBid,
       });

@@ -205,6 +205,12 @@ export default function Login() {
           )}
         </Button>
 
+        <Box sx={{ textAlign: "center" }}>
+          <Link component={RouterLink} to="/forgot-password" fontWeight={600}>
+            Forgot password?
+          </Link>
+        </Box>
+
         <Box sx={{ pt: 1, textAlign: "center" }}>
           <Typography variant="body2" color="text.secondary">
             New to AuctionArena?{" "}

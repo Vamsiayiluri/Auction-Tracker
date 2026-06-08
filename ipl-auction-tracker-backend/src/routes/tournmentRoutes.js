@@ -5,12 +5,15 @@ import {
   getTournamentById,
   updateStatus,
 } from "../controllers/tournment.controller.js";
-import { authMiddleware } from "../middleware/auth.middleware.js";
+import {
+  adminMiddleware,
+  authMiddleware,
+} from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/create", createTournament);
-router.patch("/:id/status", updateStatus);
+router.post("/create", authMiddleware, adminMiddleware, createTournament);
+router.patch("/:id/status", authMiddleware, adminMiddleware, updateStatus);
 router.get("/", getAllTournaments);
 router.get("/:id", getTournamentById);
 

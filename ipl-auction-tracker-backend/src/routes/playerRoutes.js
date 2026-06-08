@@ -11,7 +11,7 @@ import {
 
 const router = express.Router();
 
-router.post("/", createPlayer);
+router.post("/", authMiddleware, adminMiddleware, createPlayer);
 
 router.get("/", getPlayers);
 router.get("/playerBids/:tournamentId", getPlayersWithBidsByTournamentId);

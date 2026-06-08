@@ -32,8 +32,9 @@ const initialFormData = {
   confirmPassword: "",
 };
 
+const publicRegistrationRoles = ["team_owner", "spectator"];
+
 const roleDescriptions = {
-  admin: "Create and manage auctions",
   team_owner: "Bid and build a team",
   spectator: "Watch live auctions",
 };
@@ -56,7 +57,7 @@ const validateRegistration = (formData) => {
     errors.email = "Enter a valid email address.";
   }
 
-  if (!formData.role) {
+  if (!publicRegistrationRoles.includes(formData.role)) {
     errors.role = "Choose how you will use AuctionArena.";
   }
 
@@ -209,7 +210,6 @@ const Register = () => {
           error={Boolean(errors.role)}
           helperText={errors.role || roleDescriptions[formData.role]}
         >
-          <MenuItem value="admin">Admin</MenuItem>
           <MenuItem value="team_owner">Team Owner</MenuItem>
           <MenuItem value="spectator">Spectator</MenuItem>
         </TextField>

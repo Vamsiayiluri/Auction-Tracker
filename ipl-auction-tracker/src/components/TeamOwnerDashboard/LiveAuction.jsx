@@ -246,9 +246,6 @@ const LiveAuction = ({ userRole = "spectator" }) => {
     socket.emit("place-bid", {
       id: uid(),
       playerId: currentPlayer.id,
-      teamId: currentTeam.id,
-      ownerId: currentTeam.ownerId,
-      teamName: currentTeam.name,
       tournamentId: currentPlayer.tournamentId,
       bidAmount: nextMinimumBid ?? getNextBidAmount(highestBid),
     });
