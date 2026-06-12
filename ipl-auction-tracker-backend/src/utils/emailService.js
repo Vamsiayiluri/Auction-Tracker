@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import sendGridMail from "@sendgrid/mail";
 import { setDefaultResultOrder } from "node:dns";
 import { resolve4, resolve6 } from "node:dns/promises";
 import { isIPv4 } from "node:net";
@@ -7,7 +8,7 @@ import { isIPv4 } from "node:net";
 dotenv.config();
 setDefaultResultOrder("ipv4first");
 
-const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "sendgrid").toLowerCase();
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE =
@@ -18,6 +19,7 @@ const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 15000);
 const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 10000);
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 
 let smtpTransporter;
 let smtpAddressSelection;
@@ -93,9 +95,26 @@ export const classifyEmailError = (error) => {
   const message = String(error?.message || "");
   const response = String(error?.response || "");
   const combinedMessage = `${message} ${response}`.toLowerCase();
+  const sendGridStatusCode =
+    error?.response?.statusCode || error?.response?.body?.statusCode;
+  const sendGridErrors = Array.isArray(error?.response?.body?.errors)
+    ? error.response.body.errors.map(({ message, field, help }) => ({
+        message,
+        field,
+        help,
+      }))
+    : undefined;
 
   let category = "unknown";
-  if (code === "SMTP_CONFIGURATION_MISSING") {
+  if (code === "SENDGRID_CONFIGURATION_MISSING") {
+    category = "sendgrid_configuration_missing";
+  } else if (sendGridStatusCode === 401 || sendGridStatusCode === 403) {
+    category = "sendgrid_authentication_failed";
+  } else if (sendGridStatusCode === 429) {
+    category = "sendgrid_rate_limited";
+  } else if (sendGridStatusCode >= 400) {
+    category = "sendgrid_rejected";
+  } else if (code === "SMTP_CONFIGURATION_MISSING") {
     category = "configuration_missing";
   } else if (code === "SMTP_IPV4_UNAVAILABLE") {
     category = "ipv4_resolution_failed";
@@ -141,7 +160,8 @@ export const classifyEmailError = (error) => {
     hostname: error?.hostname,
     address: error?.address,
     port: error?.port,
-    responseCode,
+    responseCode: responseCode || sendGridStatusCode,
+    providerErrors: sendGridErrors,
   };
 };
 
@@ -185,6 +205,25 @@ const getSmtpTransporter = async (addressSelection) => {
   return smtpTransporter;
 };
 
+export const sendWithSendGrid = async (message) => {
+  if (!SENDGRID_API_KEY) {
+    const error = new Error(
+      "SENDGRID_API_KEY is not defined in environment variables"
+    );
+    error.code = "SENDGRID_CONFIGURATION_MISSING";
+    throw error;
+  }
+
+  sendGridMail.setApiKey(SENDGRID_API_KEY);
+  const [response] = await sendGridMail.send(message);
+
+  return {
+    messageId: response.headers?.["x-message-id"],
+    response: `SendGrid accepted message (${response.statusCode})`,
+    statusCode: response.statusCode,
+  };
+};
+
 const sendWithResend = async (message) => {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not defined in environment variables");
@@ -223,10 +262,15 @@ const sendWithResend = async (message) => {
   }
 };
 
-const sendEmail = async (message, emailType) => {
+export const sendApplicationEmail = async (
+  message,
+  emailType = "notification"
+) => {
   try {
     let info;
-    if (EMAIL_PROVIDER === "resend") {
+    if (EMAIL_PROVIDER === "sendgrid") {
+      info = await sendWithSendGrid(message);
+    } else if (EMAIL_PROVIDER === "resend") {
       info = await sendWithResend(message);
     } else if (EMAIL_PROVIDER === "smtp") {
       const transporter = await getSmtpTransporter();
@@ -243,7 +287,9 @@ const sendEmail = async (message, emailType) => {
     });
     return info;
   } catch (error) {
-    logEmailError("delivery_failed", error, { emailType });
+    logEmailError(`${EMAIL_PROVIDER}_delivery_failed`, error, {
+      emailType,
+    });
     throw error;
   }
 };
@@ -252,9 +298,31 @@ export const verifyEmailTransport = async () => {
   console.info("[email] Delivery configuration", {
     provider: EMAIL_PROVIDER,
     clientUrlConfigured: Boolean(process.env.CLIENT_URL),
+    sendGridApiKeyConfigured: Boolean(SENDGRID_API_KEY),
+    emailFromConfigured: Boolean(process.env.EMAIL_FROM),
     resendApiKeyConfigured: Boolean(process.env.RESEND_API_KEY),
     smtp: getSmtpConfiguration(),
   });
+
+  if (EMAIL_PROVIDER === "sendgrid") {
+    if (!SENDGRID_API_KEY || !process.env.EMAIL_FROM) {
+      const error = new Error(
+        "SENDGRID_API_KEY and EMAIL_FROM must be configured"
+      );
+      error.code = "SENDGRID_CONFIGURATION_MISSING";
+      logEmailError("sendgrid_startup_configuration_invalid", error, {
+        sendGridApiKeyConfigured: Boolean(SENDGRID_API_KEY),
+        emailFromConfigured: Boolean(process.env.EMAIL_FROM),
+      });
+      return false;
+    }
+    console.info("[email] SendGrid configuration is ready", {
+      provider: EMAIL_PROVIDER,
+      apiKeyConfigured: true,
+      fromAddressConfigured: true,
+    });
+    return true;
+  }
 
   if (EMAIL_PROVIDER === "resend") {
     if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
@@ -306,6 +374,43 @@ export const verifyEmailTransport = async () => {
     });
     return false;
   }
+};
+
+const extractEmailAddress = (value = "") => {
+  const match = String(value).match(/<([^>]+)>/);
+  return (match?.[1] || String(value)).trim();
+};
+
+export const sendProviderTestEmail = async () => {
+  const recipient =
+    process.env.EMAIL_TEST_RECIPIENT ||
+    SMTP_USER ||
+    extractEmailAddress(getEmailFrom());
+
+  if (!recipient) {
+    throw new Error(
+      "EMAIL_TEST_RECIPIENT, SMTP_USER, or EMAIL_FROM must provide a test recipient"
+    );
+  }
+
+  const timestamp = new Date().toISOString();
+  const info = await sendApplicationEmail(
+    {
+      to: recipient,
+      from: getEmailFrom(),
+      subject: `AuctionArena ${EMAIL_PROVIDER} email diagnostic`,
+      text: `Email provider diagnostic succeeded at ${timestamp}.`,
+      html: `<p>Email provider diagnostic succeeded at ${timestamp}.</p>`,
+    },
+    "provider_test"
+  );
+
+  return {
+    provider: EMAIL_PROVIDER,
+    recipient,
+    messageId: info.messageId,
+    response: info.response,
+  };
 };
 
 export const runSmtpDiagnostic = async () => {
@@ -415,7 +520,7 @@ export const sendVerificationEmail = async (email, name, token) => {
   const verificationLink = `${clientUrl}/verify-email/${token}`;
   const safeName = escapeHtml(name);
 
-  return sendEmail(
+  return sendApplicationEmail(
     {
       to: email,
       from: getEmailFrom(),
@@ -445,7 +550,7 @@ export const sendPasswordResetEmail = async (email, name, token) => {
   const resetLink = `${clientUrl}/reset-password/${token}`;
   const safeName = escapeHtml(name);
 
-  return sendEmail(
+  return sendApplicationEmail(
     {
       to: email,
       from: getEmailFrom(),
@@ -485,7 +590,7 @@ export const sendTeamOwnerCredentialsEmail = async ({
     ? escapeHtml(temporaryPassword)
     : null;
 
-  return sendEmail(
+  return sendApplicationEmail(
     {
       to: email,
       from: getEmailFrom(),

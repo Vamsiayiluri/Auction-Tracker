@@ -1,10 +1,12 @@
 import {
   classifyEmailError,
+  sendProviderTestEmail,
   runSmtpDiagnostic,
 } from "../utils/emailService.js";
 import { runGmailNetworkDiagnostic } from "../utils/smtpNetworkDiagnostic.js";
 
 const isDebugEndpointEnabled = () =>
+  process.env.EMAIL_DEBUG_ENDPOINT_ENABLED === "true" ||
   process.env.SMTP_DEBUG_ENDPOINT_ENABLED === "true";
 
 export const testSmtpDelivery = async (req, res) => {
@@ -74,6 +76,27 @@ export const testSmtpNetwork = async (req, res) => {
         message: error?.message,
         code: error?.code,
       },
+    });
+  }
+};
+
+export const testActiveEmailProvider = async (req, res) => {
+  if (!isDebugEndpointEnabled()) {
+    return res.status(404).json({ message: "Not found" });
+  }
+
+  try {
+    const diagnostic = await sendProviderTestEmail();
+    return res.status(200).json({
+      success: true,
+      message: "Active email provider accepted the test message.",
+      diagnostic,
+    });
+  } catch (error) {
+    return res.status(502).json({
+      success: false,
+      message: "Active email provider test failed.",
+      diagnostic: classifyEmailError(error),
     });
   }
 };

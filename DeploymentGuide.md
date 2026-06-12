@@ -9,8 +9,8 @@ is present.
 
 - Node.js and npm compatible with React 19/Vite 6 and Express 4.
 - Reachable MySQL database with TLS support.
-- Gmail account with 2-Step Verification and an App Password if application
-  email is used. Resend remains available as an optional provider.
+- SendGrid account, API key, and verified sender identity for production email.
+  Gmail SMTP and Resend remain optional providers.
 - Two deployable services: static frontend and stateful Node backend.
 
 Evidence: both `package.json` files and backend `src/config/dbconfig.js`.
@@ -32,13 +32,10 @@ PORT=5000
 MYSQL_DB_PASSWORD=
 MYSQL_DB_PORT=3306
 JWT_SECRET=
-EMAIL_PROVIDER=smtp
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=
-SMTP_PASS=
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=
 EMAIL_FROM=
+EMAIL_TEST_RECIPIENT=
 CLIENT_URL=
 EMAIL_VERIFICATION_REQUIRED=true
 ```
@@ -52,8 +49,33 @@ Treat it as mandatory.
 
 ### Production Email Delivery
 
-Gmail SMTP is the primary provider. Configure these variables on the Render
-backend service:
+SendGrid is the recommended production provider because it delivers through
+an HTTPS API and does not depend on Render outbound SMTP connectivity.
+Configure these variables on the Render backend service:
+
+```dotenv
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=SG...
+EMAIL_FROM=verified-sender@example.com
+EMAIL_TEST_RECIPIENT=operator@example.com
+CLIENT_URL=https://your-frontend.vercel.app
+EMAIL_VERIFICATION_REQUIRED=true
+EMAIL_DEBUG_ENDPOINT_ENABLED=false
+```
+
+`EMAIL_FROM` must exactly match a SendGrid-verified sender identity. For an
+initial deployment, SendGrid Single Sender Verification is sufficient. Domain
+Authentication is recommended for production deliverability, branding, and
+alignment of SPF/DKIM records.
+
+Create a restricted SendGrid API key with Mail Send permission. Store it only
+in Render environment variables. The startup log reports the provider and
+whether the API key and sender are configured, but never logs their values.
+
+All registration verification, verification resend, password reset, team-owner
+invitation, and future notification messages use the same provider abstraction.
+
+Gmail SMTP remains available as an optional provider:
 
 ```dotenv
 EMAIL_PROVIDER=smtp
@@ -64,21 +86,7 @@ SMTP_USER=complete-gmail-address@gmail.com
 SMTP_PASS=16-character-google-app-password
 SMTP_TIMEOUT_MS=15000
 EMAIL_FROM=complete-gmail-address@gmail.com
-CLIENT_URL=https://your-frontend.vercel.app
-EMAIL_VERIFICATION_REQUIRED=true
-SMTP_DEBUG_ENDPOINT_ENABLED=false
 ```
-
-Port `587` uses STARTTLS, so `SMTP_SECURE` must be `false`. The transporter
-sets `requireTLS: true`, requires TLS 1.2 or newer, and validates Gmail's
-certificate. Do not disable certificate verification.
-
-The Gmail account must have Google 2-Step Verification enabled. Generate an
-App Password and place its 16 characters in `SMTP_PASS`. Do not use the normal
-Google account password. If Google account security settings or the primary
-password change, generate a new App Password. `EMAIL_FROM` should be the same
-Gmail address as `SMTP_USER` unless the Gmail account is configured and
-authorized to send from an alias.
 
 Resend remains available as an optional provider:
 
@@ -91,6 +99,28 @@ RESEND_TIMEOUT_MS=10000
 
 Resend requires a verified sending domain. Selecting `EMAIL_PROVIDER=resend`
 does not alter verification links or authentication flows.
+
+### Email Provider Diagnostics
+
+To send a test message through the active provider:
+
+```text
+GET /api/debug/email-test
+Authorization: Bearer <admin-access-token>
+```
+
+Set `EMAIL_DEBUG_ENDPOINT_ENABLED=true` and redeploy before calling it. The
+recipient is selected from `EMAIL_TEST_RECIPIENT`, then `SMTP_USER`, then
+`EMAIL_FROM`. The request cannot supply a recipient. Disable the endpoint and
+redeploy after testing.
+
+SendGrid failures are logged with provider-specific categories:
+
+- `sendgrid_configuration_missing`: API key or sender is absent.
+- `sendgrid_authentication_failed`: SendGrid returned HTTP `401` or `403`.
+- `sendgrid_rate_limited`: SendGrid returned HTTP `429`.
+- `sendgrid_rejected`: SendGrid rejected the request for another API or sender
+  validation reason.
 
 ### SMTP Diagnostics
 
@@ -114,13 +144,13 @@ Authorization: Bearer <admin-access-token>
 
 It is protected by authentication and admin-role middleware. To use it:
 
-1. Set `SMTP_DEBUG_ENDPOINT_ENABLED=true` on Render and redeploy.
+1. Set `EMAIL_DEBUG_ENDPOINT_ENABLED=true` on Render and redeploy.
 2. Call the endpoint with an admin JWT.
 3. Review the returned DNS, verify, and send stages. DNS diagnostics include
    the hostname, resolved IPv4 addresses, resolved IPv6 addresses, chosen
    address, and `chosenAddressFamily: IPv4`.
 4. Confirm the diagnostic message arrives at `SMTP_USER`.
-5. Set `SMTP_DEBUG_ENDPOINT_ENABLED=false` and redeploy.
+5. Set `EMAIL_DEBUG_ENDPOINT_ENABLED=false` and redeploy.
 
 The endpoint returns `404` while disabled. It sends only to `SMTP_USER` and
 cannot accept a recipient from the request.
@@ -132,7 +162,7 @@ GET /api/debug/network-test
 Authorization: Bearer <admin-access-token>
 ```
 
-This endpoint uses the same `SMTP_DEBUG_ENDPOINT_ENABLED=true` gate and never
+This endpoint uses the same `EMAIL_DEBUG_ENDPOINT_ENABLED=true` gate and never
 authenticates or sends email. It resolves Gmail IPv4 and IPv6 records, selects
 IPv4, tests raw TCP connectivity to ports `587` and `465` in parallel, and
 performs a TLS handshake over the connected port `465` socket. Configure the
@@ -207,21 +237,22 @@ Error categories:
 
 Local:
 
-1. Set the SMTP variables in the backend `.env`.
-2. Start the backend and confirm `SMTP transporter verification succeeded`.
-3. Temporarily set `SMTP_DEBUG_ENDPOINT_ENABLED=true`.
-4. Sign in as an admin and call `GET /api/debug/smtp-test`.
-5. Confirm the response reports successful DNS, verify, and send stages.
+1. Set `EMAIL_PROVIDER=sendgrid`, `SENDGRID_API_KEY`, and `EMAIL_FROM`.
+2. Start the backend and confirm `SendGrid configuration is ready`.
+3. Temporarily set `EMAIL_DEBUG_ENDPOINT_ENABLED=true`.
+4. Sign in as an admin and call `GET /api/debug/email-test`.
+5. Confirm SendGrid accepts the message and it arrives at the configured test
+   recipient.
 
 Render:
 
 1. Add the same variables on the backend service's Environment page.
 2. Use **Save, rebuild, and deploy** so dependency and environment changes are
    included.
-3. Confirm the startup configuration log shows port `587`, `secure: false`,
-   and all credential booleans as `true`.
-4. Enable the diagnostic endpoint, redeploy, call it with an admin token, and
-   inspect its stage-specific result.
+3. Confirm the startup log reports `provider: sendgrid`, API key configured,
+   and sender configured.
+4. Enable the email diagnostic endpoint, redeploy, and call it with an admin
+   token.
 5. Disable the endpoint and redeploy after testing.
 
 ## Frontend Environment

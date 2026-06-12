@@ -8,10 +8,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const readProjectFile = (relativePath) =>
   readFile(resolve(__dirname, "..", relativePath), "utf8");
 
-test("Gmail SMTP is the default provider and Resend remains optional", async () => {
+test("SendGrid is the default provider and SMTP and Resend remain optional", async () => {
   const service = await readProjectFile("src/utils/emailService.js");
 
-  assert.match(service, /process\.env\.EMAIL_PROVIDER \|\| "smtp"/);
+  assert.match(service, /process\.env\.EMAIL_PROVIDER \|\| "sendgrid"/);
+  assert.match(service, /sendWithSendGrid/);
+  assert.match(service, /sendGridMail\.send\(message\)/);
+  assert.match(service, /sendgrid_authentication_failed/);
+  assert.match(service, /sendgrid_rate_limited/);
+  assert.match(service, /sendgrid_rejected/);
   assert.match(service, /process\.env\.SMTP_PORT \|\| 587/);
   assert.match(service, /requireTLS: !SMTP_SECURE/);
   assert.match(service, /https:\/\/api\.resend\.com\/emails/);
@@ -31,6 +36,10 @@ test("SMTP diagnostics log configuration without credential values", async () =>
 test("all authentication emails use the shared provider delivery path", async () => {
   const service = await readProjectFile("src/utils/emailService.js");
 
+  assert.match(service, /export const sendApplicationEmail/);
+  assert.match(service, /EMAIL_PROVIDER === "sendgrid"/);
+  assert.match(service, /EMAIL_PROVIDER === "smtp"/);
+  assert.match(service, /EMAIL_PROVIDER === "resend"/);
   assert.match(service, /"verification"\s*\)/);
   assert.match(service, /"password_reset"\s*\)/);
   assert.match(service, /"team_owner_credentials"\s*\)/);
@@ -78,4 +87,17 @@ test("admin network diagnostics test Gmail TCP ports without sending mail", asyn
   assert.doesNotMatch(diagnostic, /sendMail/);
   assert.match(controller, /runGmailNetworkDiagnostic/);
   assert.match(routes, /router\.get\("\/network-test", testSmtpNetwork\)/);
+});
+
+test("active provider email test is admin protected", async () => {
+  const controller = await readProjectFile("src/controllers/debug.controller.js");
+  const routes = await readProjectFile("src/routes/debugRoutes.js");
+
+  assert.match(controller, /sendProviderTestEmail/);
+  assert.match(controller, /EMAIL_DEBUG_ENDPOINT_ENABLED/);
+  assert.match(routes, /router\.use\(authMiddleware, adminMiddleware\)/);
+  assert.match(
+    routes,
+    /router\.get\("\/email-test", testActiveEmailProvider\)/
+  );
 });
