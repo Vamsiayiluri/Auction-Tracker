@@ -99,6 +99,12 @@ indicating whether the username, password, and sender are configured. It never
 logs credential values. When SMTP is selected, startup calls
 `transporter.verify()`. Failure is logged but does not stop the web service.
 
+SMTP DNS is IPv4-only for the actual connection. The process sets Node's DNS
+result order to `ipv4first`, resolves Gmail A and AAAA records separately, and
+passes a selected IPv4 literal to Nodemailer. TLS SNI and certificate
+validation still use `smtp.gmail.com`. This prevents Nodemailer from selecting
+an unreachable Gmail IPv6 address while preserving secure hostname validation.
+
 The temporary diagnostic endpoint is:
 
 ```text
@@ -110,7 +116,9 @@ It is protected by authentication and admin-role middleware. To use it:
 
 1. Set `SMTP_DEBUG_ENDPOINT_ENABLED=true` on Render and redeploy.
 2. Call the endpoint with an admin JWT.
-3. Review the returned DNS, verify, and send stages.
+3. Review the returned DNS, verify, and send stages. DNS diagnostics include
+   the hostname, resolved IPv4 addresses, resolved IPv6 addresses, chosen
+   address, and `chosenAddressFamily: IPv4`.
 4. Confirm the diagnostic message arrives at `SMTP_USER`.
 5. Set `SMTP_DEBUG_ENDPOINT_ENABLED=false` and redeploy.
 
@@ -124,6 +132,11 @@ Error categories:
   was never reached.
 - `connection_refused`: `ECONNREFUSED`; the destination actively refused the
   TCP connection.
+- `network_unreachable`: `ENETUNREACH`; the selected network route is not
+  available. The IPv4-only strategy prevents Gmail AAAA records from being
+  selected for SMTP.
+- `ipv4_resolution_failed`: no Gmail A record was available, so SMTP was not
+  attempted.
 - `dns_failure`: SMTP hostname resolution failed.
 - `tls_failure`: TLS negotiation or certificate validation failed.
 - `gmail_authentication_failed`: Nodemailer `EAUTH`, Gmail `534`/`535`, an

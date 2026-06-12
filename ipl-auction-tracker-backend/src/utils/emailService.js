@@ -1,8 +1,11 @@
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
-import { lookup } from "node:dns/promises";
+import { setDefaultResultOrder } from "node:dns";
+import { resolve4, resolve6 } from "node:dns/promises";
+import { isIPv4 } from "node:net";
 
 dotenv.config();
+setDefaultResultOrder("ipv4first");
 
 const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
@@ -17,6 +20,7 @@ const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 15000);
 const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 10000);
 
 let smtpTransporter;
+let smtpAddressSelection;
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -35,14 +39,53 @@ const getEmailFrom = () => {
 };
 
 const getSmtpConfiguration = () => ({
-  host: SMTP_HOST,
+  hostname: SMTP_HOST,
   port: SMTP_PORT,
   secure: SMTP_SECURE,
   requireTls: !SMTP_SECURE,
+  dnsResultOrder: "ipv4first",
+  chosenAddressFamily: "IPv4",
+  chosenAddress: smtpAddressSelection?.chosenAddress,
   userConfigured: Boolean(SMTP_USER),
   passwordConfigured: Boolean(SMTP_PASS),
   fromConfigured: Boolean(process.env.EMAIL_FROM),
 });
+
+const resolveSmtpAddresses = async () => {
+  const [ipv4Result, ipv6Result] = await Promise.allSettled([
+    isIPv4(SMTP_HOST) ? Promise.resolve([SMTP_HOST]) : resolve4(SMTP_HOST),
+    isIPv4(SMTP_HOST) ? Promise.resolve([]) : resolve6(SMTP_HOST),
+  ]);
+  const ipv4Addresses =
+    ipv4Result.status === "fulfilled" ? ipv4Result.value : [];
+  const ipv6Addresses =
+    ipv6Result.status === "fulfilled" ? ipv6Result.value : [];
+
+  if (!ipv4Addresses.length) {
+    const error =
+      ipv4Result.status === "rejected"
+        ? ipv4Result.reason
+        : new Error(`No IPv4 addresses resolved for ${SMTP_HOST}`);
+    error.code ||= "SMTP_IPV4_UNAVAILABLE";
+    throw Object.assign(error, {
+      smtpDns: {
+        hostname: SMTP_HOST,
+        ipv4Addresses,
+        ipv6Addresses,
+        chosenAddressFamily: "IPv4",
+        chosenAddress: null,
+      },
+    });
+  }
+
+  return {
+    hostname: SMTP_HOST,
+    ipv4Addresses,
+    ipv6Addresses,
+    chosenAddressFamily: "IPv4",
+    chosenAddress: ipv4Addresses[0],
+  };
+};
 
 export const classifyEmailError = (error) => {
   const code = error?.code;
@@ -54,6 +97,10 @@ export const classifyEmailError = (error) => {
   let category = "unknown";
   if (code === "SMTP_CONFIGURATION_MISSING") {
     category = "configuration_missing";
+  } else if (code === "SMTP_IPV4_UNAVAILABLE") {
+    category = "ipv4_resolution_failed";
+  } else if (code === "ENETUNREACH") {
+    category = "network_unreachable";
   } else if (code === "ETIMEDOUT" || combinedMessage.includes("timeout")) {
     category = "connection_timeout";
   } else if (code === "ECONNREFUSED") {
@@ -109,11 +156,14 @@ const logEmailError = (event, error, details = {}) => {
   return diagnostic;
 };
 
-const getSmtpTransporter = () => {
+const getSmtpTransporter = async (addressSelection) => {
   if (smtpTransporter) return smtpTransporter;
 
+  smtpAddressSelection = addressSelection || (await resolveSmtpAddresses());
   smtpTransporter = nodemailer.createTransport({
-    host: SMTP_HOST,
+    // Passing an IPv4 literal prevents Nodemailer from selecting an AAAA record.
+    host: smtpAddressSelection.chosenAddress,
+    servername: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
     requireTLS: !SMTP_SECURE,
@@ -127,6 +177,7 @@ const getSmtpTransporter = () => {
     tls: {
       minVersion: "TLSv1.2",
       rejectUnauthorized: true,
+      // Preserve Gmail hostname validation while connecting to an IPv4 literal.
       servername: SMTP_HOST,
     },
   });
@@ -178,7 +229,7 @@ const sendEmail = async (message, emailType) => {
     if (EMAIL_PROVIDER === "resend") {
       info = await sendWithResend(message);
     } else if (EMAIL_PROVIDER === "smtp") {
-      const transporter = getSmtpTransporter();
+      const transporter = await getSmtpTransporter();
       info = await transporter.sendMail(message);
     } else {
       throw new Error(`Unsupported EMAIL_PROVIDER: ${EMAIL_PROVIDER}`);
@@ -239,7 +290,10 @@ export const verifyEmailTransport = async () => {
   }
 
   try {
-    const transporter = getSmtpTransporter();
+    const addressSelection = await resolveSmtpAddresses();
+    smtpAddressSelection = addressSelection;
+    console.info("[email] SMTP address selection", addressSelection);
+    const transporter = await getSmtpTransporter(addressSelection);
     await transporter.verify();
     console.info("[email] SMTP transporter verification succeeded", {
       provider: EMAIL_PROVIDER,
@@ -257,7 +311,6 @@ export const verifyEmailTransport = async () => {
 export const runSmtpDiagnostic = async () => {
   const startedAt = new Date();
   const smtp = getSmtpConfiguration();
-  const transporter = getSmtpTransporter();
   const result = {
     provider: EMAIL_PROVIDER,
     smtp,
@@ -285,22 +338,30 @@ export const runSmtpDiagnostic = async () => {
 
   const dnsStartedAt = Date.now();
   try {
-    const addresses = await lookup(SMTP_HOST, { all: true });
+    const addressSelection = await resolveSmtpAddresses();
+    smtpAddressSelection = addressSelection;
     result.dns = {
       success: true,
       durationMs: Date.now() - dnsStartedAt,
-      addresses: addresses.map(({ address, family }) => ({ address, family })),
+      ...addressSelection,
     };
+    result.smtp = getSmtpConfiguration();
   } catch (error) {
     result.dns = {
       success: false,
       durationMs: Date.now() - dnsStartedAt,
+      hostname: SMTP_HOST,
+      ipv4Addresses: error.smtpDns?.ipv4Addresses || [],
+      ipv6Addresses: error.smtpDns?.ipv6Addresses || [],
+      chosenAddressFamily: "IPv4",
+      chosenAddress: null,
       ...classifyEmailError(error),
     };
     logEmailError("smtp_debug_dns_failed", error, { smtp });
     throw Object.assign(error, { diagnostic: result });
   }
 
+  const transporter = await getSmtpTransporter(smtpAddressSelection);
   const verifyStartedAt = Date.now();
   try {
     await transporter.verify();

@@ -20,7 +20,7 @@ test("Gmail SMTP is the default provider and Resend remains optional", async () 
 test("SMTP diagnostics log configuration without credential values", async () => {
   const service = await readProjectFile("src/utils/emailService.js");
 
-  assert.match(service, /host: SMTP_HOST/);
+  assert.match(service, /hostname: SMTP_HOST/);
   assert.match(service, /port: SMTP_PORT/);
   assert.match(service, /userConfigured: Boolean\(SMTP_USER\)/);
   assert.match(service, /passwordConfigured: Boolean\(SMTP_PASS\)/);
@@ -45,7 +45,11 @@ test("SMTP failures are classified and the test route is admin protected", async
   assert.match(service, /connection_refused/);
   assert.match(service, /gmail_authentication_failed/);
   assert.match(service, /tls_failure/);
-  assert.match(service, /await lookup\(SMTP_HOST, \{ all: true \}\)/);
+  assert.match(service, /setDefaultResultOrder\("ipv4first"\)/);
+  assert.match(service, /resolve4\(SMTP_HOST\)/);
+  assert.match(service, /resolve6\(SMTP_HOST\)/);
+  assert.match(service, /host: smtpAddressSelection\.chosenAddress/);
+  assert.match(service, /servername: SMTP_HOST/);
   assert.match(routes, /router\.use\(authMiddleware, adminMiddleware\)/);
   assert.match(routes, /router\.get\("\/smtp-test", testSmtpDelivery\)/);
   assert.match(index, /app\.use\("\/api\/debug", DebugRoutes\)/);
