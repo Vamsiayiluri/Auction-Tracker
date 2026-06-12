@@ -33,6 +33,7 @@ import {
 import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
 import { validateSocketPayload } from "./middleware/validate.middleware.js";
 import { placeBidSocketSchema } from "./validation/socket.validation.js";
+import { verifyEmailTransport } from "./utils/emailService.js";
 
 dotenv.config();
 
@@ -353,6 +354,7 @@ export { io };
 const startServer = async () => {
   try {
     await connectDB();
+    await verifyEmailTransport();
     await restoreAuctionTimers();
     await restoreFestivalAuctionTimers();
     server.listen(PORT, () => {

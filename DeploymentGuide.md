@@ -9,7 +9,7 @@ is present.
 
 - Node.js and npm compatible with React 19/Vite 6 and Express 4.
 - Reachable MySQL database with TLS support.
-- SendGrid account if verification email is used.
+- Resend account and verified sending domain if application email is used.
 - Two deployable services: static frontend and stateful Node backend.
 
 Evidence: both `package.json` files and backend `src/config/dbconfig.js`.
@@ -31,7 +31,8 @@ PORT=5000
 MYSQL_DB_PASSWORD=
 MYSQL_DB_PORT=3306
 JWT_SECRET=
-SENDGRID_API_KEY=
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=
 EMAIL_FROM=
 CLIENT_URL=
 EMAIL_VERIFICATION_REQUIRED=true
@@ -43,6 +44,45 @@ Evidence: `ipl-auction-tracker-backend/src/config/dbconfig.js`,
 
 `JWT_SECRET` is used but not included in startup required-variable validation.
 Treat it as mandatory.
+
+### Production Email Delivery
+
+Use Resend from Render so delivery uses HTTPS instead of an outbound SMTP
+connection:
+
+```dotenv
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+EMAIL_FROM="AuctionArena <verify@your-verified-domain.example>"
+CLIENT_URL=https://your-frontend.vercel.app
+EMAIL_VERIFICATION_REQUIRED=true
+```
+
+The sender domain in `EMAIL_FROM` must be verified in Resend. Add the DNS
+records Resend provides before testing registration, resend verification,
+password reset, or team-owner credential delivery.
+
+Gmail SMTP remains an explicit diagnostic/local fallback:
+
+```dotenv
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=complete-gmail-address@example.com
+SMTP_PASS=16-character-google-app-password
+SMTP_TIMEOUT_MS=10000
+EMAIL_FROM=complete-gmail-address@example.com
+```
+
+For Gmail port `465`, use `SMTP_SECURE=true` because TLS starts immediately.
+For port `587`, use `SMTP_SECURE=false`; Nodemailer upgrades the connection
+with STARTTLS. Do not set `tls.rejectUnauthorized=false`. Gmail password
+authentication requires Google 2-Step Verification and an App Password.
+
+SMTP mode dynamically loads Nodemailer because it is not part of the
+production Resend path. Install and declare `nodemailer` before selecting
+`EMAIL_PROVIDER=smtp` in a clean deployment.
 
 ## Frontend Environment
 
@@ -134,7 +174,9 @@ Evidence: `scripts/migrate.js`, `src/database/migrator.js`, `migrations/`,
 ## Health and Operations
 
 `GET /health` confirms only that Express is responding. It does not verify
-MySQL, SendGrid, or Socket.IO.
+MySQL, Resend, or Socket.IO. Backend startup logs validate that the email
+provider credentials are present. SMTP mode additionally runs
+`transporter.verify()` and logs connection metadata without logging secrets.
 
 Required production additions:
 
