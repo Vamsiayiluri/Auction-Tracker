@@ -4,9 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
@@ -52,7 +50,19 @@ export const sendVerificationEmail = async (email, name, token) => {
     `,
   };
 
-  await transporter.sendMail(msg);
+  try {
+    const info = await transporter.sendMail(msg);
+
+    console.log("Email sent");
+    console.log("Message ID:", info.messageId);
+    console.log("Response:", info.response);
+
+    return info;
+  } catch (error) {
+    console.error("EMAIL SEND ERROR");
+    console.error(error);
+    throw error;
+  }
 };
 
 export const sendPasswordResetEmail = async (email, name, token) => {
