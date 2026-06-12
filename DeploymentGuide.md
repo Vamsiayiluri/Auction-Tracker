@@ -125,6 +125,46 @@ It is protected by authentication and admin-role middleware. To use it:
 The endpoint returns `404` while disabled. It sends only to `SMTP_USER` and
 cannot accept a recipient from the request.
 
+For network-only diagnostics, use:
+
+```text
+GET /api/debug/network-test
+Authorization: Bearer <admin-access-token>
+```
+
+This endpoint uses the same `SMTP_DEBUG_ENDPOINT_ENABLED=true` gate and never
+authenticates or sends email. It resolves Gmail IPv4 and IPv6 records, selects
+IPv4, tests raw TCP connectivity to ports `587` and `465` in parallel, and
+performs a TLS handshake over the connected port `465` socket. Configure the
+per-stage timeout with:
+
+```dotenv
+SMTP_NETWORK_TIMEOUT_MS=15000
+```
+
+The response includes:
+
+```json
+{
+  "dnsSuccess": true,
+  "tcp587Success": false,
+  "tcp465Success": false,
+  "tlsSuccess": false,
+  "timings": {
+    "dnsMs": 12,
+    "tcp587Ms": 15001,
+    "tcp465Ms": 15002,
+    "tlsMs": null
+  }
+}
+```
+
+If DNS succeeds but both TCP tests time out, the failure is outbound SMTP
+connectivity between Render and Gmail. Gmail credentials are not involved. If
+port `465` connects but `tlsSuccess` is false, inspect the returned TLS error
+and certificate details. TLS timing is measured on port `465`; port `587` is a
+raw TCP reachability test and does not issue `EHLO` or `STARTTLS`.
+
 Error categories:
 
 - `connection_timeout`: `ETIMEDOUT`; Render could not complete the network

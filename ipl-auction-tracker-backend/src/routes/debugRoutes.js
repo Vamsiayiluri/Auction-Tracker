@@ -1,5 +1,8 @@
 import express from "express";
-import { testSmtpDelivery } from "../controllers/debug.controller.js";
+import {
+  testSmtpDelivery,
+  testSmtpNetwork,
+} from "../controllers/debug.controller.js";
 import {
   adminMiddleware,
   authMiddleware,
@@ -9,5 +12,6 @@ const router = express.Router();
 
 router.use(authMiddleware, adminMiddleware);
 router.get("/smtp-test", testSmtpDelivery);
+router.get("/network-test", testSmtpNetwork);
 
 export default router;

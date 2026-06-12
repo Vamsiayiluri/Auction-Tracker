@@ -62,3 +62,20 @@ test("Nodemailer is declared in package and lock metadata", async () => {
   assert.match(packageJson, /"nodemailer": "\^8\.0\.11"/);
   assert.match(packageLock, /"node_modules\/nodemailer"/);
 });
+
+test("admin network diagnostics test Gmail TCP ports without sending mail", async () => {
+  const diagnostic = await readProjectFile("src/utils/smtpNetworkDiagnostic.js");
+  const controller = await readProjectFile("src/controllers/debug.controller.js");
+  const routes = await readProjectFile("src/routes/debugRoutes.js");
+
+  assert.match(diagnostic, /port: 587/);
+  assert.match(diagnostic, /port: 465/);
+  assert.match(diagnostic, /tls\.connect/);
+  assert.match(diagnostic, /dnsSuccess/);
+  assert.match(diagnostic, /tcp587Success/);
+  assert.match(diagnostic, /tcp465Success/);
+  assert.match(diagnostic, /tlsSuccess/);
+  assert.doesNotMatch(diagnostic, /sendMail/);
+  assert.match(controller, /runGmailNetworkDiagnostic/);
+  assert.match(routes, /router\.get\("\/network-test", testSmtpNetwork\)/);
+});
