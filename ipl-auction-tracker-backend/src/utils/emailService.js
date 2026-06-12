@@ -1,20 +1,19 @@
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
+import { lookup } from "node:dns/promises";
 
 dotenv.config();
 
-const EMAIL_PROVIDER = (
-  process.env.EMAIL_PROVIDER ||
-  (process.env.RESEND_API_KEY ? "resend" : "smtp")
-).toLowerCase();
+const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE =
   process.env.SMTP_SECURE === undefined
-    ? SMTP_PORT === 465
+    ? false
     : process.env.SMTP_SECURE === "true";
-const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER;
-const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
-const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 10000);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 15000);
 const RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS || 10000);
 
 let smtpTransporter;
@@ -35,37 +34,89 @@ const getEmailFrom = () => {
   return emailFrom;
 };
 
-const toEmailErrorDetails = (error) => ({
-  name: error?.name,
-  message: error?.message,
-  code: error?.code,
-  command: error?.command,
-  syscall: error?.syscall,
-  hostname: error?.hostname,
-  address: error?.address,
-  port: error?.port,
-  responseCode: error?.responseCode,
-  response: error?.response,
-  provider: EMAIL_PROVIDER,
+const getSmtpConfiguration = () => ({
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
+  requireTls: !SMTP_SECURE,
+  userConfigured: Boolean(SMTP_USER),
+  passwordConfigured: Boolean(SMTP_PASS),
+  fromConfigured: Boolean(process.env.EMAIL_FROM),
 });
 
-const getSmtpTransporter = async () => {
-  if (smtpTransporter) return smtpTransporter;
+export const classifyEmailError = (error) => {
+  const code = error?.code;
+  const responseCode = error?.responseCode;
+  const message = String(error?.message || "");
+  const response = String(error?.response || "");
+  const combinedMessage = `${message} ${response}`.toLowerCase();
 
-  let nodemailer;
-  try {
-    ({ default: nodemailer } = await import("nodemailer"));
-  } catch (error) {
-    throw new Error(
-      "EMAIL_PROVIDER=smtp requires the nodemailer package. Use EMAIL_PROVIDER=resend in production or install nodemailer for SMTP diagnostics.",
-      { cause: error }
-    );
+  let category = "unknown";
+  if (code === "SMTP_CONFIGURATION_MISSING") {
+    category = "configuration_missing";
+  } else if (code === "ETIMEDOUT" || combinedMessage.includes("timeout")) {
+    category = "connection_timeout";
+  } else if (code === "ECONNREFUSED") {
+    category = "connection_refused";
+  } else if (code === "EDNS" || code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    category = "dns_failure";
+  } else if (
+    code === "EAUTH" ||
+    responseCode === 534 ||
+    responseCode === 535 ||
+    combinedMessage.includes("invalid login") ||
+    combinedMessage.includes("username and password not accepted") ||
+    combinedMessage.includes("application-specific password required")
+  ) {
+    category = "gmail_authentication_failed";
+  } else if (
+    code?.startsWith?.("ERR_TLS") ||
+    code?.startsWith?.("CERT_") ||
+    code === "EPROTO" ||
+    combinedMessage.includes("tls") ||
+    combinedMessage.includes("ssl") ||
+    combinedMessage.includes("certificate")
+  ) {
+    category = "tls_failure";
+  } else if (code === "ECONNECTION" || code === "ESOCKET") {
+    category = "smtp_connection_failed";
+  } else if (responseCode >= 400) {
+    category = "smtp_rejected";
   }
+
+  return {
+    category,
+    name: error?.name,
+    message,
+    code,
+    command: error?.command,
+    syscall: error?.syscall,
+    hostname: error?.hostname,
+    address: error?.address,
+    port: error?.port,
+    responseCode,
+  };
+};
+
+const logEmailError = (event, error, details = {}) => {
+  const diagnostic = {
+    event,
+    provider: EMAIL_PROVIDER,
+    ...details,
+    ...classifyEmailError(error),
+  };
+  console.error("[email]", diagnostic);
+  return diagnostic;
+};
+
+const getSmtpTransporter = () => {
+  if (smtpTransporter) return smtpTransporter;
 
   smtpTransporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
+    requireTLS: !SMTP_SECURE,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
@@ -127,7 +178,7 @@ const sendEmail = async (message, emailType) => {
     if (EMAIL_PROVIDER === "resend") {
       info = await sendWithResend(message);
     } else if (EMAIL_PROVIDER === "smtp") {
-      const transporter = await getSmtpTransporter();
+      const transporter = getSmtpTransporter();
       info = await transporter.sendMail(message);
     } else {
       throw new Error(`Unsupported EMAIL_PROVIDER: ${EMAIL_PROVIDER}`);
@@ -141,10 +192,7 @@ const sendEmail = async (message, emailType) => {
     });
     return info;
   } catch (error) {
-    console.error("[email] Delivery failed", {
-      emailType,
-      ...toEmailErrorDetails(error),
-    });
+    logEmailError("delivery_failed", error, { emailType });
     throw error;
   }
 };
@@ -152,14 +200,9 @@ const sendEmail = async (message, emailType) => {
 export const verifyEmailTransport = async () => {
   console.info("[email] Delivery configuration", {
     provider: EMAIL_PROVIDER,
-    emailFromConfigured: Boolean(process.env.EMAIL_FROM),
     clientUrlConfigured: Boolean(process.env.CLIENT_URL),
     resendApiKeyConfigured: Boolean(process.env.RESEND_API_KEY),
-    smtpHost: SMTP_HOST,
-    smtpPort: SMTP_PORT,
-    smtpSecure: SMTP_SECURE,
-    smtpUserConfigured: Boolean(SMTP_USER),
-    smtpPasswordConfigured: Boolean(SMTP_PASS),
+    smtp: getSmtpConfiguration(),
   });
 
   if (EMAIL_PROVIDER === "resend") {
@@ -178,23 +221,131 @@ export const verifyEmailTransport = async () => {
     return false;
   }
 
+  if (
+    !SMTP_USER ||
+    !SMTP_PASS ||
+    !process.env.EMAIL_FROM ||
+    !Number.isInteger(SMTP_PORT) ||
+    SMTP_PORT <= 0
+  ) {
+    const error = new Error(
+      "SMTP_USER, SMTP_PASS, EMAIL_FROM, and a valid SMTP_PORT are required"
+    );
+    error.code = "SMTP_CONFIGURATION_MISSING";
+    logEmailError("smtp_startup_configuration_invalid", error, {
+      smtp: getSmtpConfiguration(),
+    });
+    return false;
+  }
+
   try {
-    const transporter = await getSmtpTransporter();
+    const transporter = getSmtpTransporter();
     await transporter.verify();
     console.info("[email] SMTP transporter verification succeeded", {
-      smtpHost: SMTP_HOST,
-      smtpPort: SMTP_PORT,
-      smtpSecure: SMTP_SECURE,
+      provider: EMAIL_PROVIDER,
+      smtp: getSmtpConfiguration(),
     });
     return true;
   } catch (error) {
-    console.error("[email] SMTP transporter verification failed", {
-      smtpHost: SMTP_HOST,
-      smtpPort: SMTP_PORT,
-      smtpSecure: SMTP_SECURE,
-      ...toEmailErrorDetails(error),
+    logEmailError("smtp_startup_verification_failed", error, {
+      smtp: getSmtpConfiguration(),
     });
     return false;
+  }
+};
+
+export const runSmtpDiagnostic = async () => {
+  const startedAt = new Date();
+  const smtp = getSmtpConfiguration();
+  const transporter = getSmtpTransporter();
+  const result = {
+    provider: EMAIL_PROVIDER,
+    smtp,
+    startedAt: startedAt.toISOString(),
+    dns: null,
+    verify: null,
+    send: null,
+  };
+
+  if (!SMTP_USER || !SMTP_PASS || !process.env.EMAIL_FROM) {
+    const error = new Error(
+      "SMTP_USER, SMTP_PASS, and EMAIL_FROM must be configured"
+    );
+    error.code = "SMTP_CONFIGURATION_MISSING";
+    throw Object.assign(error, {
+      diagnostic: {
+        ...result,
+        verify: {
+          success: false,
+          ...classifyEmailError(error),
+        },
+      },
+    });
+  }
+
+  const dnsStartedAt = Date.now();
+  try {
+    const addresses = await lookup(SMTP_HOST, { all: true });
+    result.dns = {
+      success: true,
+      durationMs: Date.now() - dnsStartedAt,
+      addresses: addresses.map(({ address, family }) => ({ address, family })),
+    };
+  } catch (error) {
+    result.dns = {
+      success: false,
+      durationMs: Date.now() - dnsStartedAt,
+      ...classifyEmailError(error),
+    };
+    logEmailError("smtp_debug_dns_failed", error, { smtp });
+    throw Object.assign(error, { diagnostic: result });
+  }
+
+  const verifyStartedAt = Date.now();
+  try {
+    await transporter.verify();
+    result.verify = {
+      success: true,
+      durationMs: Date.now() - verifyStartedAt,
+    };
+  } catch (error) {
+    result.verify = {
+      success: false,
+      durationMs: Date.now() - verifyStartedAt,
+      ...classifyEmailError(error),
+    };
+    logEmailError("smtp_debug_verify_failed", error, { smtp });
+    throw Object.assign(error, { diagnostic: result });
+  }
+
+  const sendStartedAt = Date.now();
+  try {
+    const info = await transporter.sendMail({
+      to: SMTP_USER,
+      from: getEmailFrom(),
+      subject: "AuctionArena SMTP diagnostic",
+      text: `SMTP diagnostic succeeded at ${new Date().toISOString()}.`,
+      html: `<p>SMTP diagnostic succeeded at ${new Date().toISOString()}.</p>`,
+    });
+    result.send = {
+      success: true,
+      durationMs: Date.now() - sendStartedAt,
+      messageId: info.messageId,
+      acceptedCount: info.accepted?.length || 0,
+      rejectedCount: info.rejected?.length || 0,
+      response: info.response,
+    };
+    result.completedAt = new Date().toISOString();
+    console.info("[email] SMTP diagnostic succeeded", result);
+    return result;
+  } catch (error) {
+    result.send = {
+      success: false,
+      durationMs: Date.now() - sendStartedAt,
+      ...classifyEmailError(error),
+    };
+    logEmailError("smtp_debug_send_failed", error, { smtp });
+    throw Object.assign(error, { diagnostic: result });
   }
 };
 

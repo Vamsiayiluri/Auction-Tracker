@@ -13,6 +13,7 @@ import AuctionRoutes from "./routes/auctionRoutes.js";
 import TournamentRoutes from "./routes/tournmentRoutes.js";
 import FestivalRoutes from "./routes/festivalRoutes.js";
 import EmployeeRoutes from "./routes/employeeRoutes.js";
+import DebugRoutes from "./routes/debugRoutes.js";
 import {
   isBiddingOpen,
   resetAuctionTimer,
@@ -63,6 +64,7 @@ app.use("/api/auction", AuctionRoutes);
 app.use("/api/tournament", TournamentRoutes);
 app.use("/api/v2/festivals", FestivalRoutes);
 app.use("/api/v2/employees", EmployeeRoutes);
+app.use("/api/debug", DebugRoutes);
 
 app.get("/", (req, res) => {
   res.send("IPL Auction Backend Running...");
@@ -354,11 +356,11 @@ export { io };
 const startServer = async () => {
   try {
     await connectDB();
-    await verifyEmailTransport();
     await restoreAuctionTimers();
     await restoreFestivalAuctionTimers();
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      void verifyEmailTransport();
     });
   } catch (error) {
     console.error("Backend failed to start:", error.message);
