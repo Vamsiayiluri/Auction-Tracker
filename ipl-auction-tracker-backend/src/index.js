@@ -7,14 +7,18 @@ import sequelizeDb from "./config/dbconfig.js";
 import authRoutes from "./routes/authRoutes.js";
 import TeamRoutes from "./routes/teamRoutes.js";
 import PlayerRoutes from "./routes/playerRoutes.js";
+import SportRoutes from "./routes/sportRoutes.js";
 // import BidRoutes from "./routes/bidRoutes.js";
 import AuctionRoutes from "./routes/auctionRoutes.js";
 import TournamentRoutes from "./routes/tournmentRoutes.js";
+import FestivalRoutes from "./routes/festivalRoutes.js";
+import EmployeeRoutes from "./routes/employeeRoutes.js";
 import {
   isBiddingOpen,
   resetAuctionTimer,
   restoreAuctionTimers,
 } from "./controllers/auction.controller.js";
+import { restoreFestivalAuctionTimers } from "./controllers/festivalLiveAuction.controller.js";
 import { Server } from "socket.io";
 import http from "http";
 import {
@@ -24,6 +28,7 @@ import {
   Team,
   TournamentTeam,
   User,
+  Festival,
 } from "./models/index.js";
 import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
 import { validateSocketPayload } from "./middleware/validate.middleware.js";
@@ -51,9 +56,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", TeamRoutes);
 app.use("/api/players", PlayerRoutes);
+app.use("/api/sports", SportRoutes);
 // app.use("/api/bids", BidRoutes);
 app.use("/api/auction", AuctionRoutes);
 app.use("/api/tournament", TournamentRoutes);
+app.use("/api/v2/festivals", FestivalRoutes);
+app.use("/api/v2/employees", EmployeeRoutes);
 
 app.get("/", (req, res) => {
   res.send("IPL Auction Backend Running...");
@@ -89,6 +97,9 @@ io.use(async (socket, next) => {
     if (!user) {
       return next(new Error("Socket user not found"));
     }
+    if (user.mustChangePassword) {
+      return next(new Error("Password change required"));
+    }
 
     socket.user = {
       id: user.id,
@@ -112,6 +123,22 @@ io.on("connection", (socket) => {
 
   socket.on("leave-tournament", ({ tournamentId }) => {
     if (tournamentId) socket.leave(`tournament:${tournamentId}`);
+  });
+
+  socket.on("join-festival-auction", async ({ festivalId } = {}) => {
+    if (!festivalId) return;
+    try {
+      const festival = await Festival.findByPk(festivalId, {
+        attributes: ["id"],
+      });
+      if (festival) socket.join(`festival-auction:${festival.id}`);
+    } catch (error) {
+      console.error("Failed to join festival auction room:", error.message);
+    }
+  });
+
+  socket.on("leave-festival-auction", ({ festivalId } = {}) => {
+    if (festivalId) socket.leave(`festival-auction:${festivalId}`);
   });
 
   socket.on("place-bid", async (data) => {
@@ -327,6 +354,7 @@ const startServer = async () => {
   try {
     await connectDB();
     await restoreAuctionTimers();
+    await restoreFestivalAuctionTimers();
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });

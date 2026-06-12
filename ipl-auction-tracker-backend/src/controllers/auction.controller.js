@@ -395,6 +395,7 @@ export const startAuction = async (req, res) => {
       id: player.id,
       tournamentId: player.tournamentId,
       name: player.name,
+      sportId: player.sportId,
       role: player.role,
       basePrice: player.basePrice,
       endsAt,

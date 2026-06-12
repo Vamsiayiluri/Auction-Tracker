@@ -28,6 +28,7 @@ const readBackendFile = (relativePath) =>
 const validPlayer = {
   id: "player-1",
   name: "Player One",
+  sportId: "cricket",
   role: "Batsman",
   basePrice: 500000,
 };
@@ -36,16 +37,26 @@ test("auth validation accepts valid payloads and rejects malformed data", () => 
   assert.equal(
     registerSchema.safeParse({
       body: {
-        id: "owner-1",
-        name: "Owner",
-        email: "OWNER@example.com",
+        id: "spectator-1",
+        name: "Spectator",
+        email: "SPECTATOR@example.com",
         password: "password123",
-        role: "team_owner",
-        teamName: "Team One",
-        teamId: "team-1",
+        role: "spectator",
       },
     }).success,
     true
+  );
+  assert.equal(
+    registerSchema.safeParse({
+      body: {
+        id: "owner-1",
+        name: "Owner",
+        email: "owner@example.com",
+        password: "password123",
+        role: "team_owner",
+      },
+    }).success,
+    false
   );
 
   assert.equal(
@@ -84,6 +95,7 @@ test("tournament validation enforces required arrays and status enum", () => {
       body: {
         id: "tournament-1",
         name: "Tournament",
+        sportId: "cricket",
         budget: "20000000",
         teams: ["Team One"],
         players: [validPlayer],
@@ -96,6 +108,7 @@ test("tournament validation enforces required arrays and status enum", () => {
       body: {
         id: "tournament-1",
         name: "Tournament",
+        sportId: "cricket",
         budget: 20000000,
         teams: [],
         players: [validPlayer],
@@ -107,6 +120,13 @@ test("tournament validation enforces required arrays and status enum", () => {
     updateTournamentStatusSchema.safeParse({
       params: { id: "tournament-1" },
       body: { status: "archived" },
+    }).success,
+    true
+  );
+  assert.equal(
+    updateTournamentStatusSchema.safeParse({
+      params: { id: "tournament-1" },
+      body: { status: "deleted" },
     }).success,
     false
   );
@@ -121,9 +141,20 @@ test("player and auction schemas enforce required fields", () => {
   );
   assert.equal(
     createPlayerSchema.safeParse({
-      body: { ...validPlayer, role: "Coach", tournamentId: "tournament-1" },
+      body: { ...validPlayer, role: null, tournamentId: "tournament-1" },
     }).success,
     false
+  );
+  assert.equal(
+    createPlayerSchema.safeParse({
+      body: {
+        ...validPlayer,
+        sportId: "tt",
+        role: null,
+        tournamentId: "tournament-1",
+      },
+    }).success,
+    true
   );
   assert.equal(
     startAuctionSchema.safeParse({

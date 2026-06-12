@@ -27,7 +27,9 @@ const AuthProvider = ({ children }) => {
 
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
-    connectSocket(token);
+    if (!userData.mustChangePassword) {
+      connectSocket(token);
+    }
     setUser(userData);
   };
 
@@ -38,15 +40,24 @@ const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateUser = (userData) => {
+    if (!userData) return;
+    localStorage.setItem("user", JSON.stringify(userData));
+    setUser(userData);
+  };
+
   useEffect(() => {
-    if (user) {
+    if (user && !user.mustChangePassword) {
       connectSocket();
     } else {
       disconnectSocket();
     }
   }, [user]);
 
-  const value = useMemo(() => ({ user, login, logout }), [user]);
+  const value = useMemo(
+    () => ({ user, login, logout, updateUser }),
+    [user]
+  );
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

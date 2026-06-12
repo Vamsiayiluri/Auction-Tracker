@@ -3,6 +3,8 @@ import GavelRoundedIcon from "@mui/icons-material/GavelRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
+import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import { useMemo, useState } from "react";
 import {
   AppBar,
@@ -37,6 +39,9 @@ const pageTitles = {
   "/start-live-auction": "Run Auction",
   "/live-auction": "Live Auction",
   "/spectator-live-auction": "Live Auction",
+  "/festivals": "Sports Festivals",
+  "/festival-auctions": "Festival Auctions",
+  "/employees": "Employee Directory",
 };
 
 const pageDescriptions = {
@@ -44,6 +49,9 @@ const pageDescriptions = {
   "/start-live-auction": "Control player rounds, bids, timers, and outcomes.",
   "/live-auction": "Place bids, monitor squads, and follow auction history.",
   "/spectator-live-auction": "Watch bids, teams, and outcomes as they happen.",
+  "/festivals": "Manage festival sports, participants, and registrations.",
+  "/festival-auctions": "Open a Main Festival Auction as an admin, owner, or spectator.",
+  "/employees": "Manage canonical employee identities and optional login links.",
 };
 
 const navigationByRole = {
@@ -54,6 +62,21 @@ const navigationByRole = {
       icon: <SpaceDashboardOutlinedIcon />,
     },
     { label: "Run Auction", to: "/start-live-auction", icon: <GavelRoundedIcon /> },
+    {
+      label: "Sports Festivals",
+      to: "/festivals",
+      icon: <EmojiEventsOutlinedIcon />,
+    },
+    {
+      label: "Festival Auctions",
+      to: "/festival-auctions",
+      icon: <GavelRoundedIcon />,
+    },
+    {
+      label: "Employees",
+      to: "/employees",
+      icon: <BadgeOutlinedIcon />,
+    },
   ],
   team_owner: [
     {
@@ -62,6 +85,11 @@ const navigationByRole = {
       icon: <SpaceDashboardOutlinedIcon />,
     },
     { label: "Live Auction", to: "/live-auction", icon: <GavelRoundedIcon /> },
+    {
+      label: "Festival Auctions",
+      to: "/festival-auctions",
+      icon: <EmojiEventsOutlinedIcon />,
+    },
   ],
   spectator: [
     {
@@ -74,6 +102,11 @@ const navigationByRole = {
       to: "/spectator-live-auction",
       icon: <VisibilityRoundedIcon />,
     },
+    {
+      label: "Festival Auctions",
+      to: "/festival-auctions",
+      icon: <EmojiEventsOutlinedIcon />,
+    },
   ],
 };
 
@@ -82,9 +115,14 @@ const AppShell = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const pageTitle = pageTitles[location.pathname] || "Dashboard";
+  const festivalPath = location.pathname.startsWith("/festivals/");
+  const pageTitle =
+    pageTitles[location.pathname] || (festivalPath ? "Festival Workspace" : "Dashboard");
   const pageDescription =
-    pageDescriptions[location.pathname] || pageDescriptions["/dashboard"];
+    pageDescriptions[location.pathname] ||
+    (festivalPath
+      ? "Manage festival sports, participants, and registrations."
+      : pageDescriptions["/dashboard"]);
   const displayName = user?.name || "Auction user";
   const navigationItems = useMemo(
     () => navigationByRole[user?.role] ?? navigationByRole.spectator,

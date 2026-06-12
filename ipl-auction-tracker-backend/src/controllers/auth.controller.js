@@ -2,8 +2,14 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import crypto from "crypto";
-import { Op } from "sequelize";
-import { Team, User } from "../models/index.js";
+import { col, fn, Op, where } from "sequelize";
+import sequelize from "../config/dbconfig.js";
+import {
+  Employee,
+  FestivalParticipant,
+  FestivalTeamOwner,
+  User,
+} from "../models/index.js";
 import {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -13,10 +19,52 @@ import {
   createPasswordResetToken,
   hashPasswordResetToken,
 } from "../utils/passwordReset.js";
+import {
+  autoLinkEmployeeForUser,
+  normalizeIdentityEmail,
+} from "../utils/employeeUserLinking.js";
+import { createFestivalAudit } from "../utils/festivalAudit.js";
 
 dotenv.config();
 
 const ACCESS_TOKEN_EXPIRES_IN = "1h";
+
+const auditPasswordResetCompleted = async (userId, transaction) => {
+  const employee = await Employee.findOne({
+    where: { userId },
+    transaction,
+  });
+  if (!employee) return;
+
+  const participants = await FestivalParticipant.findAll({
+    where: { employeeId: employee.id },
+    attributes: ["id"],
+    transaction,
+  });
+  const participantIds = participants.map(({ id }) => id);
+  if (!participantIds.length) return;
+
+  const owners = await FestivalTeamOwner.findAll({
+    where: { festivalParticipantId: participantIds },
+    transaction,
+  });
+  await Promise.all(
+    owners.map((owner) =>
+      createFestivalAudit({
+        festivalId: owner.festivalId,
+        actorUserId: userId,
+        action: "password_reset_completed",
+        entityType: "user",
+        entityId: userId,
+        details: {
+          employeeId: employee.id,
+          festivalTeamOwnerId: owner.id,
+        },
+        transaction,
+      })
+    )
+  );
+};
 
 const parseRequestBody = (body, requiredKey) => {
   let parsed = body;
@@ -34,9 +82,12 @@ const parseRequestBody = (body, requiredKey) => {
 
 export const registerUser = async (req, res) => {
   try {
-    const { id, name, email, password, role, teamName, teamId } = req.body;
+    const { id, name, email, password, role } = req.body;
+    const normalizedEmail = normalizeIdentityEmail(email);
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({
+      where: where(fn("LOWER", col("email")), normalizedEmail),
+    });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
@@ -48,28 +99,33 @@ export const registerUser = async (req, res) => {
     const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
     const tokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // Exactly 24 hours expiry
 
-    const newUser = await User.create({
-      id,
-      name,
-      email,
-      password: hashedPassword,
-      role,
-      isVerified: false,
-      verificationToken: hashedToken,
-      verificationExpires: tokenExpires,
-    });
+    const { newUser, linkOutcome } = await sequelize.transaction(
+      async (transaction) => {
+        const createdUser = await User.create(
+          {
+            id,
+            name,
+            email: normalizedEmail,
+            password: hashedPassword,
+            role,
+            isVerified: false,
+            verificationToken: hashedToken,
+            verificationExpires: tokenExpires,
+          },
+          { transaction }
+        );
 
-    if (role === "team_owner" && teamName) {
-      await Team.create({
-        name: teamName,
-        ownerId: id,
-        id: teamId,
-      });
-    }
+        const linkResult = await autoLinkEmployeeForUser({
+          user: createdUser,
+          transaction,
+        });
+        return { newUser: createdUser, linkOutcome: linkResult.outcome };
+      }
+    );
 
     // Try to send the email, but do NOT delete user/team if email sending fails
     try {
-      await sendVerificationEmail(email, name, rawToken);
+      await sendVerificationEmail(normalizedEmail, name, rawToken);
     } catch (emailError) {
       console.error("Failed to send registration verification email:", emailError);
     }
@@ -78,11 +134,11 @@ export const registerUser = async (req, res) => {
       success: true,
       message: "Registration successful. Please verify your email.",
       user: toSafeUserResponse(newUser),
+      employeeLinkStatus: linkOutcome,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Registration failed", error: error.message });
+    console.error("Registration failed:", error);
+    res.status(500).json({ message: "Registration failed" });
   }
 };
 
@@ -90,7 +146,12 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({
+      where: where(
+        fn("LOWER", col("email")),
+        normalizeIdentityEmail(email)
+      ),
+    });
     if (!user) {
       return res
         .status(400)
@@ -181,7 +242,12 @@ export const resendVerification = async (req, res) => {
       return res.status(400).json({ success: false, message: "Email is required." });
     }
 
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({
+      where: where(
+        fn("LOWER", col("email")),
+        normalizeIdentityEmail(email)
+      ),
+    });
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
@@ -289,7 +355,11 @@ export const resetPassword = async (req, res) => {
     user.password = await bcrypt.hash(password, 10);
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
-    await user.save();
+    user.mustChangePassword = false;
+    await sequelize.transaction(async (transaction) => {
+      await user.save({ transaction });
+      await auditPasswordResetCompleted(user.id, transaction);
+    });
 
     return res.status(200).json({
       success: true,
@@ -300,6 +370,42 @@ export const resetPassword = async (req, res) => {
       success: false,
       message: "Password reset failed.",
       error: error.message,
+    });
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    if (await bcrypt.compare(req.body.password, req.user.password)) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from the temporary password.",
+      });
+    }
+    await sequelize.transaction(async (transaction) => {
+      const user = await User.findByPk(req.user.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      user.password = await bcrypt.hash(req.body.password, 10);
+      user.mustChangePassword = false;
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+      await user.save({ transaction });
+      await auditPasswordResetCompleted(user.id, transaction);
+    });
+
+    const user = await User.findByPk(req.user.id);
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully.",
+      user: toSafeUserResponse(user),
+    });
+  } catch (error) {
+    console.error("Password change failed:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Password change failed.",
     });
   }
 };

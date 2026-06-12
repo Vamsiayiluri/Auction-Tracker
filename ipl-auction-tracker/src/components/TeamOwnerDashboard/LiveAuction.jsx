@@ -340,7 +340,9 @@ const LiveAuction = ({ userRole = "spectator" }) => {
                 {currentPlayer.name}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <Chip label={currentPlayer.role} variant="outlined" />
+                {currentPlayer.role && (
+                  <Chip label={currentPlayer.role} variant="outlined" />
+                )}
                 <Chip
                   label={`Base ${formatCurrency(currentPlayer.basePrice)}`}
                   variant="outlined"

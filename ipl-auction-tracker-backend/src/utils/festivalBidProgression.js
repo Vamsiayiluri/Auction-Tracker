@@ -1,0 +1,21 @@
+export const FESTIVAL_INCREMENT_PERCENTAGES = [20, 25];
+
+export const getFestivalBidProgression = ({
+  basePrice,
+  currentBid = basePrice,
+  incrementPercentage = 20,
+}) => {
+  const numericBasePrice = Number(basePrice);
+  const numericCurrentBid = Number(currentBid);
+  const numericPercentage = Number(incrementPercentage);
+  const incrementAmount =
+    (numericBasePrice * numericPercentage) / 100;
+
+  return {
+    basePrice: numericBasePrice,
+    incrementPercentage: numericPercentage,
+    incrementAmount,
+    currentBid: numericCurrentBid,
+    nextBid: numericCurrentBid + incrementAmount,
+  };
+};

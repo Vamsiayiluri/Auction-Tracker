@@ -94,6 +94,14 @@ const MyTeam = ({ tournamentId }) => {
     });
   }, [players, roleFilter, sortBy, tournamentId]);
 
+  const hasRoles = players.some((player) => Boolean(player.role));
+
+  useEffect(() => {
+    if (!hasRoles && roleFilter !== "all") {
+      setRoleFilter("all");
+    }
+  }, [hasRoles, roleFilter]);
+
   if (loading) {
     return (
       <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
@@ -145,20 +153,22 @@ const MyTeam = ({ tournamentId }) => {
       >
         <Typography variant="h6">Squad ({visiblePlayers.length})</Typography>
         <Stack direction="row" spacing={1.5}>
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Role</InputLabel>
-            <Select
-              value={roleFilter}
-              label="Role"
-              onChange={(event) => setRoleFilter(event.target.value)}
-            >
-              <MenuItem value="all">All roles</MenuItem>
-              <MenuItem value="Batsman">Batsman</MenuItem>
-              <MenuItem value="Bowler">Bowler</MenuItem>
-              <MenuItem value="All-rounder">All-rounder</MenuItem>
-              <MenuItem value="Wicketkeeper">Wicketkeeper</MenuItem>
-            </Select>
-          </FormControl>
+          {hasRoles && (
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Role</InputLabel>
+              <Select
+                value={roleFilter}
+                label="Role"
+                onChange={(event) => setRoleFilter(event.target.value)}
+              >
+                <MenuItem value="all">All roles</MenuItem>
+                <MenuItem value="Batsman">Batsman</MenuItem>
+                <MenuItem value="Bowler">Bowler</MenuItem>
+                <MenuItem value="All-rounder">All-rounder</MenuItem>
+                <MenuItem value="Wicketkeeper">Wicketkeeper</MenuItem>
+              </Select>
+            </FormControl>
+          )}
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel>Sort by</InputLabel>
             <Select
@@ -180,7 +190,7 @@ const MyTeam = ({ tournamentId }) => {
             <TableHead>
               <TableRow>
                 <TableCell>Player</TableCell>
-                <TableCell>Role</TableCell>
+                {hasRoles && <TableCell>Role</TableCell>}
                 <TableCell align="right">Bought For</TableCell>
               </TableRow>
             </TableHead>
@@ -188,7 +198,7 @@ const MyTeam = ({ tournamentId }) => {
               {visiblePlayers.map((player) => (
                 <TableRow key={player.id} hover>
                   <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
-                  <TableCell>{player.role}</TableCell>
+                  {hasRoles && <TableCell>{player.role || "-"}</TableCell>}
                   <TableCell align="right">
                     {formatAmount(player.soldPrice)}
                   </TableCell>

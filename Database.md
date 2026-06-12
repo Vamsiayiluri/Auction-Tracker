@@ -1,7 +1,31 @@
 # Database Analysis
 
+## Phase 3G Festival Operations
+
+Migration `202606100005-festival-operations-stabilization.js` adds persistent
+Available/Sold/Unsold pool state, re-auction counters, numbered auction
+attempts, and `FestivalOperationAudits`.
+The former one-round/result-per-participant restriction is replaced by one
+result per attempt. Prior bids and results remain immutable history.
+
+Migration `202606110002-festival-bid-increment-percentage.js` replaces the
+Festival-only increment profile/custom-rule columns with
+`FestivalAuctionConfigs.incrementPercentage`. Allowed application values are
+20 and 25; the database default is 20. Tournament Auction bid fields and rules
+are unchanged.
+
+## Festival Auction UX Alignment (Phase 3F)
+
+Migration `202606100004-festival-auction-ux-alignment.js` additively updates
+`FestivalAuctions` with `basePrice BIGINT NOT NULL`, nullable `endsAt`, nullable
+`pausedRemainingMs`, and round statuses `live`, `paused`, `pending`, `sold`,
+and `unsold`. Persisted deadlines are authoritative; process-local timers only
+schedule expiry and are restored on startup.
+
 Phase 5 Database status: COMPLETE (2026-06-08)
 F-001 Auction Timer Persistence status: COMPLETE (2026-06-08)
+F-005 Tournament Edit / Archive status: COMPLETE (2026-06-08)
+F-006 Multi-Sport Foundation status: COMPLETE (2026-06-08)
 
 The backend uses Sequelize with MySQL and versioned ESM migrations.
 `sequelize.sync()` and startup schema/backfill mutation were removed. Migrations
@@ -41,19 +65,35 @@ Relationships: belongs to `User`; referenced by `Players`, `Bids`, and
 Indexes: PK; unique name; `Teams(ownerId)`.
 Evidence: `src/models/team.model.js`.
 
+## Sports
+
+Purpose: active sport catalog for one-sport-per-tournament auctions.
+
+Columns: `id` string PK; `code` required unique string; `name` required string;
+`isActive` boolean default true; timestamps.
+
+Seeded active rows: `cricket`, `tt`, `volleyball`, `badminton`, `chess`,
+`carrom`, and `other`.
+
+Relationships: referenced by `Tournaments.sportId` and `Players.sportId`.
+Indexes: PK and unique `Sports(code)`.
+Evidence: `src/models/sport.model.js`, `src/utils/sports.js`, and
+`migrations/202606080005-multi-sport-foundation.js`.
+
 ## Tournaments
 
 Purpose: tournament identity, budget, status, and creator identifier.
 
 Columns: `id` string PK; `name` required; `budget` integer required; `status`
-string default `upcoming`; `createdBy` required string; timestamps.
-Supported status values are `upcoming`, `live`, and `completed`; `archived` is
-not currently in the schema. Application transition rules allow only
-`upcoming` -> `live` -> `completed`, with `completed` as a terminal state.
+string default `upcoming`; `createdBy` required string; `sportId` required
+string default `cricket`; timestamps.
+Supported status values are `upcoming`, `live`, `completed`, and `archived`.
+Application transition rules allow only `upcoming` -> `live` -> `completed` ->
+`archived`, with `archived` as a terminal state.
 
-Relationships: has many players, auctions, bids, tournament teams, and teams.
-`createdBy` belongs to `Users`.
-Indexes: PK; `Tournaments(createdBy)`.
+Relationships: belongs to sport; has many players, auctions, bids, tournament
+teams, and teams. `createdBy` belongs to `Users`.
+Indexes: PK; `Tournaments(createdBy)`; `Tournaments(sportId)`.
 Evidence: `src/models/tournment.model.js` and related models.
 
 ## TournamentTeams
@@ -74,14 +114,20 @@ Evidence: `src/models/tournamentTeam.model.js`.
 Purpose: tournament player pool and final sale state.
 
 Columns: `id` string UUID/default PK; `name` required; `basePrice` float;
-`soldPrice` float nullable; `role` default `batsman`; `isSold` boolean;
+`soldPrice` float nullable; `role` nullable string; `isSold` boolean;
 `isInAuction` boolean; `teamId` nullable; `tournamentId` nullable;
-`auctionId` nullable/default empty string; timestamps.
+`sportId` required string default `cricket`; `auctionId` nullable/default empty
+string; timestamps.
 
-Relationships: belongs to team and tournament; referenced by auctions and bids.
+Relationships: belongs to team, tournament, and sport; referenced by auctions
+and bids.
 Indexes: PK; `(tournamentId, isInAuction, isSold, auctionId)` and
-`(teamId, tournamentId)`.
+`(teamId, tournamentId)`; `Players(sportId)`.
 Evidence: `src/models/player.model.js`.
+
+Role behavior: cricket players require one of `Batsman`, `Bowler`,
+`All-rounder`, or `Wicketkeeper` at the application validation layer. Table
+tennis, volleyball, badminton, chess, carrom, and other sports allow null role.
 
 ## Auctions
 
@@ -117,6 +163,8 @@ Evidence: `src/models/bid.model.js`.
 ```text
 User 1 --- * Team
 User 1 --- * Bid
+Sport 1 --- * Tournament
+Sport 1 --- * Player
 Tournament 1 --- * TournamentTeam * --- 1 Team
 Tournament 1 --- * Player * --- 0..1 Team
 Tournament 1 --- * Auction * --- 1 Player(currentPlayer)
@@ -148,7 +196,9 @@ Remaining normalization issues:
 - `Bids.ownerId` is retained as bid-time audit context and uses `SET NULL` if
   its user is removed.
 - User role, tournament status, player role, and auction status are database
-  ENUMs. Transition rules are still application concerns.
+- User role, tournament status, and auction status are database ENUMs.
+  `Players.role` is nullable string after F-006 because role is sport-specific.
+  Cricket role requirements remain application validation concerns.
 - Monetary player fields use floating point while bid/team/tournament amounts
   use integer.
 
@@ -161,6 +211,8 @@ Implemented high-value indexes:
 - `Auctions(tournamentId, status)`
 - `Auctions(currentPlayerId, tournamentId, status)`
 - `Teams(ownerId)`
+- `Sports(code)`
+- `Tournaments(sportId)`
 - Supporting foreign-key indexes for tournament creator, bid team/owner, and
   tournament-team team lookup.
 
@@ -168,10 +220,12 @@ Implemented high-value indexes:
 
 - `Teams.ownerId -> Users.id`: `RESTRICT`
 - `Tournaments.createdBy -> Users.id`: `RESTRICT`
+- `Tournaments.sportId -> Sports.id`: `RESTRICT`
 - `TournamentTeams.tournamentId -> Tournaments.id`: `CASCADE`
 - `TournamentTeams.teamId -> Teams.id`: `CASCADE`
 - `Players.teamId -> Teams.id`: `SET NULL`
 - `Players.tournamentId -> Tournaments.id`: `RESTRICT`
+- `Players.sportId -> Sports.id`: `RESTRICT`
 - `Auctions.currentPlayerId -> Players.id`: `SET NULL`
 - `Auctions.tournamentId -> Tournaments.id`: `RESTRICT`
 - `Bids.playerId -> Players.id`: `RESTRICT`
@@ -213,6 +267,21 @@ The F-001 auction timer migration:
 - Allows backend startup recovery to schedule timers from stored deadlines or
   move overdue live auctions to pending finalization.
 
+The F-005 tournament archive migration:
+
+- Updates the `Tournaments.status` ENUM to include `archived`.
+- Keeps `archived` terminal at the application layer.
+- Blocks rollback while archived tournament rows exist, preventing accidental
+  enum shrinkage that would invalidate stored data.
+
+The F-006 multi-sport migration:
+
+- Creates and seeds `Sports`.
+- Adds `Tournaments.sportId` and `Players.sportId`.
+- Backfills existing tournaments and players to `cricket`.
+- Changes `Players.role` to nullable string.
+- Adds sport indexes and foreign keys.
+
 The baseline is intentionally non-destructive and cannot be rolled back.
 
 Correctness/scale concerns:
@@ -222,3 +291,210 @@ Correctness/scale concerns:
 - List endpoints are unpaginated.
 - Production-like `EXPLAIN` verification has not been run for the new indexes.
 - No database backup, retention, or restore implementation is present.
+
+## Festival Foundation (Phase 1)
+
+Migration: `202606090001-festival-foundation.js`.
+
+The migration is additive. It creates four independent festival tables and
+seeds the missing `throwball` sport. It does not alter `Tournaments`,
+`TournamentTeams`, `Teams`, `Players`, `Auctions`, or `Bids`.
+
+### Festivals
+
+Festival identity, dates, registration window, timezone, optional currency
+metadata, lifecycle status, and creating user.
+
+Constraints/indexes:
+
+- unique `code`
+- indexed `(status, startDate)`
+- `createdByUserId -> Users.id` with `RESTRICT`
+
+### FestivalSports
+
+Joins one active catalog sport to a festival with draft status and optional
+JSON configuration.
+
+Constraints:
+
+- unique `(festivalId, sportId)`
+- festival deletion cascades draft configuration
+- sport deletion is restricted
+
+### FestivalParticipants
+
+Festival-scoped participant link to canonical `Employees`.
+
+Columns: `festivalId`, `employeeId`, temporary nullable `userId`, `status`, and
+`registeredAt`.
+
+Constraints:
+
+- unique `(festivalId, employeeId)`
+- employee deletion is restricted
+- no copied name, email, role, password, or participant profile
+
+The temporary `userId` exists only for migration compatibility and is not used
+as participant identity.
+
+### FestivalTeams
+
+Festival-scoped franchise definitions with name, code, optional branding, and
+status.
+
+Constraints:
+
+- unique `(festivalId, name)`
+- unique `(festivalId, code)`
+- no owner, purse, roster, player, tournament, or auction columns
+
+Rollback drops the four foundation tables in dependency order. The Throwball
+catalog row is intentionally retained because existing legacy tournaments may
+reference it after migration.
+
+## Festival Participant Sports (Phase 2)
+
+Migration: `202606090002-festival-participant-sports.js`.
+
+The additive `FestivalParticipantSports` table stores one row for each selected
+sport:
+
+- `id`
+- `festivalParticipantId -> FestivalParticipants.id` (`CASCADE`)
+- `sportId -> Sports.id` (`RESTRICT`)
+- `createdAt`
+- `updatedAt`
+
+The unique `(festivalParticipantId, sportId)` index prevents duplicate
+registrations, including concurrent duplicate requests. An additional
+`sportId` index supports sport participant lists.
+
+Application validation confirms that the participant and enabled sport belong
+to the same festival and that writes occur only during `draft` or
+`registration_open`. No skill data or duplicate participant identity is
+stored. Legacy auction tables are unchanged.
+
+### Employee identity migration
+
+Migration `202606090003-employee-identity.js`:
+
+- Creates `Employees`.
+- Adds `FestivalParticipants.employeeId`.
+- Backfills existing User-based participants to provisional Employees.
+- Adds unique `(festivalId, employeeId)`.
+- Makes the old participant `userId` nullable.
+- Preserves all participant and sport-registration IDs.
+
+Employee Number is unique and required by current create/import workflows.
+Legacy backfilled Employees have no invented Employee Number and are marked
+`needs_review`.
+
+## Festival Team Builder (Phase 3)
+
+Migration: `202606090004-festival-team-builder.js`.
+
+Additive database changes:
+
+- `Festivals.teamAssignmentStatus`: `draft | building | locked`
+- New `FestivalTeamMemberships`
+
+The membership table references one Festival, one Festival Participant, one
+Festival Team, and the assigning User. It records `manual` or `auto_balanced`
+assignment method and assignment time.
+
+Unique `(festivalId, festivalParticipantId)` prevents a participant from
+belonging to multiple primary Festival Teams. Locking is permitted only when
+every registered participant has one membership. No strength column is stored;
+strength is the current count of selected sports.
+
+No legacy Tournament, Team, Player, Auction, or Bid table is changed.
+
+## Main Festival Auction Foundation (Phase 3A)
+
+Migration `202606090005-main-festival-auction-foundation.js` adds:
+
+- `FestivalAuctionConfigs`
+- `FestivalTeamOwners`
+- `FestivalRetentions`
+- `FestivalAuctionPools`
+- `FestivalTeamMemberships.rosterSource`
+
+Owner and retention costs are positive integer snapshots. Team spending is
+derived from owner cost plus retention amounts; remaining purse is derived from
+the configured per-team budget. Unique indexes prevent duplicate owners,
+retentions, and pool entries. Legacy auction tables remain unchanged.
+
+## Main Festival Live Auction (Phase 3B)
+
+Migration `202606100001-main-festival-live-auction.js` adds lifecycle columns
+to `FestivalAuctionConfigs`:
+
+- `auctionStatus`: `setup | live | paused | completed`
+- `currentParticipantId`
+- `startedAt`
+- `completedAt`
+
+New additive tables:
+
+- `FestivalAuctions`: one persisted round per festival participant.
+- `FestivalAuctionBids`: immutable accepted bids with assignment-derived team
+  and owner references.
+- `FestivalAuctionResults`: unique sold or unsold outcome per participant.
+
+Unique constraints prevent a participant from receiving two auction rounds or
+results and reject duplicate bid amounts in one round. Sold results contribute
+to derived team spending. Sale finalization, result creation, roster membership
+creation, and pool removal occur in one transaction. No legacy Tournament,
+Auction, Player, Team, or Bid table is modified.
+
+## Festival Roster Workflow Consolidation (Phase 3C)
+
+Migration `202606100002-festival-roster-formation-mode.js` additively adds:
+
+- `Festivals.rosterFormationMode ENUM('auction','manual') NOT NULL`
+- default and backfill value `auction`
+- index `festivals_roster_formation_mode_idx`
+
+The migration is recovery-safe when the column or index already exists and
+does not modify roster data. Existing Festivals remain in auction mode.
+
+Status ownership is explicit:
+
+- `Festivals.status` gates Festival registration and configuration.
+- `Festivals.teamAssignmentStatus` controls manual-mode assignment building
+  and locking only.
+- `FestivalAuctionConfigs.auctionStatus` controls Main Auction activity only.
+
+`FestivalTeamMemberships` remains the single roster source of truth.
+
+## Festival Auction Stabilization (Phase 3D)
+
+Migration `202606100003-festival-auction-stabilization.js` adds:
+
+- `FestivalTeamOwners.status`:
+  `pending_user_registration | active | inactive`
+- index `(festivalId, status)`
+- `EmployeeUserLinkAudits`
+
+`EmployeeUserLinkAudits` records registration and admin-manual link attempts,
+including normalized email, optional Employee, outcome, and conflict details.
+It provides an audit trail without changing Employee as canonical identity.
+
+Owner status backfill is derived from the registered Festival Participant,
+Employee employment state, linked User, and `team_owner` role.
+
+## Team Owner Auto-Provisioning
+
+Migration `202606110003-team-owner-auto-provisioning.js` adds:
+
+- `Users.mustChangePassword`
+- `FestivalTeamOwners.userProvisioningStatus`
+  (`auto_created | existing_user`)
+- `FestivalTeamOwners.credentialsSentAt`
+
+New Team Owner users are verified at creation, receive only a hashed temporary
+password in `Users.password`, and remain blocked by server middleware until
+`mustChangePassword` is cleared. Festival operation audits record
+`user_auto_created`, `owner_assigned`, `credentials_sent`, and
+`password_reset_completed`.

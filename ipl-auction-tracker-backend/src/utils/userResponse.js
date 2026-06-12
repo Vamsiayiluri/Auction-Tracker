@@ -6,8 +6,12 @@ export const toSafeUserResponse = (user) => {
   const plainUser =
     typeof user.get === "function" ? user.get({ plain: true }) : user;
 
-  return SAFE_USER_FIELDS.reduce((safeUser, field) => {
-    safeUser[field] = plainUser[field];
-    return safeUser;
+  const safeUser = SAFE_USER_FIELDS.reduce((response, field) => {
+    response[field] = plainUser[field];
+    return response;
   }, {});
+  if (typeof plainUser.mustChangePassword === "boolean") {
+    safeUser.mustChangePassword = plainUser.mustChangePassword;
+  }
+  return safeUser;
 };

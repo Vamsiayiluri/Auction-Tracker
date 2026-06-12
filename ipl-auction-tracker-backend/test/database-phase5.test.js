@@ -110,8 +110,8 @@ test("Phase 5 migration and models enforce enum-like fields", async () => {
   assert.match(migration, /unsupported role values/);
   assert.match(migration, /unsupported status values/);
   assert.match(userModel, /DataTypes\.ENUM\("admin", "team_owner", "spectator"\)/);
-  assert.match(tournamentModel, /DataTypes\.ENUM\("upcoming", "live", "completed"\)/);
-  assert.match(playerModel, /DataTypes\.ENUM\(/);
+  assert.match(tournamentModel, /DataTypes\.ENUM\("upcoming", "live", "completed", "archived"\)/);
+  assert.match(playerModel, /role: \{/);
   assert.match(auctionModel, /DataTypes\.ENUM\("upcoming", "live", "pending", "completed"\)/);
 });
 

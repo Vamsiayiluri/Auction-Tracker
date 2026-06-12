@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/dbconfig.js";
+import Sport from "./sport.model.js";
 import Team from "./team.model.js";
 import Tournament from "./tournment.model.js";
 
@@ -22,14 +23,8 @@ const Player = sequelize.define("Player", {
     allowNull: true,
   },
   role: {
-    type: DataTypes.ENUM(
-      "Batsman",
-      "Bowler",
-      "All-rounder",
-      "Wicketkeeper"
-    ),
-    allowNull: false,
-    defaultValue: "Batsman",
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   isSold: {
     type: DataTypes.BOOLEAN,
@@ -51,6 +46,11 @@ const Player = sequelize.define("Player", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  sportId: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "cricket",
+  },
   auctionId: {
     type: DataTypes.STRING,
     allowNull: true,
@@ -65,6 +65,10 @@ const Player = sequelize.define("Player", {
     {
       name: "players_team_tournament_idx",
       fields: ["teamId", "tournamentId"],
+    },
+    {
+      name: "players_sport_id_idx",
+      fields: ["sportId"],
     },
   ],
 });
@@ -82,5 +86,12 @@ Player.belongsTo(Tournament, {
   onUpdate: "CASCADE",
 });
 Tournament.hasMany(Player, { foreignKey: "tournamentId", as: "players" });
+Player.belongsTo(Sport, {
+  foreignKey: "sportId",
+  as: "sport",
+  onDelete: "RESTRICT",
+  onUpdate: "CASCADE",
+});
+Sport.hasMany(Player, { foreignKey: "sportId", as: "players" });
 
 export default Player;

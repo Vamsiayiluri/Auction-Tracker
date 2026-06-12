@@ -1,0 +1,418 @@
+import express from "express";
+import {
+  addFestivalParticipant,
+  addAllEmployeesToFestival,
+  addFestivalSport,
+  bulkAddFestivalSports,
+  bulkRegisterParticipantSports,
+  bulkAssignParticipantSports,
+  bulkAddFestivalParticipants,
+  bulkRemoveFestivalParticipants,
+  createFestival,
+  downloadParticipantSportsTemplate,
+  getFestivalById,
+  getFestivalParticipants,
+  getFestivalSports,
+  getFestivals,
+  getParticipantSports,
+  getSportParticipants,
+  importParticipantSports,
+  registerParticipantSport,
+  relockFestivalConfiguration,
+  unlockFestivalConfiguration,
+  updateFestival,
+  updateRosterFormationMode,
+} from "../controllers/festival.controller.js";
+import {
+  assignFestivalParticipant,
+  autoBalanceFestivalParticipants,
+  createFestivalTeam,
+  deleteFestivalTeam,
+  getFestivalTeamAssignments,
+  getFestivalTeams,
+  lockFestivalTeamAssignments,
+  updateFestivalTeam,
+} from "../controllers/festivalTeam.controller.js";
+import {
+  assignFestivalTeamOwner,
+  bulkCreateFestivalRetentions,
+  createFestivalRetention,
+  deleteFestivalRetention,
+  getFestivalAuctionPool,
+  getFestivalRetentions,
+  getFestivalTeamOwner,
+  resendFestivalTeamOwnerCredentials,
+  updateFestivalAuctionConfig,
+} from "../controllers/festivalMainAuction.controller.js";
+import {
+  completeFestivalAuction,
+  extendFestivalAuction,
+  getFestivalAuctionCurrent,
+  getFestivalAuctionHistory,
+  getFestivalAuctionReadiness,
+  markFestivalAuctionParticipantUnsold,
+  pauseFestivalAuction,
+  placeFestivalAuctionBid,
+  resumeFestivalAuction,
+  reauctionFestivalParticipants,
+  sellFestivalAuctionParticipant,
+  startFestivalAuction,
+  startFestivalAuctionParticipant,
+} from "../controllers/festivalLiveAuction.controller.js";
+import {
+  adminMiddleware,
+  authMiddleware,
+} from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import { multipartCsvUpload } from "../middleware/multipartCsv.middleware.js";
+import {
+  addFestivalParticipantSchema,
+  addFestivalSportSchema,
+  bulkAddFestivalSportsSchema,
+  assignFestivalParticipantSchema,
+  assignFestivalTeamOwnerSchema,
+  autoBalanceFestivalParticipantsSchema,
+  bulkParticipantSportsSchema,
+  bulkSportsAssignmentSchema,
+  bulkAddFestivalParticipantsSchema,
+  bulkRemoveFestivalParticipantsSchema,
+  createFestivalSchema,
+  createFestivalTeamSchema,
+  createFestivalRetentionSchema,
+  bulkFestivalRetentionsSchema,
+  festivalIdSchema,
+  festivalTeamIdSchema,
+  festivalRetentionIdSchema,
+  festivalAuctionBidSchema,
+  festivalAuctionLifecycleSchema,
+  festivalAuctionParticipantSchema,
+  festivalAuctionStartParticipantSchema,
+  festivalConfigurationLockSchema,
+  festivalReauctionSchema,
+  participantSportsImportSchema,
+  participantSportsSchema,
+  registerParticipantSportSchema,
+  sportParticipantsSchema,
+  updateFestivalTeamSchema,
+  updateFestivalAuctionConfigSchema,
+  updateFestivalSchema,
+  updateRosterFormationModeSchema,
+} from "../validation/festival.validation.js";
+
+const router = express.Router();
+
+router.use(authMiddleware);
+
+router.post("/", adminMiddleware, validate(createFestivalSchema), createFestival);
+router.get("/", getFestivals);
+router.get("/:festivalId", validate(festivalIdSchema), getFestivalById);
+router.patch(
+  "/:festivalId",
+  adminMiddleware,
+  validate(updateFestivalSchema),
+  updateFestival
+);
+router.post(
+  "/:festivalId/configuration/unlock",
+  adminMiddleware,
+  validate(festivalConfigurationLockSchema),
+  unlockFestivalConfiguration
+);
+router.post(
+  "/:festivalId/configuration/relock",
+  adminMiddleware,
+  validate(festivalConfigurationLockSchema),
+  relockFestivalConfiguration
+);
+router.patch(
+  "/:festivalId/roster-formation-mode",
+  adminMiddleware,
+  validate(updateRosterFormationModeSchema),
+  updateRosterFormationMode
+);
+
+router.post(
+  "/:festivalId/sports",
+  adminMiddleware,
+  validate(addFestivalSportSchema),
+  addFestivalSport
+);
+router.post(
+  "/:festivalId/sports/bulk",
+  adminMiddleware,
+  validate(bulkAddFestivalSportsSchema),
+  bulkAddFestivalSports
+);
+router.get(
+  "/:festivalId/sports",
+  validate(festivalIdSchema),
+  getFestivalSports
+);
+
+router.post(
+  "/:festivalId/participants",
+  adminMiddleware,
+  validate(addFestivalParticipantSchema),
+  addFestivalParticipant
+);
+router.get(
+  "/:festivalId/participants",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  getFestivalParticipants
+);
+router.post(
+  "/:festivalId/participants/bulk",
+  adminMiddleware,
+  validate(bulkAddFestivalParticipantsSchema),
+  bulkAddFestivalParticipants
+);
+router.post(
+  "/:festivalId/participants/add-all",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  addAllEmployeesToFestival
+);
+router.post(
+  "/:festivalId/participants/bulk-remove",
+  adminMiddleware,
+  validate(bulkRemoveFestivalParticipantsSchema),
+  bulkRemoveFestivalParticipants
+);
+router.post(
+  "/:festivalId/participants/import",
+  adminMiddleware,
+  multipartCsvUpload,
+  validate(participantSportsImportSchema),
+  importParticipantSports
+);
+router.get(
+  "/:festivalId/participants/import/template",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  downloadParticipantSportsTemplate
+);
+
+router.post(
+  "/:festivalId/teams",
+  adminMiddleware,
+  validate(createFestivalTeamSchema),
+  createFestivalTeam
+);
+router.get(
+  "/:festivalId/teams",
+  validate(festivalIdSchema),
+  getFestivalTeams
+);
+router.patch(
+  "/:festivalId/teams/:teamId",
+  adminMiddleware,
+  validate(updateFestivalTeamSchema),
+  updateFestivalTeam
+);
+router.delete(
+  "/:festivalId/teams/:teamId",
+  adminMiddleware,
+  validate(festivalTeamIdSchema),
+  deleteFestivalTeam
+);
+router.post(
+  "/:festivalId/teams/:teamId/owner",
+  adminMiddleware,
+  validate(assignFestivalTeamOwnerSchema),
+  assignFestivalTeamOwner
+);
+router.get(
+  "/:festivalId/teams/:teamId/owner",
+  adminMiddleware,
+  validate(festivalTeamIdSchema),
+  getFestivalTeamOwner
+);
+router.post(
+  "/:festivalId/teams/:teamId/owner/credentials",
+  adminMiddleware,
+  validate(festivalTeamIdSchema),
+  resendFestivalTeamOwnerCredentials
+);
+
+router.post(
+  "/:festivalId/retentions",
+  adminMiddleware,
+  validate(createFestivalRetentionSchema),
+  createFestivalRetention
+);
+router.post(
+  "/:festivalId/retentions/bulk",
+  adminMiddleware,
+  validate(bulkFestivalRetentionsSchema),
+  bulkCreateFestivalRetentions
+);
+router.delete(
+  "/:festivalId/retentions/:id",
+  adminMiddleware,
+  validate(festivalRetentionIdSchema),
+  deleteFestivalRetention
+);
+router.get(
+  "/:festivalId/retentions",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  getFestivalRetentions
+);
+router.get(
+  "/:festivalId/auction-pool",
+  validate(festivalIdSchema),
+  getFestivalAuctionPool
+);
+router.patch(
+  "/:festivalId/auction-config",
+  adminMiddleware,
+  validate(updateFestivalAuctionConfigSchema),
+  updateFestivalAuctionConfig
+);
+
+router.post(
+  "/:festivalId/auction/start",
+  adminMiddleware,
+  validate(festivalAuctionLifecycleSchema),
+  startFestivalAuction
+);
+router.post(
+  "/:festivalId/auction/pause",
+  adminMiddleware,
+  validate(festivalAuctionLifecycleSchema),
+  pauseFestivalAuction
+);
+router.post(
+  "/:festivalId/auction/resume",
+  adminMiddleware,
+  validate(festivalAuctionLifecycleSchema),
+  resumeFestivalAuction
+);
+router.post(
+  "/:festivalId/auction/extend",
+  adminMiddleware,
+  validate(festivalAuctionLifecycleSchema),
+  extendFestivalAuction
+);
+router.post(
+  "/:festivalId/auction/complete",
+  adminMiddleware,
+  validate(festivalAuctionLifecycleSchema),
+  completeFestivalAuction
+);
+router.post(
+  "/:festivalId/auction/participants/:participantId/start",
+  adminMiddleware,
+  validate(festivalAuctionStartParticipantSchema),
+  startFestivalAuctionParticipant
+);
+router.post(
+  "/:festivalId/auction/participants/:participantId/sell",
+  adminMiddleware,
+  validate(festivalAuctionParticipantSchema),
+  sellFestivalAuctionParticipant
+);
+router.post(
+  "/:festivalId/auction/participants/:participantId/unsold",
+  adminMiddleware,
+  validate(festivalAuctionParticipantSchema),
+  markFestivalAuctionParticipantUnsold
+);
+router.post(
+  "/:festivalId/auction/reauction",
+  adminMiddleware,
+  validate(festivalReauctionSchema),
+  reauctionFestivalParticipants
+);
+router.post(
+  "/:festivalId/auction/bid",
+  validate(festivalAuctionBidSchema),
+  placeFestivalAuctionBid
+);
+router.get(
+  "/:festivalId/auction/readiness",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  getFestivalAuctionReadiness
+);
+router.get(
+  "/:festivalId/auction/current",
+  validate(festivalIdSchema),
+  getFestivalAuctionCurrent
+);
+router.get(
+  "/:festivalId/auction/history",
+  validate(festivalIdSchema),
+  getFestivalAuctionHistory
+);
+
+router.post(
+  "/:festivalId/team-assignments",
+  adminMiddleware,
+  validate(assignFestivalParticipantSchema),
+  assignFestivalParticipant
+);
+router.post(
+  "/:festivalId/team-assignments/auto-balance",
+  adminMiddleware,
+  validate(autoBalanceFestivalParticipantsSchema),
+  autoBalanceFestivalParticipants
+);
+router.get(
+  "/:festivalId/team-assignments",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  getFestivalTeamAssignments
+);
+router.patch(
+  "/:festivalId/team-assignments/lock",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  lockFestivalTeamAssignments
+);
+
+router.post(
+  "/:festivalId/participants/:participantId/sports",
+  adminMiddleware,
+  validate(registerParticipantSportSchema),
+  registerParticipantSport
+);
+router.get(
+  "/:festivalId/participants/:participantId/sports",
+  validate(participantSportsSchema),
+  getParticipantSports
+);
+router.get(
+  "/:festivalId/sports/:sportId/participants",
+  adminMiddleware,
+  validate(sportParticipantsSchema),
+  getSportParticipants
+);
+router.post(
+  "/:festivalId/participant-sports/bulk",
+  adminMiddleware,
+  validate(bulkParticipantSportsSchema),
+  bulkRegisterParticipantSports
+);
+router.put(
+  "/:festivalId/participant-sports/bulk",
+  adminMiddleware,
+  validate(bulkSportsAssignmentSchema),
+  bulkAssignParticipantSports
+);
+router.post(
+  "/:festivalId/participant-sports/import",
+  adminMiddleware,
+  multipartCsvUpload,
+  validate(participantSportsImportSchema),
+  importParticipantSports
+);
+router.get(
+  "/:festivalId/participant-sports/import/template",
+  adminMiddleware,
+  validate(festivalIdSchema),
+  downloadParticipantSportsTemplate
+);
+
+export default router;

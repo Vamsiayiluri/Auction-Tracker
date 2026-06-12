@@ -1,5 +1,4 @@
 export const PUBLIC_REGISTRATION_ROLES = Object.freeze([
-  "team_owner",
   "spectator",
 ]);
 

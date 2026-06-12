@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { TOURNAMENT_STATUSES } from "../utils/tournamentStatus.js";
+import {
+  CRICKET_PLAYER_ROLES,
+  CRICKET_SPORT_ID,
+  SPORT_IDS,
+} from "../utils/sports.js";
 
 export const nonEmptyString = (fieldName) =>
   z
@@ -22,12 +27,32 @@ export const positiveNumber = (fieldName) =>
     .positive(`${fieldName} must be greater than zero`);
 
 export const playerRoleSchema = z.enum(
-  ["Batsman", "Bowler", "All-rounder", "Wicketkeeper"],
+  CRICKET_PLAYER_ROLES,
   {
     required_error: "Player role is required",
     invalid_type_error: "Player role is invalid",
   }
 );
+
+export const optionalPlayerRoleSchema = z
+  .union([playerRoleSchema, z.literal(null), z.literal("")])
+  .optional()
+  .transform((role) => (role === "" ? null : role));
+
+export const sportIdSchema = z.enum(SPORT_IDS, {
+  required_error: "Sport is required",
+  invalid_type_error: "Sport is invalid",
+});
+
+export const validateSportRole = (payload, context, rolePath = ["role"]) => {
+  if (payload.sportId === CRICKET_SPORT_ID && !payload.role) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: rolePath,
+      message: "Player role is required for cricket",
+    });
+  }
+};
 
 export const tournamentStatusSchema = z.enum(
   TOURNAMENT_STATUSES,

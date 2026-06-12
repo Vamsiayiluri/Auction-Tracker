@@ -13,9 +13,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const readProjectFile = (relativePath) =>
   readFile(resolve(__dirname, "..", relativePath), "utf8");
 
-test("public registration allows only team owners and spectators", () => {
-  assert.deepEqual(PUBLIC_REGISTRATION_ROLES, ["team_owner", "spectator"]);
-  assert.equal(isPublicRegistrationRole("team_owner"), true);
+test("public registration allows spectators only", () => {
+  assert.deepEqual(PUBLIC_REGISTRATION_ROLES, ["spectator"]);
+  assert.equal(isPublicRegistrationRole("team_owner"), false);
   assert.equal(isPublicRegistrationRole("spectator"), true);
   assert.equal(isPublicRegistrationRole("admin"), false);
   assert.equal(isPublicRegistrationRole("Admin"), false);
@@ -24,16 +24,14 @@ test("public registration allows only team owners and spectators", () => {
   assert.equal(isPublicRegistrationRole(undefined), false);
 });
 
-test("frontend registration form does not expose admin as a public role", async () => {
+test("frontend registration form does not expose privileged roles", async () => {
   const registerPage = await readFile(
     resolve(__dirname, "../../ipl-auction-tracker/src/pages/Register.jsx"),
     "utf8"
   );
 
-  assert.match(
-    registerPage,
-    /const publicRegistrationRoles = \["team_owner", "spectator"\];/
-  );
+  assert.match(registerPage, /role: "spectator"/);
+  assert.doesNotMatch(registerPage, /<MenuItem value="team_owner">/);
   assert.doesNotMatch(registerPage, /<MenuItem value="admin">/);
   assert.doesNotMatch(registerPage, /publicRegistrationRoles = \[[^\]]*"admin"/);
 });

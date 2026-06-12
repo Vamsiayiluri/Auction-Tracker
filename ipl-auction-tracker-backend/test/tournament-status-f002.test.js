@@ -14,9 +14,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const readBackendFile = (relativePath) =>
   readFile(resolve(__dirname, "..", relativePath), "utf8");
 
-test("F-002 supports only the current tournament status enum values", () => {
-  assert.deepEqual(TOURNAMENT_STATUSES, ["upcoming", "live", "completed"]);
-  assert.equal(TOURNAMENT_STATUSES.includes("archived"), false);
+test("F-002 supports the tournament status enum values", () => {
+  assert.deepEqual(TOURNAMENT_STATUSES, [
+    "upcoming",
+    "live",
+    "completed",
+    "archived",
+  ]);
+  assert.equal(TOURNAMENT_STATUSES.includes("archived"), true);
 
   assert.equal(
     updateTournamentStatusSchema.safeParse({
@@ -37,11 +42,16 @@ test("F-002 supports only the current tournament status enum values", () => {
 test("F-002 allows only forward tournament status transitions", () => {
   assert.equal(isValidTournamentTransition("upcoming", "live"), true);
   assert.equal(isValidTournamentTransition("live", "completed"), true);
+  assert.equal(isValidTournamentTransition("completed", "archived"), true);
 
   assert.equal(isValidTournamentTransition("upcoming", "completed"), false);
+  assert.equal(isValidTournamentTransition("upcoming", "archived"), false);
   assert.equal(isValidTournamentTransition("live", "upcoming"), false);
+  assert.equal(isValidTournamentTransition("live", "archived"), false);
   assert.equal(isValidTournamentTransition("completed", "live"), false);
   assert.equal(isValidTournamentTransition("completed", "upcoming"), false);
+  assert.equal(isValidTournamentTransition("archived", "completed"), false);
+  assert.equal(isValidTournamentTransition("archived", "live"), false);
   assert.equal(isValidTournamentTransition("upcoming", "invalid-status"), false);
   assert.equal(isValidTournamentTransition("invalid-status", "live"), false);
 });

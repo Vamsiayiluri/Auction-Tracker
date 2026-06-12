@@ -24,30 +24,12 @@ export const registerSchema = z.object({
       name: nonEmptyString("Name"),
       email: emailSchema,
       password: passwordSchema,
-      role: z.enum(["team_owner", "spectator"], {
+      role: z.literal("spectator", {
         required_error: "Role is required",
         invalid_type_error: "Role is invalid",
       }),
-      teamName: z.string().trim().optional(),
-      teamId: z.string().trim().optional(),
     })
-    .superRefine((data, ctx) => {
-      if (data.role === "team_owner" && !data.teamName) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["teamName"],
-          message: "Team name is required for team owners",
-        });
-      }
-
-      if (data.role === "team_owner" && !data.teamId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["teamId"],
-          message: "Team ID is required for team owners",
-        });
-      }
-    }),
+    .strict(),
 });
 
 export const loginSchema = z.object({
@@ -69,6 +51,12 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   body: z.object({
     token: nonEmptyString("Reset token"),
+    password: passwordSchema,
+  }),
+});
+
+export const changePasswordSchema = z.object({
+  body: z.object({
     password: passwordSchema,
   }),
 });

@@ -31,6 +31,7 @@ import {
 import { socket } from "../../webSocket/socket";
 
 const roles = ["Batsman", "Bowler", "All-rounder", "Wicketkeeper"];
+const cricketSportId = "cricket";
 
 const AuctionLive = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -217,21 +218,24 @@ const AuctionLive = () => {
     return () => clearInterval(timer);
   }, [endsAt]);
 
+  const selectedTournament = tournaments.find(
+    (tournament) => tournament.id === tournamentId
+  );
+  const isCricketTournament =
+    (selectedTournament?.sportId || cricketSportId) === cricketSportId;
+
   const availablePlayers = useMemo(
     () =>
       players.filter(
         (player) =>
-          player.role === selectedRole &&
+          (!isCricketTournament || player.role === selectedRole) &&
           !player.isInAuction &&
           !player.auctionId
       ),
-    [players, selectedRole]
+    [players, selectedRole, isCricketTournament]
   );
 
   const selectedPlayer = players.find((player) => player.id === selectedPlayerId);
-  const selectedTournament = tournaments.find(
-    (tournament) => tournament.id === tournamentId
-  );
 
   const startRound = async () => {
     if (!selectedPlayer) return;
@@ -406,24 +410,26 @@ const AuctionLive = () => {
                 alignItems: "start",
               }}
             >
-              <FormControl fullWidth>
-                <InputLabel>Player role</InputLabel>
-                <Select
-                  label="Player role"
-                  value={selectedRole}
-                  onChange={(event) => {
-                    setSelectedRole(event.target.value);
-                    setSelectedPlayerId("");
-                  }}
-                >
-                  {roles.map((role) => (
-                    <MenuItem key={role} value={role}>
-                      {role}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth disabled={!selectedRole}>
+              {isCricketTournament && (
+                <FormControl fullWidth>
+                  <InputLabel>Player role</InputLabel>
+                  <Select
+                    label="Player role"
+                    value={selectedRole}
+                    onChange={(event) => {
+                      setSelectedRole(event.target.value);
+                      setSelectedPlayerId("");
+                    }}
+                  >
+                    {roles.map((role) => (
+                      <MenuItem key={role} value={role}>
+                        {role}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+              <FormControl fullWidth disabled={isCricketTournament && !selectedRole}>
                 <InputLabel>Player</InputLabel>
                 <Select
                   label="Player"
@@ -471,7 +477,9 @@ const AuctionLive = () => {
                     {currentPlayer.name}
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                    <Chip label={currentPlayer.role} variant="outlined" />
+                    {currentPlayer.role && (
+                      <Chip label={currentPlayer.role} variant="outlined" />
+                    )}
                     <Chip
                       label={`Base ${formatCurrency(currentPlayer.basePrice)}`}
                       variant="outlined"

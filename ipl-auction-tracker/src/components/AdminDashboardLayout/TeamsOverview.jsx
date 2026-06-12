@@ -214,7 +214,7 @@ const TeamsOverview = ({ tournamentId: providedTournamentId }) => {
                                 >
                                   <ListItemText
                                     primary={player.name}
-                                    secondary={player.role || "Role not set"}
+                                    secondary={player.role || undefined}
                                     primaryTypographyProps={{ fontWeight: 700 }}
                                   />
                                 </ListItem>

@@ -90,6 +90,7 @@ const BidHistory = ({ tournamentId: providedTournamentId }) => {
       }),
     [auctionedPlayers, filter]
   );
+  const hasRoles = players.some((player) => Boolean(player.role));
 
   if (loading) {
     return (
@@ -126,7 +127,7 @@ const BidHistory = ({ tournamentId: providedTournamentId }) => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Player</TableCell>
-                    <TableCell>Role</TableCell>
+                    {hasRoles && <TableCell>Role</TableCell>}
                     <TableCell>Status</TableCell>
                     <TableCell align="right">Final Price</TableCell>
                     <TableCell>Winning Team</TableCell>
@@ -137,7 +138,7 @@ const BidHistory = ({ tournamentId: providedTournamentId }) => {
                   {filteredPlayers.map((player) => (
                     <TableRow key={player.id} hover>
                       <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
-                      <TableCell>{player.role}</TableCell>
+                      {hasRoles && <TableCell>{player.role || "-"}</TableCell>}
                       <TableCell>
                         <Chip
                           size="small"

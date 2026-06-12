@@ -97,7 +97,12 @@ export default function Login() {
         password: formData.password,
       });
       login(response.data.user, response.data.token);
-      navigate("/dashboard", { replace: true });
+      navigate(
+        response.data.user.mustChangePassword
+          ? "/change-password"
+          : "/dashboard",
+        { replace: true }
+      );
     } catch (error) {
       setApiError(
         error.response?.data?.message ||

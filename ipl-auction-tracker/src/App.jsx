@@ -8,12 +8,18 @@ import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import ChangePassword from "./pages/ChangePassword";
 import AuctionPage from "./pages/AuctionPage";
 
 import AuthProvider from "./context/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import LiveAuctionPage from "./pages/LiveAuctionPage";
 import SpectatorAuctionPage from "./pages/SpectatorAuctionPage";
+import FestivalDashboard from "./pages/FestivalDashboard";
+import FestivalDetail from "./pages/FestivalDetail";
+import FestivalLiveAuctionPage from "./pages/FestivalLiveAuctionPage";
+import FestivalAuctionDirectory from "./pages/FestivalAuctionDirectory";
+import EmployeeDirectory from "./pages/EmployeeDirectory";
 import AppShell from "./components/AppShell";
 import {
   DefaultRoute,
@@ -65,6 +71,14 @@ export default function AppRouter() {
             }
           />
           <Route
+            path="/change-password"
+            element={
+              <ProtectedRoute>
+                <ChangePassword />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
@@ -80,6 +94,60 @@ export default function AppRouter() {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
                   <LiveAuctionPage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festivals"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppShell>
+                  <FestivalDashboard />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festivals/:festivalId"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppShell>
+                  <FestivalDetail />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festivals/:festivalId/live-auction"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <AppShell>
+                  <FestivalLiveAuctionPage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festival-auctions"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <AppShell>
+                  <FestivalAuctionDirectory />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/employees"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppShell>
+                  <EmployeeDirectory />
                 </AppShell>
               </ProtectedRoute>
             }

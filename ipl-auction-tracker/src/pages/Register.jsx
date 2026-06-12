@@ -1,6 +1,5 @@
 import { useState } from "react";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
-import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
@@ -13,7 +12,6 @@ import {
   IconButton,
   InputAdornment,
   Link,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -26,24 +24,15 @@ import api from "../utils/api";
 const initialFormData = {
   name: "",
   email: "",
-  role: "",
-  teamName: "",
+  role: "spectator",
   password: "",
   confirmPassword: "",
-};
-
-const publicRegistrationRoles = ["team_owner", "spectator"];
-
-const roleDescriptions = {
-  team_owner: "Bid and build a team",
-  spectator: "Watch live auctions",
 };
 
 const validateRegistration = (formData) => {
   const errors = {};
   const name = formData.name.trim();
   const email = formData.email.trim();
-  const teamName = formData.teamName.trim();
 
   if (!name) {
     errors.name = "Full name is required.";
@@ -55,14 +44,6 @@ const validateRegistration = (formData) => {
     errors.email = "Email is required.";
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Enter a valid email address.";
-  }
-
-  if (!publicRegistrationRoles.includes(formData.role)) {
-    errors.role = "Choose how you will use AuctionArena.";
-  }
-
-  if (formData.role === "team_owner" && !teamName) {
-    errors.teamName = "Team name is required for team owners.";
   }
 
   if (!formData.password) {
@@ -105,9 +86,8 @@ const Register = () => {
     setFormData((current) => ({
       ...current,
       [name]: value,
-      ...(name === "role" && value !== "team_owner" ? { teamName: "" } : {}),
     }));
-    setErrors((current) => ({ ...current, [name]: "", teamName: "" }));
+    setErrors((current) => ({ ...current, [name]: "" }));
     setApiError("");
   };
 
@@ -127,11 +107,6 @@ const Register = () => {
       password: formData.password,
       role: formData.role,
     };
-
-    if (formData.role === "team_owner") {
-      payload.teamName = formData.teamName.trim();
-      payload.teamId = uid();
-    }
 
     setIsSubmitting(true);
     setApiError("");
@@ -157,7 +132,7 @@ const Register = () => {
   return (
     <AuthLayout
       title="Create account"
-      description="Choose your role and get ready for the live auction."
+      description="Create a spectator account to watch live auctions."
     >
       <Stack component="form" spacing={2.25} onSubmit={handleSubmit} noValidate>
         {apiError && <Alert severity="error">{apiError}</Alert>}
@@ -200,40 +175,10 @@ const Register = () => {
             },
           }}
         />
-        <TextField
-          fullWidth
-          select
-          label="Your role"
-          name="role"
-          value={formData.role}
-          onChange={handleChange}
-          error={Boolean(errors.role)}
-          helperText={errors.role || roleDescriptions[formData.role]}
-        >
-          <MenuItem value="team_owner">Team Owner</MenuItem>
-          <MenuItem value="spectator">Spectator</MenuItem>
-        </TextField>
-
-        {formData.role === "team_owner" && (
-          <TextField
-            fullWidth
-            label="Team name"
-            name="teamName"
-            value={formData.teamName}
-            onChange={handleChange}
-            error={Boolean(errors.teamName)}
-            helperText={errors.teamName || "Example: Bengaluru Blasters"}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <GroupsOutlinedIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        )}
+        <Alert severity="info">
+          Team Owner accounts are created automatically when an administrator
+          assigns an employee to a team.
+        </Alert>
 
         <TextField
           fullWidth

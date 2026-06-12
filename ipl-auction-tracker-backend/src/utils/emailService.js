@@ -89,3 +89,46 @@ export const sendPasswordResetEmail = async (email, name, token) => {
 
   await transporter.sendMail(msg);
 };
+
+export const sendTeamOwnerCredentialsEmail = async ({
+  email,
+  name,
+  temporaryPassword,
+}) => {
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const loginUrl = `${clientUrl}/login`;
+  const forgotPasswordUrl = `${clientUrl}/forgot-password`;
+  const emailFrom = process.env.EMAIL_FROM;
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safeTemporaryPassword = temporaryPassword
+    ? escapeHtml(temporaryPassword)
+    : null;
+
+  if (!emailFrom) {
+    throw new Error("EMAIL_FROM is not defined in environment variables");
+  }
+
+  await transporter.sendMail({
+    to: email,
+    from: emailFrom,
+    subject: "Your Team Owner Access - AuctionArena",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #2563eb;">Team Owner access assigned</h2>
+        <p>Hello ${safeName},</p>
+        <p>Your AuctionArena account is ready for Team Owner access.</p>
+        <p><strong>Email:</strong> ${safeEmail}</p>
+        ${
+          safeTemporaryPassword
+            ? `<p><strong>Temporary password:</strong> ${safeTemporaryPassword}</p>
+               <p>You must choose a new password immediately after your first login. Auction access remains blocked until that change is complete.</p>`
+            : `<p>Use your existing password to sign in. If you do not remember it, use the password reset link below.</p>`
+        }
+        <p><a href="${loginUrl}">Log in to AuctionArena</a></p>
+        <p><a href="${forgotPasswordUrl}">Reset or recover your password</a></p>
+        <p style="color: #64748b; font-size: 14px;">Do not share a temporary password. AuctionArena will never ask you to send it by email.</p>
+      </div>
+    `,
+  });
+};
