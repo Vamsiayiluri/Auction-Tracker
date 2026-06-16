@@ -47,7 +47,7 @@ export default function FestivalOverview({ readiness }) {
       </Box>
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 1 }}>Readiness</Typography>
+          <Typography variant="h6" sx={{ mb: 1 }}>Setup Status</Typography>
           <Chip
             color={readiness.overallStatus === "READY" ? "success" : "error"}
             label={readiness.overallStatus.replaceAll("_", " ")}

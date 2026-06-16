@@ -108,7 +108,7 @@ export default function ParticipantStage({
                   color={roundStatus === "pending" ? "warning" : "default"}
                   label={
                     roundStatus === "pending"
-                      ? "Pending Finalization"
+                      ? "Waiting for Confirmation"
                       : String(roundStatus || "inactive").replaceAll("_", " ")
                   }
                 />
@@ -125,7 +125,7 @@ export default function ParticipantStage({
                   {roundStatus === "live"
                     ? "The server resets the deadline after every accepted bid."
                     : roundStatus === "pending"
-                      ? "An Admin must extend or finalize this participant."
+                      ? "An admin must extend bidding, sell the participant, or mark them unsold."
                       : "Live controls will update when the round resumes."}
                 </Typography>
               </Box>

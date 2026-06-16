@@ -58,7 +58,7 @@ export default function SportTournamentControlCenter({
           >
             <Box>
               <Typography variant="overline" color="primary.main">
-                Sport Tournament Control Center
+                Sport Tournament Overview
               </Typography>
               <Typography variant="h4">{tournament.name}</Typography>
               <Typography color="text.secondary">
@@ -123,7 +123,7 @@ export default function SportTournamentControlCenter({
               value={budgets?.totalEffectiveCredits || 0}
             />
             <Metric
-              label="Blockers"
+              label="Setup Issues"
               value={readiness?.blockers?.length || 0}
             />
           </Box>
@@ -134,7 +134,7 @@ export default function SportTournamentControlCenter({
               startIcon={<LockClockRoundedIcon />}
               onClick={() => navigate(`/auctions/sports/${tournament.id}`)}
             >
-              Open Sport Auction Arena
+              Open Live Sport Auction
             </Button>
           </Stack>
           {readiness?.blockers?.length > 0 && (

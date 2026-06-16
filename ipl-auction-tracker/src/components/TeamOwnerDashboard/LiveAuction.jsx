@@ -291,7 +291,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
           <Typography color="text.secondary">
             {userRole === "team_owner"
               ? auctionStatus === "pending"
-                ? "Bidding is locked. Waiting for admin finalization."
+                ? "Bidding is locked. Waiting for an admin decision."
                 : "Place the next valid bid before the timer expires."
               : "You are watching this bidding round in real time."}
           </Typography>
@@ -350,7 +350,7 @@ const LiveAuction = ({ userRole = "spectator" }) => {
                 <Chip
                   label={
                     auctionStatus === "pending"
-                      ? "Pending Finalization"
+                      ? "Waiting for Confirmation"
                       : auctionStatus === "live"
                         ? "Live"
                         : "Completed"

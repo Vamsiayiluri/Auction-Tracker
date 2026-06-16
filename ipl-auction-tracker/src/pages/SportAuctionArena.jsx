@@ -352,7 +352,7 @@ export default function SportAuctionArena() {
         : "The Auction is not live.";
     }
     if (current.status !== "live" || timeLeft <= 0) {
-      return "Bidding is locked pending finalization.";
+      return "Bidding is locked while the result is waiting for confirmation.";
     }
     if (current.bids?.at(-1)?.sportTeamId === viewerTeamId) {
       return "Your Team already leads this round.";
@@ -635,7 +635,7 @@ function RoundControls({
     <Card variant="outlined" sx={{ mt: 3, textAlign: "left" }}>
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>
-          Round Controls
+          Select Next Player
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
           Select an available participant and set the opening credits.

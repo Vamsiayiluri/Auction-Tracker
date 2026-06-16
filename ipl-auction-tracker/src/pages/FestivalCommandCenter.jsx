@@ -228,7 +228,7 @@ export default function FestivalCommandCenter() {
           >
             <Box>
               <Typography variant="overline" color="primary.main">
-                Festival Command Center
+                Festival Overview
               </Typography>
               <Typography variant="h4">{data.festival.name}</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
@@ -250,7 +250,7 @@ export default function FestivalCommandCenter() {
                     ? "success"
                     : "warning"
                 }
-                label={`Readiness: ${formatStatus(
+                label={`Setup: ${formatStatus(
                   data.festivalReadiness?.overallStatus || "unknown"
                 )}`}
               />
@@ -278,14 +278,14 @@ export default function FestivalCommandCenter() {
             variant="contained"
             onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
           >
-            Open Auction Hub
+            View Auction Details
           </Button>
           <Button
             variant="outlined"
             startIcon={<GavelRoundedIcon />}
             onClick={() => navigate(`/auctions/festivals/${festivalId}`)}
           >
-            Open Festival Auction Arena
+            Open Live Festival Auction
           </Button>
           <Button
             variant="outlined"
@@ -312,7 +312,7 @@ export default function FestivalCommandCenter() {
               navigate(sportArenaRoute(sportArenaTarget.id))
             }
           >
-            Open Sport Auction Arena
+            Open Live Sport Auction
           </Button>
           <Button variant="outlined" onClick={openResults}>
             View Results
@@ -335,8 +335,8 @@ export default function FestivalCommandCenter() {
                 severity="live"
                 actionLabel={
                   activity.eyebrow === "Festival Auction"
-                    ? "Open Festival Auction Hub"
-                    : "Open Sport Auction Hub"
+                    ? "View Festival Auction Details"
+                    : "View Sport Auction Details"
                 }
                 onAction={() => navigate(activity.route)}
               />
@@ -350,8 +350,8 @@ export default function FestivalCommandCenter() {
       </DashboardSection>
 
       <DashboardSection
-        title="Blockers"
-        description="Actionable Festival and Sport readiness problems."
+        title="Setup Issues"
+        description="Festival and Sport setup items that need attention."
       >
         {blockers.length ? (
           <DashboardGrid>
@@ -361,10 +361,10 @@ export default function FestivalCommandCenter() {
                 eyebrow={blocker.category}
                 title={blocker.title}
                 description={blocker.message}
-                status="blocked"
+                    status="Setup Incomplete"
                 statusColor="warning"
                 severity="warning"
-                actionLabel="Resolve"
+                    actionLabel="Fix Issues"
                 onAction={() => navigate(blocker.route)}
               />
             ))}
@@ -374,14 +374,14 @@ export default function FestivalCommandCenter() {
             severity="success"
             icon={<CheckCircleOutlineRoundedIcon />}
           >
-            No Festival or Sport Tournament readiness blockers were found.
+                No Festival or Sport Tournament setup issues were found.
           </Alert>
         )}
       </DashboardSection>
 
       <DashboardSection
         title="Festival Auction Status"
-        description="Main Festival Auction state and preparation readiness."
+        description="Main Festival Auction status and setup progress."
       >
         <Card variant="outlined">
           <CardContent>
@@ -411,14 +411,14 @@ export default function FestivalCommandCenter() {
                   label={formatStatus(festivalAuctionStatus)}
                 />
                 <Typography variant="body2" color="text.secondary">
-                  {data.festivalReadiness?.blockers?.length || 0} blocker(s)
+                      {data.festivalReadiness?.blockers?.length || 0} setup issue(s)
                 </Typography>
                 <Button
                   variant="contained"
                   endIcon={<ArrowForwardRoundedIcon />}
                       onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
                     >
-                      Open Festival Auction Hub
+                      View Auction Details
                 </Button>
               </Stack>
             </Stack>
@@ -454,7 +454,7 @@ export default function FestivalCommandCenter() {
                     </Stack>
                     <Stack spacing={1} sx={{ my: 2 }}>
                       <Typography variant="body2">
-                        Readiness: {readinessScore}%
+                            Setup progress: {readinessScore}%
                       </Typography>
                       <LinearProgress
                         variant="determinate"
@@ -467,7 +467,7 @@ export default function FestivalCommandCenter() {
                             ? `${participantName(
                                 tournament.auction?.current
                               )} is active.`
-                            : "No readiness blocker reported.")}
+                            : "No setup issue reported.")}
                       </Typography>
                     </Stack>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -486,9 +486,9 @@ export default function FestivalCommandCenter() {
                         }
                       >
                         {active
-                              ? "Open Sport Auction Hub"
+                              ? "View Auction Details"
                           : tournament.status === "ready"
-                            ? "Open Sport Auction Arena"
+                            ? "Open Live Sport Auction"
                           : tournament.status === "auction_completed"
                             ? "View Auction Results"
                             : "Manage Tournament"}
@@ -517,8 +517,8 @@ export default function FestivalCommandCenter() {
       </DashboardSection>
 
       <DashboardSection
-        title="Competition Readiness"
-        description="Future Competition eligibility based on completed Sport roster allocation."
+        title="Competition Setup"
+            description="Future competition setup after Sport team rosters are complete."
       >
         {data.sportTournaments.length ? (
           <DashboardGrid>
@@ -527,12 +527,12 @@ export default function FestivalCommandCenter() {
               return (
                 <ActionCard
                   key={`competition:${tournament.id}`}
-                  eyebrow="Competition Readiness"
+                    eyebrow="Competition Setup"
                   title={tournament.name}
                   description={
                     ready
-                      ? "Sport Auction roster allocation is complete. Competition setup is the next phase."
-                      : "Complete Sport Auction roster allocation before Competition setup."
+                          ? "Sport Auction rosters are complete. Competition setup is the next phase."
+                          : "Complete Sport Auction rosters before Competition setup."
                   }
                   status={ready ? "ready for future phase" : "not ready"}
                   statusColor={ready ? "success" : "default"}

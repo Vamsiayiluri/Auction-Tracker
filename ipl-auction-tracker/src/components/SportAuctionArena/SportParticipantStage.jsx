@@ -76,7 +76,7 @@ export default function SportParticipantStage({
                   color={current.status === "pending" ? "warning" : "default"}
                   label={
                     current.status === "pending"
-                      ? "Pending Finalization"
+                      ? "Waiting for Confirmation"
                       : current.status
                   }
                 />
@@ -90,7 +90,7 @@ export default function SportParticipantStage({
                 <Typography variant="body2" color="text.secondary">
                   {current.status === "live"
                     ? "Every accepted bid resets the server deadline."
-                    : "The Tournament Owner must extend or finalize this player."}
+                    : "The tournament manager must extend bidding, sell the player, or mark them unsold."}
                 </Typography>
               </Box>
             </Stack>

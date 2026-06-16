@@ -298,7 +298,7 @@ export default function SportTournamentWorkspace() {
       {canManage && !canEditSetup && (
         <Alert severity="info">
           Tournament setup is locked while the Auction is active or completed.
-          Open the Auction Arena for live controls and history.
+          Open the Live Auction page for bidding controls. Use Auction Details for history and results.
         </Alert>
       )}
 
@@ -318,7 +318,7 @@ export default function SportTournamentWorkspace() {
                 <Chip
                   size="small"
                   variant="outlined"
-                  label={readiness?.ready ? "Ready" : `${readiness?.blockers?.length || 0} blocker(s)`}
+                  label={readiness?.ready ? "Ready" : `${readiness?.blockers?.length || 0} setup issue(s)`}
                 />
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -329,7 +329,7 @@ export default function SportTournamentWorkspace() {
               variant="contained"
               onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}
             >
-              Open Auction Hub
+              View Auction Details
             </Button>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
@@ -363,7 +363,11 @@ export default function SportTournamentWorkspace() {
           sx={{ width: "100%", minWidth: 0 }}
         >
           {sections.map((section) => (
-            <Tab key={section} value={section} label={section} />
+            <Tab
+              key={section}
+              value={section}
+              label={section === "Readiness" ? "Setup Check" : section}
+            />
           ))}
         </Tabs>
       </Box>
@@ -384,7 +388,7 @@ export default function SportTournamentWorkspace() {
               <Chip label={`${readiness?.counts?.availableParticipantPool ?? 0} in pool`} />
             </Stack>
             <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-              Use the workspace sections above to resolve setup requirements. Auction monitoring and reporting are available in the Auction Hub.
+              Use the setup sections above to finish required items. Auction status, bid history, and results are available in Auction Details.
             </Typography>
           </CardContent>
         </Card>
@@ -821,7 +825,7 @@ export default function SportTournamentWorkspace() {
           <Alert
             severity={readiness?.readinessStatus === "READY" ? "success" : "warning"}
           >
-            Readiness score: {readiness?.readinessScore || 0}%. Status:{" "}
+            Setup progress: {readiness?.readinessScore || 0}%. Status:{" "}
             {readiness?.readinessStatus}.
           </Alert>
           {(readiness?.blockers || []).map((blocker) => (
@@ -854,7 +858,7 @@ export default function SportTournamentWorkspace() {
                 <Typography variant="h6">Sport Auction Settings</Typography>
                 <Typography color="text.secondary">
                   Configure round timing and bid progression before launch.
-                  Live execution remains in the Sport Auction Arena.
+                  Live bidding remains on the Live Auction page.
                 </Typography>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                   <TextField

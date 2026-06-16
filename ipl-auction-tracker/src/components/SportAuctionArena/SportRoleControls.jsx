@@ -19,7 +19,7 @@ export function OwnerLifecycleControls({
     <Card variant="outlined" sx={{ mb: 2 }}>
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
-          Auction Lifecycle
+          Auction Controls
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <Button
@@ -54,7 +54,7 @@ export function OwnerLifecycleControls({
             onClick={() =>
               onConfirm(
                 "Complete Sport Auction?",
-                "This ends all auction activity. Existing allocations and results remain available.",
+                "This ends all auction activity. Existing team assignments and results remain available.",
                 () => onRun("/complete", {}, "Auction completed.", "complete")
               )
             }
@@ -126,10 +126,10 @@ export function PendingFinalizationControls({
     <Card variant="outlined" sx={{ mt: 1, borderColor: "warning.main" }}>
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>
-          Pending Finalization
+          Waiting for Confirmation
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 1 }}>
-          Extend the round or finalize the server-authoritative outcome.
+          Extend bidding, sell the player, or mark the player as unsold.
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <Button
@@ -157,7 +157,7 @@ export function PendingFinalizationControls({
               )
             }
           >
-            {activeAction === "sell" ? "Selling..." : "Sell"}
+            {activeAction === "sell" ? "Selling..." : "Sell Player"}
           </Button>
           <Button
             color="warning"
@@ -177,7 +177,7 @@ export function PendingFinalizationControls({
               )
             }
           >
-            {activeAction === "unsold" ? "Updating..." : "Unsold"}
+            {activeAction === "unsold" ? "Updating..." : "Mark Unsold"}
           </Button>
         </Stack>
       </CardContent>

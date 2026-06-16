@@ -32,7 +32,7 @@ import {
 } from "../components/AuctionHubPrimitives";
 import { formatAuctionValue } from "../utils/auctionHub";
 
-const sections = ["Overview", "Teams", "Bid History", "Results", "Allocations", "Statistics"];
+const sections = ["Overview", "Teams", "Bid History", "Results", "Team Assignments", "Statistics"];
 
 const normalizeHistory = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -204,7 +204,7 @@ function SportAuctionHub({ initialSection = null }) {
                   size="small"
                   label={
                     auction?.current?.status === "pending"
-                      ? "pending finalization"
+                      ? "waiting for confirmation"
                       : String(auction?.tournament?.status || tournament?.status || "Not started").replaceAll("_", " ")
                   }
                   color="primary"
@@ -267,7 +267,7 @@ function SportAuctionHub({ initialSection = null }) {
           onChange={selectSection}
           variant="scrollable"
           scrollButtons="auto"
-          aria-label="Sport auction hub sections"
+          aria-label="Sport auction details sections"
         >
           {sections.map((section) => <Tab key={section} value={section} label={section} />)}
         </Tabs>
@@ -398,7 +398,7 @@ function SportAuctionHub({ initialSection = null }) {
         </Stack>
       ) : null}
 
-      {activeSection === "Allocations" ? (
+      {activeSection === "Team Assignments" ? (
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(2, minmax(0, 1fr))" }, gap: 2 }}>
           {teams.length ? teams.map((team) => (
             <Card key={getTeamId(team)} variant="outlined">

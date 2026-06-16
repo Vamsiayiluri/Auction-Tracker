@@ -128,7 +128,7 @@ export function HubProgress({ completed, total }) {
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
-        <Typography variant="body2">Auction progress</Typography>
+        <Typography variant="body2">Players Auctioned</Typography>
         <Typography variant="body2" fontWeight={800}>
           {completed} / {total}
         </Typography>

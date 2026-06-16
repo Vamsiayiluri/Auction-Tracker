@@ -27,15 +27,15 @@ test("Phase 4E-B Admin Dashboard prioritizes approved action sections", async ()
   );
 
   for (const section of [
-    "Needs Attention",
+    "Action Required",
     "Live Now",
-    "Festival Journey",
+    "Festival Progress",
     "Next Actions",
     "Recent Outcomes",
   ]) {
     assert.match(admin, new RegExp(section));
   }
-  assert.match(admin, /Pending Finalization/);
+  assert.match(admin, /Waiting for Confirmation/);
   assert.match(admin, /readiness\.blockers/);
   assert.match(admin, /tournament\.status === "ready"/);
   assert.doesNotMatch(admin, /StatCard|Total Festivals|Total Auctions/);
@@ -67,7 +67,7 @@ test("Phase 4E-B Owner and Captain Dashboards expose assignment-aware actions", 
     assert.match(captain, new RegExp(section));
   }
   assert.match(captain, /permissions\?\.canBid/);
-  assert.match(captain, /Competition Engine functionality is not implemented/);
+  assert.match(captain, /Competition setup is planned for a later phase/);
   assert.doesNotMatch(captain, /\/competitions/);
 });
 
@@ -80,11 +80,11 @@ test("Phase 4E-B Spectator Dashboard prioritizes live discovery and results", as
     "Live Now",
     "Upcoming",
     "Recent Results",
-    "Festival Explorer",
+    "Festivals",
   ]) {
     assert.match(spectator, new RegExp(section));
   }
-  assert.match(spectator, /Open Auction Hub/);
+  assert.match(spectator, /View Auction Details/);
   assert.match(spectator, /\/festivals\/\$\{festival\.id\}\/auction-hub/);
   assert.match(spectator, /\/sport-tournaments\/\$\{tournament\.id\}\/auction-hub/);
 });

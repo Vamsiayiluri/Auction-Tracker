@@ -198,7 +198,7 @@ export default function FestivalDetail() {
 
   useEffect(() => {
     refreshReadiness().catch(() => {
-      setError("Unable to load the latest Festival readiness.");
+      setError("Unable to load the latest Festival setup status.");
     });
   }, [refreshReadiness]);
 
@@ -613,7 +613,7 @@ export default function FestivalDetail() {
               variant="contained"
               onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
             >
-              Open Auction Hub
+              View Auction Details
             </Button>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
@@ -635,7 +635,7 @@ export default function FestivalDetail() {
           variant="fullWidth"
           aria-label="Admin Festival workspace mode"
         >
-          <Tab value="operations" label="Operations View" />
+          <Tab value="operations" label="Setup Sections" />
           <Tab
             value="configuration"
             label="Edit Festival Configuration"
@@ -662,7 +662,7 @@ export default function FestivalDetail() {
             variant="scrollable"
             scrollButtons="auto"
             allowScrollButtonsMobile
-            aria-label="Festival operations navigation"
+            aria-label="Festival setup navigation"
           >
             {FESTIVAL_OPERATION_TABS.map((tab) => (
               <Tab key={tab} value={tab} label={tab} />
@@ -999,7 +999,7 @@ export default function FestivalDetail() {
                   <Typography color="text.secondary">
                     Review server readiness here. Budget, Owner, Retention, and
                     Pool configuration remain in Edit Festival Configuration.
-                    Live rounds run only in the dedicated Arena.
+                    Live bidding happens only on the Live Auction page.
                   </Typography>
                 </Box>
                 <Stack
@@ -1031,7 +1031,7 @@ export default function FestivalDetail() {
                       navigate(`/auctions/festivals/${festivalId}`)
                     }
                   >
-                    Open Auction Arena
+                    Open Live Auction
                   </Button>
                 </Stack>
               </Stack>

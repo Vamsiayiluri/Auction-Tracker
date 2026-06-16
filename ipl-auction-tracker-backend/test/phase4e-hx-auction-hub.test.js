@@ -30,7 +30,7 @@ test("Phase 4E-HX Festival Hub contains monitoring and reporting sections", asyn
   for (const section of ["Overview", "Teams", "Bid History", "Results", "Statistics"]) {
     assert.match(hub, new RegExp(`"${section}"`));
   }
-  assert.match(hub, /Open Arena/);
+  assert.match(hub, /Open Live Auction/);
   assert.match(hub, /My Remaining Purse/);
   assert.match(hub, /My Spending/);
   assert.match(hub, /\/auction\/current/);
@@ -39,7 +39,7 @@ test("Phase 4E-HX Festival Hub contains monitoring and reporting sections", asyn
   assert.doesNotMatch(hub, /Place Bid|Start Auction|Pause Auction/);
 });
 
-test("Phase 4E-HX Sport Hub contains monitoring, allocations, and captain context", async () => {
+test("Phase 4E-HX Sport Hub contains monitoring, team assignments, and captain context", async () => {
   const hub = await frontend("src/pages/SportAuctionHub.jsx");
 
   for (const section of [
@@ -47,20 +47,20 @@ test("Phase 4E-HX Sport Hub contains monitoring, allocations, and captain contex
     "Teams",
     "Bid History",
     "Results",
-    "Allocations",
+    "Team Assignments",
     "Statistics",
   ]) {
     assert.match(hub, new RegExp(`"${section}"`));
   }
   assert.match(hub, /My Team/);
   assert.match(hub, /Credits Remaining/);
-  assert.match(hub, /Open Arena/);
+  assert.match(hub, /Open Live Auction/);
   assert.match(hub, /join-sport-auction/);
   assert.equal((hub.match(/socket\.on\("auction-state"/g) || []).length, 1);
   assert.doesNotMatch(hub, /Place Bid|Start Auction|Pause Auction/);
 });
 
-test("Phase 4E-HX separates command, management, Hub, Arena, and Results navigation", async () => {
+test("Phase 4E-HX separates overview, setup, details, live auction, and results navigation", async () => {
   const [navigation, festivalManagement, sportManagement] = await Promise.all([
     frontend("src/components/AuctionContextNavigation.jsx"),
     frontend("src/pages/FestivalDetail.jsx"),
@@ -68,21 +68,21 @@ test("Phase 4E-HX separates command, management, Hub, Arena, and Results navigat
   ]);
 
   for (const label of [
-    "Command Center",
-    "Management",
-    "Auction Hub",
-    "Arena",
+    "Overview",
+    "Setup",
+    "Auction Details",
+    "Live Auction",
     "Results",
   ]) {
     assert.match(navigation, new RegExp(label));
   }
   assert.doesNotMatch(festivalManagement, /<FestivalControlCenter/);
   assert.doesNotMatch(sportManagement, /<SportTournamentControlCenter/);
-  assert.match(festivalManagement, /Open Auction Hub/);
-  assert.match(sportManagement, /Open Auction Hub/);
+  assert.match(festivalManagement, /View Auction Details/);
+  assert.match(sportManagement, /View Auction Details/);
 });
 
-test("Phase 4E-HX keeps compact Arena headers and routes exits to Hubs", async () => {
+test("Phase 4E-HX keeps compact Live Auction headers and routes exits to details", async () => {
   const [festivalHeader, sportHeader, festivalArena, sportArena] = await Promise.all([
     frontend("src/components/FestivalAuctionArena/ArenaHeader.jsx"),
     frontend("src/components/SportAuctionArena/SportArenaHeader.jsx"),
@@ -90,8 +90,8 @@ test("Phase 4E-HX keeps compact Arena headers and routes exits to Hubs", async (
     frontend("src/pages/SportAuctionArena.jsx"),
   ]);
 
-  assert.match(festivalHeader, /Auction Hub/);
-  assert.match(sportHeader, /Auction Hub/);
+  assert.match(festivalHeader, /Auction Details/);
+  assert.match(sportHeader, /Auction Details/);
   assert.doesNotMatch(festivalHeader, /gridTemplateColumns/);
   assert.doesNotMatch(sportHeader, /gridTemplateColumns/);
   assert.match(festivalArena, /\/auction-hub/);

@@ -54,14 +54,14 @@ test("Phase 4E-A adds Festival and Auction entry foundations", async () => {
     frontend("src/pages/AuctionDirectory.jsx"),
   ]);
 
-  assert.match(commandCenter, /Festival Command Center/);
+  assert.match(commandCenter, /Festival Overview/);
   assert.match(commandCenter, /Festival Management/);
   assert.match(commandCenter, /Main Festival Auction/);
   assert.match(commandCenter, /Sport Tournaments/);
   assert.match(commandCenter, /\/auctions\/festivals\//);
   assert.match(commandCenter, /\/sport-tournaments\/\$\{tournament\.id\}\/manage/);
 
-  assert.match(auctionDirectory, /Auction Directory/);
+  assert.match(auctionDirectory, /Auctions/);
   assert.match(auctionDirectory, /Festival Auctions/);
   assert.match(auctionDirectory, /Sport Auctions/);
   assert.match(auctionDirectory, /api\.get\("\/v2\/festivals"\)/);

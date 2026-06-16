@@ -32,7 +32,7 @@ test("Phase 4E-E keeps Sport Tournament Management focused on setup", async () =
   assert.doesNotMatch(workspace, /PLACE BID|VisualTimer|Live Bid Stream/);
   assert.doesNotMatch(workspace, /auction\/history|join-sport-auction/);
   assert.match(workspace, /Sport Auction Settings/);
-  assert.match(workspace, /Live execution remains in the Sport Auction Arena/);
+  assert.match(workspace, /Live bidding remains on the Live Auction page/);
 });
 
 test("Phase 4E-E exposes Auction status and a dedicated Arena entry", async () => {
@@ -41,7 +41,7 @@ test("Phase 4E-E exposes Auction status and a dedicated Arena entry", async () =
   );
 
   assert.match(controlCenter, /Auction Status:/);
-  assert.match(controlCenter, /Open Sport Auction Arena/);
+  assert.match(controlCenter, /Open Live Sport Auction/);
   assert.match(controlCenter, /\/auctions\/sports\/\$\{tournament\.id\}/);
   assert.doesNotMatch(controlCenter, /auction\/start|Launch Auction/);
 });

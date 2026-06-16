@@ -57,7 +57,7 @@ export default function SportArenaHeader({
               <Metric label="Unsold" value={progress.unsold} />
               <Metric label="Remaining" value={progress.remaining} />
               <Metric
-                label="Auction Progress"
+                label="Players Auctioned"
                 value={
                   progress.current
                     ? `${progress.current}/${progress.total}`
@@ -67,7 +67,7 @@ export default function SportArenaHeader({
             </Stack>
           </Box>
           <Button color="inherit" onClick={onExit} sx={{ alignSelf: { lg: "center" } }}>
-            Auction Hub
+            Auction Details
           </Button>
         </Stack>
       </CardContent>

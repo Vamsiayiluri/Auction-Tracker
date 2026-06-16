@@ -80,8 +80,8 @@ export default function SpectatorProductDashboard({ data }) {
     <Stack spacing={5}>
       <DashboardHero
         eyebrow="Spectator Dashboard"
-        title={live.length ? `${live.length} Auction(s) live now` : "Follow the Festival journey"}
-        description="Live events and recent outcomes are prioritized before general Festival browsing."
+        title={live.length ? `${live.length} auction(s) live now` : "Follow live auctions and results"}
+        description="Live auctions and recent results appear first."
         actionLabel="Watch Auctions"
         onAction={() => navigate("/auctions")}
       />
@@ -99,7 +99,7 @@ export default function SpectatorProductDashboard({ data }) {
                 status={formatStatus(item.status)}
                 statusColor={statusColor(item.status)}
                 severity="live"
-                actionLabel="Open Auction Hub"
+                actionLabel="View Auction Details"
                 onAction={() => navigate(item.route)}
               />
             ))}
@@ -111,8 +111,8 @@ export default function SpectatorProductDashboard({ data }) {
 
       <DashboardSection
         title="Upcoming"
-        description="Ready or not-yet-live Auction experiences."
-        action={<Button onClick={() => navigate("/auctions")}>Browse Auctions</Button>}
+        description="Auctions that are ready or not live yet."
+        action={<Button onClick={() => navigate("/auctions")}>View Auctions</Button>}
       >
         {upcoming.length ? (
           <DashboardGrid>
@@ -154,7 +154,7 @@ export default function SpectatorProductDashboard({ data }) {
                 secondary={outcome.context}
                 status={outcome.outcome}
                 statusColor={outcome.outcome === "sold" ? "success" : "warning"}
-                actionLabel="View Auction"
+                actionLabel="View Auction Details"
                 onAction={() => navigate(outcome.route)}
               />
             ))}
@@ -165,8 +165,8 @@ export default function SpectatorProductDashboard({ data }) {
       </DashboardSection>
 
       <DashboardSection
-        title="Festival Explorer"
-        description="Browse Festivals as the parent context for Auctions and Sport Tournaments."
+        title="Festivals"
+        description="Browse Festivals and their auctions."
       >
         {data.festivals.length ? (
           <DashboardGrid>

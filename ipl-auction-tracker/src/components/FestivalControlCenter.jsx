@@ -97,7 +97,7 @@ export default function FestivalControlCenter({
       navigate(`/auctions/festivals/${festivalId}`);
     } catch (requestError) {
       setError(
-        requestError.response?.data?.message || "Auction action failed."
+        requestError.response?.data?.message || "We could not update the auction. Try again."
       );
     } finally {
       actionInFlight.current = false;
@@ -124,7 +124,7 @@ export default function FestivalControlCenter({
               <Chip
                 size="small"
                 color={auctionStatus === "live" ? "success" : auctionStatus === "paused" ? "warning" : "default"}
-                label={`Auction: ${auctionStatus}`}
+                label={`Auction: ${String(auctionStatus).replaceAll("_", " ")}`}
               />
               <Chip
                 size="small"
@@ -163,7 +163,7 @@ export default function FestivalControlCenter({
                 {activeAction === action
                   ? "Processing..."
                   : action === "open"
-                    ? "Open Auction"
+                    ? "Open Live Auction"
                     : action === "results"
                       ? "View Results"
                       : action === "history"

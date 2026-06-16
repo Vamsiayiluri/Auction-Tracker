@@ -40,7 +40,7 @@ export default function useFestivalCommandCenterData(festivalId) {
 
     const festival = fulfilledData(baseResults[0]);
     if (!festival) {
-      setError("Unable to load the Festival Command Center.");
+      setError("We could not load the Festival overview. Try again.");
       setLoading(false);
       return;
     }
@@ -86,7 +86,7 @@ export default function useFestivalCommandCenterData(festivalId) {
 
     const nextWarnings = [];
     if (baseResults[1].status === "rejected") {
-      nextWarnings.push("Festival readiness could not be loaded.");
+      nextWarnings.push("Festival setup status could not be loaded.");
     }
     if (baseResults[2].status === "rejected") {
       nextWarnings.push("Festival Auction status could not be loaded.");

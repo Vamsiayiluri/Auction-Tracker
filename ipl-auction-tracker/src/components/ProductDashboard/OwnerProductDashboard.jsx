@@ -39,21 +39,21 @@ export default function OwnerProductDashboard({ data }) {
     ? {
         title: `Join ${primaryFestival.festival.name}`,
         description: `${participantName(primaryFestival.current.current)} is currently active in the Main Festival Auction.`,
-        label: "Open Festival Auction Hub",
+        label: "View My Auction Details",
         route: `/festivals/${primaryFestival.festival.id}/auction-hub`,
       }
     : primarySport
       ? {
           title: `Manage ${primarySport.tournament.name}`,
           description: "A Sport Auction you manage is currently active.",
-          label: "Open Sport Auction Hub",
+          label: "View Sport Auction Details",
           route: `/sport-tournaments/${primarySport.tournament.id}/auction-hub`,
         }
       : {
-          title: "Review my Auction responsibilities",
+          title: "Review my auctions",
           description:
-            "No assigned Auction is live. Review ready and blocked Sport Tournaments.",
-          label: "Open Auctions",
+            "No assigned auction is live. Review upcoming auctions and setup issues.",
+          label: "View Active Auctions",
           route: "/auctions",
         };
 
@@ -68,9 +68,9 @@ export default function OwnerProductDashboard({ data }) {
       title: tournament.name,
       description:
         tournament.status === "ready"
-          ? "Sport Auction preparation is ready for launch."
+          ? "Sport Auction setup is complete."
           : tournament.status === "auction_completed"
-            ? "Review final Sport rosters before future Competition setup."
+            ? "Review final Sport rosters before competition setup."
             : readiness?.blockers?.[0] || "Continue Sport Tournament setup.",
       status: tournament.status,
       route:
@@ -79,7 +79,7 @@ export default function OwnerProductDashboard({ data }) {
           : sportManagementRoute(tournament.id),
       action:
         tournament.status === "ready"
-          ? "Open Arena"
+          ? "Open Live Auction"
           : tournament.status === "auction_completed"
             ? "Review Rosters"
             : "Continue Setup",
@@ -132,7 +132,7 @@ export default function OwnerProductDashboard({ data }) {
                   statusColor={statusColor(
                     festivalState?.current?.config?.auctionStatus
                   )}
-                  actionLabel="Open Auction Hub"
+                  actionLabel="View Auction Details"
                   onAction={() =>
                     navigate(`/festivals/${context.festivalId}/auction-hub`)
                   }
@@ -175,7 +175,7 @@ export default function OwnerProductDashboard({ data }) {
                 statusColor={statusColor(tournament.status)}
                 actionLabel={
                   data.activeSportStatuses.has(tournament.status)
-                    ? "Open Auction Hub"
+                    ? "View Auction Details"
                     : "Manage Tournament"
                 }
                 onAction={() =>
@@ -197,7 +197,7 @@ export default function OwnerProductDashboard({ data }) {
 
       <DashboardSection
         title="What Is Next"
-        description="Ready launches, blockers, and roster-completion handoffs."
+        description="Upcoming auctions, setup issues, and roster review."
       >
         {whatIsNext.length ? (
           <DashboardGrid>

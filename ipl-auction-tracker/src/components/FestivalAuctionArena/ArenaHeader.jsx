@@ -64,7 +64,7 @@ export default function ArenaHeader({
               <ProgressMetric label="Unsold" value={progress.unsold} />
               <ProgressMetric label="Remaining" value={progress.remaining} />
               <ProgressMetric
-                label="Auction Progress"
+                label="Players Auctioned"
                 value={
                   progress.current
                     ? `${progress.current}/${progress.total}`
@@ -83,7 +83,7 @@ export default function ArenaHeader({
               View Full Results
             </Button>
             <Button color="inherit" onClick={onExit}>
-              Auction Hub
+              Auction Details
             </Button>
           </Stack>
         </Stack>

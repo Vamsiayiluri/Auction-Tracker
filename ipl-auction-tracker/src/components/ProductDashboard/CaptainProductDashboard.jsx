@@ -35,7 +35,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
     <Stack spacing={embedded ? 4 : 5}>
       <DashboardSection
         title={embedded ? "Captain Responsibilities" : "My Captain Assignments"}
-        description="Server-confirmed Sport Team assignments and bidding capability."
+        description="Your Sport Team assignments and auction access."
       >
         {captainStates.length ? (
           <DashboardGrid>
@@ -50,7 +50,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
                 actionLabel={
                   data.activeSportStatuses.has(tournament.status)
                     ? "Join Auction"
-                    : "Open Auction Hub"
+                    : "View Auction Details"
                 }
                 onAction={() =>
                   navigate(
@@ -129,7 +129,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
                   secondary={`${team?.roster?.length || 0} roster member(s)`}
                   status={formatStatus(tournament.status)}
                   statusColor={statusColor(tournament.status)}
-                  actionLabel="Open Auction Hub"
+                  actionLabel="View Auction Details"
                   onAction={() =>
                     navigate(`/sport-tournaments/${tournament.id}/auction-hub`)
                   }
@@ -144,16 +144,16 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
 
       <DashboardSection
         title="Upcoming Competitions"
-        description="Competition readiness after Sport roster completion."
+        description="Competition setup after Sport rosters are complete."
       >
         {competitionReady.length ? (
           <DashboardGrid>
             {competitionReady.map(({ tournament }) => (
               <ActionCard
                 key={`competition:${tournament.id}`}
-                eyebrow="Competition Readiness"
+                eyebrow="Competition Setup"
                 title={tournament.name}
-                description="Sport roster allocation is complete. Competition Engine functionality is not implemented in Phase 4E-B."
+                description="Sport rosters are complete. Competition setup is planned for a later phase."
                 status="future phase"
                 actionLabel="Review Final Rosters"
                 onAction={() =>

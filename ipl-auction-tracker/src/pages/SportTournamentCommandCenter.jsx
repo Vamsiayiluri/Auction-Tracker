@@ -58,19 +58,19 @@ export default function SportTournamentCommandCenter() {
   const primaryAction = useMemo(() => {
     if (["auction_live", "auction_paused", "pending_finalization"].includes(auction?.status)) {
       return {
-        label: "Open Sport Auction Arena",
+        label: "Open Live Sport Auction",
         route: `/auctions/sports/${sportTournamentId}`,
       };
     }
     if (readiness?.ready) {
       return {
-        label: "Review Auction Hub",
+        label: "View Auction Details",
         route: `/sport-tournaments/${sportTournamentId}/auction-hub`,
       };
     }
     if (!canManage) {
       return {
-        label: "Open Auction Hub",
+        label: "View Auction Details",
         route: `/sport-tournaments/${sportTournamentId}/auction-hub`,
       };
     }
@@ -104,11 +104,11 @@ export default function SportTournamentCommandCenter() {
                 <Chip
                   color={readiness?.ready ? "success" : "warning"}
                   variant="outlined"
-                  label={readiness?.ready ? "Ready" : `${blockers.length} blocker(s)`}
+                  label={readiness?.ready ? "Ready" : `${blockers.length} setup issue(s)`}
                 />
               </Stack>
               <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                Operational decisions, readiness, and the next tournament action.
+                Tournament status, setup issues, and the next action.
               </Typography>
             </Box>
             <Button variant="contained" onClick={() => navigate(primaryAction.route)}>
@@ -132,10 +132,10 @@ export default function SportTournamentCommandCenter() {
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.2fr 0.8fr" }, gap: 2 }}>
         <Card variant="outlined">
           <CardContent>
-            <Typography variant="h6" gutterBottom>Attention Required</Typography>
+            <Typography variant="h6" gutterBottom>Setup Issues</Typography>
             {!canManage ? (
               <Alert severity="info">
-                Use the Auction Hub for teams, allocations, bid history, statistics, and results.
+                Use Auction Details for teams, player assignments, bid history, statistics, and results.
               </Alert>
             ) : blockers.length ? (
               <Stack spacing={1}>
@@ -161,10 +161,10 @@ export default function SportTournamentCommandCenter() {
                 </Button>
               ) : null}
               <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}>
-                Auction Hub
+                Auction Details
               </Button>
               <Button variant="outlined" onClick={() => navigate(`/auctions/sports/${sportTournamentId}`)}>
-                Open Arena
+                Open Live Auction
               </Button>
               <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}>
                 View Results

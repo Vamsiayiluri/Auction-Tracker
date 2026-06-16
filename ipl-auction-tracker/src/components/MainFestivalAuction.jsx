@@ -377,7 +377,7 @@ export default function MainFestivalAuction({
         : "The Auction is not live.";
     }
     if (roundStatus !== "live" || timeLeft <= 0) {
-      return "Bidding is locked pending server confirmation or finalization.";
+      return "Bidding is locked while the result is waiting for confirmation.";
     }
     if (leadingBid?.festivalTeamId === viewerTeamId) {
       return "Your Team already leads this round.";
@@ -613,7 +613,7 @@ function AdminLifecycleControls({
     <Card variant="outlined" sx={{ mb: 2 }}>
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
-          Auction Lifecycle
+          Auction Controls
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <Button
@@ -704,7 +704,7 @@ function RoundControls({
     <Card variant="outlined" sx={{ mt: 3, textAlign: "left" }}>
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>
-          Round Controls
+          Select Next Participant
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
           Select the next available participant and enter the base price.
@@ -789,11 +789,10 @@ function PendingFinalizationControls({
         >
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Pending Finalization
+              Waiting for Confirmation
             </Typography>
             <Typography color="text.secondary">
-              Extend the round or finalize the server-authoritative outcome
-              after bidding locks.
+              Extend bidding, sell the participant, or mark the participant as unsold.
             </Typography>
           </Box>
           <Chip
@@ -801,7 +800,7 @@ function PendingFinalizationControls({
             label={
               current.status === "pending"
                 ? "Action Required"
-                : "Waiting for Expiry"
+                : "Waiting for Timer"
             }
           />
         </Stack>
@@ -852,14 +851,14 @@ function PendingFinalizationControls({
               )
             }
           >
-            {activeAction === "unsold" ? "Updating..." : "Unsold"}
+            {activeAction === "unsold" ? "Updating..." : "Mark Unsold"}
           </Button>
         </Stack>
         {locallyExpired && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             {expiryConfirmationDelayed
-              ? "Expiry confirmation delayed; retrying server state."
-              : "Confirming expiry with server..."}
+              ? "Confirmation is taking longer than expected. Checking again..."
+              : "Confirming the timer has ended..."}
           </Typography>
         )}
       </CardContent>

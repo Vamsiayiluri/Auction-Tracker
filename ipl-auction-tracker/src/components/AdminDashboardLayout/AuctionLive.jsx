@@ -485,7 +485,7 @@ const AuctionLive = () => {
                       variant="outlined"
                     />
                     <Chip
-                      label={auctionStatus === "pending" ? "Pending Finalization" : "Live"}
+                      label={auctionStatus === "pending" ? "Waiting for Confirmation" : "Live"}
                       color={auctionStatus === "pending" ? "warning" : "success"}
                       variant="outlined"
                     />

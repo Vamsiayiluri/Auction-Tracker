@@ -31,6 +31,8 @@ import SportTournamentCommandCenter from "./pages/SportTournamentCommandCenter";
 import SportAuctionArena from "./pages/SportAuctionArena";
 import SportAuctionHub from "./pages/SportAuctionHub";
 import SportAuctionResultsPage from "./pages/SportAuctionResultsPage";
+import ProfilePage from "./pages/ProfilePage";
+import AccountSettingsPage from "./pages/AccountSettingsPage";
 import AppShell from "./components/AppShell";
 import {
   DefaultRoute,
@@ -105,6 +107,26 @@ export default function AppRouter() {
               <ProtectedRoute>
                 <AppShell>
                   <Dashboard />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <AppShell>
+                  <ProfilePage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <AppShell>
+                  <AccountSettingsPage />
                 </AppShell>
               </ProtectedRoute>
             }

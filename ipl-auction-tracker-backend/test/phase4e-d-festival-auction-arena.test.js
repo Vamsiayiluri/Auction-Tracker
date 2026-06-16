@@ -47,7 +47,7 @@ test("Phase 4E-D Arena exposes the approved live information architecture", asyn
   const source = files.join("\n");
 
   for (const label of [
-    "Auction Progress",
+    "Players Auctioned",
     "Current Participant",
     "Base Price",
     "Current Bid",
@@ -65,9 +65,9 @@ test("Phase 4E-D Arena exposes the approved live information architecture", asyn
     "Available",
     "Unsold",
     "Re-Auction Count",
-    "Auction Lifecycle",
-    "Round Controls",
-    "Pending Finalization",
+    "Auction Controls",
+    "Select Next Participant",
+    "Waiting for Confirmation",
     "Recent Results",
     "View Full Results",
   ]) {
@@ -91,7 +91,7 @@ test("Phase 4E-D separates live execution from Festival Management", async () =>
   assert.doesNotMatch(workspace, /import\("\.\.\/components\/MainFestivalAuction"\)/);
   assert.doesNotMatch(workspace, /<MainFestivalAuction/);
   assert.match(workspace, /activeTab === "Auction Preparation"/);
-  assert.match(workspace, /Open Auction Arena/);
+  assert.match(workspace, /Open Live Auction/);
   assert.match(workspace, /<FestivalReadiness/);
   assert.match(workspace, /activeTab === "Bid History"/);
   assert.match(workspace, /activeTab === "Results"/);

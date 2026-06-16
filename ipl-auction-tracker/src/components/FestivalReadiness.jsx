@@ -50,7 +50,7 @@ export default function FestivalReadiness({
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
-          "Unable to load Festival readiness."
+          "We could not load the Festival setup check."
       );
     } finally {
       setLoading(false);
@@ -71,7 +71,7 @@ export default function FestivalReadiness({
           sx={{ mb: 2 }}
         >
           <Box>
-            <Typography variant="h6">Festival Readiness</Typography>
+            <Typography variant="h6">Festival Setup Check</Typography>
             <Typography color="text.secondary">
               Server-validated prerequisites for the Main Festival Auction.
             </Typography>
@@ -121,7 +121,7 @@ export default function FestivalReadiness({
               ))}
             </Box>
 
-            <Typography variant="subtitle1">Team Readiness Cards</Typography>
+            <Typography variant="subtitle1">Team Setup Status</Typography>
             <List dense>
               {readiness.teams.map((team) => (
                 <ListItem key={team.festivalTeamId} disableGutters>

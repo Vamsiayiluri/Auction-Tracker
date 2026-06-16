@@ -76,7 +76,7 @@ test("Phase 4E-F extracts compact live-only Sport Arena panels", async () => {
   const source = files.join("\n");
 
   for (const label of [
-    "Auction Progress",
+    "Players Auctioned",
     "Current Player",
     "Festival Team",
     "Remaining Credits",

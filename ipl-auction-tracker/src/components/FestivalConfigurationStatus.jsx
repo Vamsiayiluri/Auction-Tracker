@@ -96,7 +96,7 @@ export default function FestivalConfigurationStatus({
                 <Typography variant="body2" color="text.secondary">
                   {configurationState === "unlocked"
                     ? "Approved configuration corrections are enabled. Auction history and sold assignments remain protected."
-                    : "Standard auction lifecycle restrictions are active."}
+                    : "Standard auction setup restrictions are active."}
                 </Typography>
               </Stack>
             </Stack>
