@@ -785,6 +785,7 @@ export const assignFestivalTeamOwner = async (req, res) => {
         userId: user.id,
         email: user.email,
         name: user.name || employee.name,
+        teamName: team.name,
         temporaryPassword,
       };
     });
@@ -851,7 +852,10 @@ export const resendFestivalTeamOwnerCredentials = async (req, res) => {
         festivalTeamId: req.params.teamId,
         status: "active",
       },
-      include: [participantInclude],
+      include: [
+        { model: FestivalTeam, as: "team" },
+        participantInclude,
+      ],
     });
     const employee = owner?.participant?.employee;
     const user = employee?.user;
@@ -874,6 +878,7 @@ export const resendFestivalTeamOwnerCredentials = async (req, res) => {
     await sendTeamOwnerCredentialsEmail({
       email: user.email,
       name: user.name || employee.name,
+      teamName: owner.team?.name,
       temporaryPassword,
     });
     await sequelize.transaction(async (transaction) => {
@@ -1449,6 +1454,7 @@ export const getFestivalRetentions = async (req, res) => {
                         { employeeNumber: { [Op.like]: `%${search}%` } },
                         { name: { [Op.like]: `%${search}%` } },
                         { department: { [Op.like]: `%${search}%` } },
+                        { gender: { [Op.like]: `%${search}%` } },
                       ],
                     },
                   }
@@ -1548,6 +1554,7 @@ export const getFestivalAuctionPool = async (req, res) => {
                       { employeeNumber: { [Op.like]: `%${search}%` } },
                       { name: { [Op.like]: `%${search}%` } },
                       { department: { [Op.like]: `%${search}%` } },
+                      { gender: { [Op.like]: `%${search}%` } },
                     ],
                   }
                 : undefined,

@@ -1,5 +1,84 @@
 # API Documentation
 
+## Phase 4B Sport Auction Preparation Foundation
+
+Authenticated reads:
+
+```text
+GET /api/v2/sport-tournaments/:sportTournamentId/budgets
+GET /api/v2/sport-tournaments/:sportTournamentId/pool
+```
+
+Admin or active parent Festival Team Owner mutations:
+
+```text
+POST /api/v2/sport-tournaments/:sportTournamentId/budgets/equal-distribution
+PUT  /api/v2/sport-tournaments/:sportTournamentId/budgets
+POST /api/v2/sport-tournaments/:sportTournamentId/pool/generate
+```
+
+Equal distribution accepts:
+
+```json
+{"totalCredits":1500}
+```
+
+Manual budget configuration accepts:
+
+```json
+{
+  "budgets": [
+    {
+      "sportTeamId": "team-a",
+      "allocatedCredits": 500,
+      "adjustmentCredits": 0,
+      "status": "active"
+    }
+  ]
+}
+```
+
+Pool generation transactionally replaces the existing pre-auction snapshot
+from current eligibility. It is accepted only in `draft`, `setup`, or `ready`.
+
+Readiness now requires active positive Team budgets, a generated Pool, available
+Pool participants, and a Pool snapshot matching current eligibility.
+
+No Sport Auction lifecycle, bidding, timer, Socket.IO, sold/unsold, match,
+fixture, standing, or competition endpoint is implemented.
+
+## Phase 4A Sport Tournament Foundation
+
+All routes require bearer authentication. Admins may manage every Sport
+Tournament. Team Owners may manage only Tournaments beneath the Festival Team
+resolved from their active `FestivalTeamOwner` assignment.
+
+```text
+GET   /api/v2/sport-tournaments
+GET   /api/v2/sport-tournaments/owner-contexts
+POST  /api/v2/festivals/:festivalId/teams/:festivalTeamId/sport-tournaments
+GET   /api/v2/sport-tournaments/:sportTournamentId
+PATCH /api/v2/sport-tournaments/:sportTournamentId
+GET   /api/v2/sport-tournaments/:sportTournamentId/teams
+PATCH /api/v2/sport-tournaments/:sportTournamentId/teams/:sportTeamId
+POST  /api/v2/sport-tournaments/:sportTournamentId/teams/:sportTeamId/captain
+DELETE /api/v2/sport-tournaments/:sportTournamentId/teams/:sportTeamId/captain
+GET   /api/v2/sport-tournaments/:sportTournamentId/eligibility
+GET   /api/v2/sport-tournaments/:sportTournamentId/readiness
+```
+
+Tournament creation requires a finalized parent Festival roster and
+automatically creates `teamCount` internal Sport Teams. Captain requests accept
+only `festivalParticipantId`; Employee and Team authority are validated
+server-side.
+
+Eligibility returns included and excluded Employees with exact reason codes.
+Readiness returns a percentage score, `READY` or `NOT_READY`, exact blockers,
+counts, and per-Team Captain state.
+
+No Sport Auction, bid, fixture, match, standings, or competition endpoint is
+implemented in Phase 4A.
+
 ## Phase 3G.1 Festival Workspace UX
 
 Phase 3G.1 adds no HTTP or Socket.IO endpoints. The Festival Workspace composes
@@ -33,15 +112,45 @@ All routes require bearer authentication. Lifecycle/finalization requires
 
 - `POST /api/v2/festivals/:festivalId/auction/participants/:participantId/start`
   accepts `{"basePrice":100000}` and creates a persisted 20-second round.
-- `POST /api/v2/festivals/:festivalId/auction/bid` accepts `{}`. The server
-  derives Team identity and the exact next amount; supplied amounts fail
-  validation.
+- `POST /api/v2/festivals/:festivalId/auction/bid` accepts the viewer's
+  observed round state:
+
+```json
+{
+  "auctionId": "festival-auction-id",
+  "expectedCurrentBid": 100000
+}
+```
+
+The server derives Team identity and the exact next amount. It rejects stale
+auction IDs or current bids with `409`, so simultaneous requests cannot
+silently create a second bid. Supplied next-bid amounts still fail validation.
+The accepted bid and new 20-second deadline are persisted in one transaction.
 - `POST /api/v2/festivals/:festivalId/auction/extend` extends a pending round
   by 20 seconds.
 - Sell and unsold now require timer expiry and pending finalization.
+- Unsold is rejected when the round contains an accepted bid.
 - `GET /api/v2/festivals/:festivalId/auction/current` includes `basePrice`,
   `incrementPercentage`, `incrementAmount`, `currentBid`, `nextBid`, deadline,
-  ordered numbered bids, Team summaries, and viewer flags.
+  ordered numbered bids, Team summaries, viewer flags, `lifecycleState`, and
+  server-authoritative `adminActions`.
+
+When the persisted deadline has elapsed, the current-state read reconciles a
+stale `live` round to `pending` before responding. Pending responses use
+`expiryState: "EXPIRED"`, `lifecycleState: "ADMIN_DECISION"`, and expose:
+
+```json
+{
+  "adminActions": {
+    "extend": true,
+    "sell": true,
+    "unsold": false
+  }
+}
+```
+
+`sell` is enabled only when an accepted bid exists. `unsold` is enabled only
+when no accepted bid exists.
 
 Festival Auction configuration accepts `incrementPercentage` as `20` or `25`;
 the default is `20`. The server calculates:
@@ -75,6 +184,7 @@ the admin role.
 - `401`: missing/invalid bearer token on protected endpoints.
 - `403`: authenticated user does not have the required role or ownership scope.
 - `404`: requested entity/current auction not found.
+- `409`: stale auction state or conflicting concurrent mutation.
 - `500`: unhandled persistence or server error.
 
 Validation failures use a consistent envelope:
@@ -741,13 +851,20 @@ Native `.xlsx` files are not parsed; export the worksheet as CSV before upload.
 
 Base path: `/api/v2/employees`. All endpoints require admin authorization.
 
-- `POST /` creates an Employee.
-- `GET /` lists/searches Employees with pagination.
+- `POST /` creates an Employee. `gender` is required and accepts `male` or
+  `female`.
+- `GET /` lists/searches Employees with pagination. Optional `gender=male` or
+  `gender=female` filtering is supported.
 - `GET /:employeeId` returns one Employee.
-- `PATCH /:employeeId` updates Employee directory fields.
+- `PATCH /:employeeId` updates Employee directory fields, including gender.
 - `POST /:employeeId/link-user` optionally links an existing login User.
+- `GET /export` downloads the filtered Employee directory as CSV and includes
+  Gender.
 
 Festival participant creation now accepts `employeeId`, not `userId`.
+Employee responses include `gender`. Festival Participant responses expose the
+same value under `participant.employee.gender`; no participant gender field is
+stored.
 
 Primary HR import:
 
@@ -755,8 +872,10 @@ Primary HR import:
 - `GET /api/v2/festivals/:festivalId/participants/import/template`
 
 Required CSV identity columns are `EmployeeNumber` and `Name`. The import
-creates or updates Employee, FestivalParticipant, and sport selections per row.
-`No` removes an existing selection. The older participant-sports import paths
+matches an existing Employee, updates non-gender directory details, and creates
+or updates FestivalParticipant and sport selections per row. `No` removes an
+existing selection. Missing Employees are rejected with instructions to use
+the Employee Directory import first. The older participant-sports import paths
 remain compatibility aliases.
 
 ## Phase 2.1 HR Onboarding UX
@@ -771,13 +890,19 @@ Employee import:
 The admin uploads multipart field `csv`:
 
 ```csv
-EmployeeNumber,Name,Email,Department
-EMP001,John Smith,john@company.com,Finance
-EMP002,Ravi Kumar,ravi@company.com,IT
+EmployeeNumber,Name,Email,Department,Gender
+EMP001,John Smith,john@company.com,Finance,Male
+EMP002,Priya Shah,priya@company.com,IT,Female
 ```
 
 Employees are created or updated by normalized Employee Number. Invalid rows
-are skipped while valid rows continue. Login accounts are not required.
+are skipped while valid rows continue. Gender is required, accepts Male or
+Female case-insensitively, and is normalized to `male` or `female`. Login
+accounts are not required.
+
+The Festival participant/sport CSV intentionally has no Gender column.
+Employees must already exist in the Employee Directory before that import can
+add or reactivate Festival participation.
 
 Participant bulk operations:
 
@@ -856,15 +981,16 @@ Assignment-derived owner bid:
 
 ```json
 {
-  "amount": 700000
+  "auctionId": "festival-auction-id",
+  "expectedCurrentBid": 700000
 }
 ```
 
 The bidder team and owner assignment are derived from the authenticated User's
 linked Employee, FestivalParticipant, and FestivalTeamOwner records. Client
-team or owner IDs are not accepted. The auction must be `live`, the bid must
-exceed the current bid, and the amount must not exceed the team's remaining
-purse.
+team, owner, or bid amounts are not accepted. The auction must be `live`, the
+observed auction state must still be current, and the calculated next bid must
+not exceed the Team's remaining purse.
 
 Selling atomically creates a `FestivalTeamMembership` with
 `rosterSource=auction`, records the result, removes the participant from the
@@ -895,6 +1021,13 @@ Server events:
 
 Rooms use `festival-auction:<festivalId>`. The legacy tournament auction socket
 contract and tables are unchanged.
+
+Festival and Sport Auction rooms also emit the shared authoritative
+`auction-state` event after every mutation and immediately after a room join.
+The payload contains `scopeType`, `scopeId`, monotonic `revision`,
+`serverTime`, `deadlineAt`, complete shared `state`, `history`, and `audits`.
+Clients calculate the displayed countdown from `deadlineAt` and ignore older
+revisions. Legacy lifecycle event names remain available for compatibility.
 
 ## Festival Roster Workflow Consolidation API (Phase 3C)
 
@@ -1021,3 +1154,43 @@ temporary password before sending it.
 
 Users with `mustChangePassword: true` receive
 `PASSWORD_CHANGE_REQUIRED` from every other authenticated HTTP route.
+
+## Sport Auction Engine API (Phase 4C)
+
+Base path: `/api/v2/sport-tournaments/:sportTournamentId/auction`.
+
+Owner/admin configuration and lifecycle:
+
+- `PATCH /config`
+- `POST /start`
+- `POST /pause`
+- `POST /resume`
+- `POST /extend`
+- `POST /complete`
+- `POST /participants/:participantId/start`
+- `POST /participants/:participantId/sell`
+- `POST /participants/:participantId/unsold`
+- `POST /reauction`
+
+Captain bid:
+
+- `POST /bid`
+
+```json
+{
+  "auctionId": "sport-auction-id",
+  "expectedCurrentBid": 120
+}
+```
+
+The server derives the Sport Team from the authenticated Employee's active
+`SportTeamCaptain` assignment. Client-supplied Team identity and manual bid
+amounts are rejected.
+
+Authenticated reads:
+
+- `GET /current`
+- `GET /history`
+
+Socket rooms use `sport-auction:<sportTournamentId>` through
+`join-sport-auction` and `leave-sport-auction`.

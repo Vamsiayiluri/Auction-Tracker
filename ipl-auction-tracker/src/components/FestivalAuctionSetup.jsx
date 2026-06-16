@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   FormControl,
   InputLabel,
   MenuItem,
@@ -56,6 +58,9 @@ export default function FestivalAuctionSetup({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [activeAction, setActiveAction] = useState("");
+  const actionInFlight = useRef(false);
   const [poolSearch, setPoolSearch] = useState("");
   const [poolSport, setPoolSport] = useState("");
   const [retentionSearch, setRetentionSearch] = useState("");
@@ -109,6 +114,8 @@ export default function FestivalAuctionSetup({
         requestError.response?.data?.message ||
           "Unable to load main auction setup."
       );
+    } finally {
+      setLoading(false);
     }
   }, [festivalId, operationRevision]);
 
@@ -163,6 +170,7 @@ export default function FestivalAuctionSetup({
         participant.employee?.employeeNumber,
         participant.employee?.name,
         participant.employee?.department,
+        participant.employee?.gender,
       ].some((field) => String(field || "").toLowerCase().includes(value));
     const matchesSport =
       !poolSport ||
@@ -172,9 +180,23 @@ export default function FestivalAuctionSetup({
     return matchesSearch && matchesSport;
   });
 
-  const saveConfig = async () => {
+  const beginAction = (action) => {
+    if (actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true);
+    setActiveAction(action);
     setError("");
+    return true;
+  };
+
+  const endAction = () => {
+    actionInFlight.current = false;
+    setBusy(false);
+    setActiveAction("");
+  };
+
+  const saveConfig = async () => {
+    if (!beginAction("save-config")) return;
     try {
       const response = await api.patch(
         `/v2/festivals/${festivalId}/auction-config`,
@@ -195,15 +217,13 @@ export default function FestivalAuctionSetup({
           "Unable to save auction configuration."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const assignOwner = async (teamId) => {
     const participantId = ownerSelections[teamId];
-    if (!participantId) return;
-    setBusy(true);
-    setError("");
+    if (!participantId || !beginAction(`assign-owner:${teamId}`)) return;
     try {
       await api.post(
         `/v2/festivals/${festivalId}/teams/${teamId}/owner`,
@@ -224,13 +244,12 @@ export default function FestivalAuctionSetup({
         await onRosterChanged?.();
       }
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const resendOwnerCredentials = async (teamId) => {
-    setBusy(true);
-    setError("");
+    if (!beginAction(`resend-owner:${teamId}`)) return;
     try {
       await api.post(
         `/v2/festivals/${festivalId}/teams/${teamId}/owner/credentials`
@@ -243,13 +262,12 @@ export default function FestivalAuctionSetup({
           "Unable to resend Team Owner credentials."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const createRetention = async () => {
-    setBusy(true);
-    setError("");
+    if (!beginAction("create-retention")) return;
     try {
       await api.post(`/v2/festivals/${festivalId}/retentions/bulk`, {
         assignments: retentionForm.participantIds.map((participantId) => ({
@@ -267,13 +285,12 @@ export default function FestivalAuctionSetup({
         requestError.response?.data?.message || "Unable to create retention."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const deleteRetention = async (retentionId) => {
-    setBusy(true);
-    setError("");
+    if (!beginAction(`delete-retention:${retentionId}`)) return;
     try {
       await api.delete(
         `/v2/festivals/${festivalId}/retentions/${retentionId}`
@@ -286,7 +303,7 @@ export default function FestivalAuctionSetup({
         requestError.response?.data?.message || "Unable to remove retention."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -295,6 +312,16 @@ export default function FestivalAuctionSetup({
   const showOwners = ["all", "owners"].includes(section);
   const showRetentions = ["all", "retentions"].includes(section);
   const showPool = ["all", "pool"].includes(section);
+
+  if (loading) {
+    return (
+      <Card id="festival-auction-setup" variant="outlined" sx={{ mb: 3 }}>
+        <CardContent sx={{ display: "grid", placeItems: "center", py: 8 }}>
+          <CircularProgress size={30} />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card id="festival-auction-setup" variant="outlined" sx={{ mb: 3 }}>
@@ -393,7 +420,7 @@ export default function FestivalAuctionSetup({
             }
             onClick={saveConfig}
           >
-            Save Configuration
+            {activeAction === "save-config" ? "Saving..." : "Save Configuration"}
           </Button>
           {config && <Chip label={`Auction: ${config.status}`} />}
             </Stack>
@@ -473,7 +500,9 @@ export default function FestivalAuctionSetup({
                         disabled={busy}
                         onClick={() => resendOwnerCredentials(team.id)}
                       >
-                        Resend Credentials
+                        {activeAction === `resend-owner:${team.id}`
+                          ? "Sending..."
+                          : "Resend Credentials"}
                       </Button>
                     </Alert>
                   )}
@@ -483,27 +512,41 @@ export default function FestivalAuctionSetup({
                       spacing={1}
                       sx={{ mt: 2 }}
                     >
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Employee</InputLabel>
-                        <Select
-                          label="Employee"
-                          value={ownerSelections[team.id] || ""}
-                          disabled={busy || !config || setupLocked}
-                          onChange={(event) =>
-                            setOwnerSelections((current) => ({
-                              ...current,
-                              [team.id]: event.target.value,
-                            }))
-                          }
-                        >
-                          {availableParticipants.map((participant) => (
-                            <MenuItem key={participant.id} value={participant.id}>
-                              {participant.employee?.employeeNumber} -{" "}
-                              {participant.employee?.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <Autocomplete
+                        fullWidth
+                        options={availableParticipants}
+                        value={
+                          availableParticipants.find(
+                            ({ id }) => id === ownerSelections[team.id]
+                          ) || null
+                        }
+                        disabled={busy || !config || setupLocked}
+                        onChange={(event, participant) =>
+                          setOwnerSelections((current) => ({
+                            ...current,
+                            [team.id]: participant?.id || "",
+                          }))
+                        }
+                        getOptionLabel={(participant) =>
+                          [
+                            participant.employee?.employeeNumber,
+                            participant.employee?.name,
+                            participant.employee?.email,
+                          ]
+                            .filter(Boolean)
+                            .join(" - ")
+                        }
+                        isOptionEqualToValue={(option, value) =>
+                          option.id === value.id
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Search employee"
+                            size="small"
+                          />
+                        )}
+                      />
                       <Button
                         variant="outlined"
                         disabled={
@@ -514,7 +557,11 @@ export default function FestivalAuctionSetup({
                         }
                         onClick={() => assignOwner(team.id)}
                       >
-                        {owner ? "Change Owner" : "Assign Owner"}
+                        {activeAction === `assign-owner:${team.id}`
+                          ? "Assigning..."
+                          : owner
+                            ? "Change Owner"
+                            : "Assign Owner"}
                       </Button>
                     </Stack>
                   )}
@@ -556,28 +603,38 @@ export default function FestivalAuctionSetup({
               ))}
             </Select>
           </FormControl>
-          <FormControl sx={{ minWidth: 260 }} size="small">
-            <InputLabel>Participant</InputLabel>
-            <Select
-              multiple
-              label="Participant"
-              value={retentionForm.participantIds}
-              disabled={busy || !config || setupLocked}
-              onChange={(event) =>
-                setRetentionForm((current) => ({
-                  ...current,
-                  participantIds: event.target.value,
-                }))
-              }
-            >
-              {availableParticipants.map((participant) => (
-                <MenuItem key={participant.id} value={participant.id}>
-                  {participant.employee?.employeeNumber} -{" "}
-                  {participant.employee?.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            multiple
+            sx={{ minWidth: 280 }}
+            options={availableParticipants}
+            value={availableParticipants.filter(({ id }) =>
+              retentionForm.participantIds.includes(id)
+            )}
+            disabled={busy || !config || setupLocked}
+            onChange={(event, participants) =>
+              setRetentionForm((current) => ({
+                ...current,
+                participantIds: participants.map(({ id }) => id),
+              }))
+            }
+            getOptionLabel={(participant) =>
+              [
+                participant.employee?.employeeNumber,
+                participant.employee?.name,
+                participant.employee?.email,
+              ]
+                .filter(Boolean)
+                .join(" - ")
+            }
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Search retention participants"
+                size="small"
+              />
+            )}
+          />
           <TextField
             size="small"
             label="Retention Amount"
@@ -603,7 +660,9 @@ export default function FestivalAuctionSetup({
             }
             onClick={createRetention}
           >
-            Retain Selected ({retentionForm.participantIds.length})
+            {activeAction === "create-retention"
+              ? "Saving Retentions..."
+              : `Retain Selected (${retentionForm.participantIds.length})`}
           </Button>
         </Stack>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 1 }}>
@@ -657,7 +716,9 @@ export default function FestivalAuctionSetup({
                       disabled={busy || setupLocked}
                       onClick={() => deleteRetention(retention.id)}
                     >
-                      Remove
+                      {activeAction === `delete-retention:${retention.id}`
+                        ? "Removing..."
+                        : "Remove"}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -703,6 +764,7 @@ export default function FestivalAuctionSetup({
                 <TableCell>Employee Number</TableCell>
                 <TableCell>Name</TableCell>
                 <TableCell>Department</TableCell>
+                <TableCell>Gender</TableCell>
                 <TableCell>Registered Sports</TableCell>
                 <TableCell>Sport Count</TableCell>
               </TableRow>
@@ -716,6 +778,11 @@ export default function FestivalAuctionSetup({
                   <TableCell>{participant.employee?.name}</TableCell>
                   <TableCell>{participant.employee?.department || "-"}</TableCell>
                   <TableCell>
+                    {participant.employee?.gender === "female"
+                      ? "Female"
+                      : "Male"}
+                  </TableCell>
+                  <TableCell>
                     {(participant.sports || [])
                       .map(
                         (registration) =>
@@ -726,6 +793,13 @@ export default function FestivalAuctionSetup({
                   <TableCell>{participant.sportCount}</TableCell>
                 </TableRow>
               ))}
+              {!filteredPool.length && (
+                <TableRow>
+                  <TableCell colSpan={5} align="center">
+                    No auction-pool participants match the current filters.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
             </TableContainer>

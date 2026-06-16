@@ -579,6 +579,7 @@ export const sendPasswordResetEmail = async (email, name, token) => {
 export const sendTeamOwnerCredentialsEmail = async ({
   email,
   name,
+  teamName,
   temporaryPassword,
 }) => {
   const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
@@ -586,6 +587,10 @@ export const sendTeamOwnerCredentialsEmail = async ({
   const forgotPasswordUrl = `${clientUrl}/forgot-password`;
   const safeName = escapeHtml(name);
   const safeEmail = escapeHtml(email);
+  const subjectTeamName = String(teamName || "Festival Team")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+  const safeTeamName = escapeHtml(teamName || "your assigned Festival Team");
   const safeTemporaryPassword = temporaryPassword
     ? escapeHtml(temporaryPassword)
     : null;
@@ -594,12 +599,13 @@ export const sendTeamOwnerCredentialsEmail = async ({
     {
       to: email,
       from: getEmailFrom(),
-      subject: "Your Team Owner Access - AuctionArena",
+      subject: `Your ${subjectTeamName} Owner Access - AuctionArena`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
           <h2 style="color: #2563eb;">Team Owner access assigned</h2>
           <p>Hello ${safeName},</p>
           <p>Your AuctionArena account is ready for Team Owner access.</p>
+          <p><strong>Team Name:</strong> ${safeTeamName}</p>
           <p><strong>Email:</strong> ${safeEmail}</p>
           ${
             safeTemporaryPassword

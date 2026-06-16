@@ -1,5 +1,130 @@
 # IMPLEMENTATION_LOG.md
 
+## Festival And Sport Auction Synchronization
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Added one shared server synchronization service for Festival and Sport
+  Auctions.
+- Every live mutation now broadcasts a revisioned full `auction-state`
+  snapshot with server time and authoritative deadline.
+- Snapshots include current round, bids, leading Team, next bid, purse or
+  credits, pool, rosters, counts, history, and audits.
+- Room joins and reconnects immediately push the latest snapshot.
+- Festival Admin, Owner, Spectator, and Sport Owner, Captain, Spectator views
+  consume the same payload and reject older revisions.
+- Client timers calculate display seconds from the server deadline and
+  server-clock offset; clients do not extend or reset deadlines locally.
+
+## Festival And Sport Auction Opening Bid Correction
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Fresh rounds now expose current bid zero, opening bid equal to base price,
+  no leading Team, and zero accepted bids.
+- The first accepted Festival purse bid and Sport credit bid now persist the
+  participant base value; later bids use the fixed base-price percentage.
+- Socket payloads include authoritative bid numbering/count and post-bid
+  progression.
+- Sold results and purse/credit deduction continue to derive from the persisted
+  winning bid.
+
+## Phase 4B Sport Auction Preparation Foundation
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Added independent integer credit budgets for Sport Teams.
+- Added equal credit distribution, manual overrides, totals, and audit fields.
+- Added transactional Sport Auction Pool generation and regeneration.
+- Extended eligibility with Captain and existing Sport Team member exclusions.
+- Extended readiness with budget, Pool existence, availability, and freshness
+  checks.
+- Added the Sport Tournament Control Center and Budgets/Pool workspace tabs.
+- Kept future Auction actions disabled and marked Coming Soon.
+- Added authenticated read-only setup views and assignment-protected mutations.
+- Did not add live Sport Auction, bidding, timers, Socket.IO, sold/unsold
+  behavior, fixtures, matches, standings, finals, or Competition Engine work.
+- Per user instruction, no tests, lint, build, migrations, or verification
+  commands were run.
+
+## Phase 4A Sport Tournament Foundation
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Added Sport Tournaments beneath Festival Teams.
+- Added automatic internal Sport Team generation and rename support.
+- Added assignment-based Captains using normal Festival Participant Employees.
+- Preserved Festival Team Owner participation and Captain eligibility.
+- Added reusable eligibility and readiness services with exact blockers.
+- Added assignment-derived Team Owner authorization and a dedicated workspace.
+- Added migration, validation, focused regression tests, lint, and build
+  verification.
+- Did not add Sport Auction, bidding, budgets, fixtures, matches, standings,
+  finals, or Competition Engine behavior.
+
+## Festival Auction Deterministic Expiry Recovery
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Fixed exact persisted/in-memory deadline comparisons after bid timer resets.
+- Added bounded MySQL timestamp precision tolerance.
+- Rescheduled early timer callbacks instead of dropping expiry processing.
+- Reconciled overdue live rounds during current-auction reads.
+- Added server-authoritative `adminActions` for Extend, Sell, and Unsold.
+- Added client retry polling after local zero and expiry lifecycle logging.
+- Added focused expiry, socket, action-state, and race regression tests.
+
+## Employee Gender Foundation
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Added required `Employees.gender` with `male` and `female` values.
+- Added a recovery-safe, idempotent MySQL migration and gender index.
+- Backfilled existing Employees to a review-required placeholder because no
+  prior canonical gender source exists.
+- Added Employee DTO, validation, filtering, import, export, manual create/edit,
+  and directory table support.
+- Kept FestivalParticipant free of duplicate gender storage and exposed gender
+  through nested Employee responses and Festival views.
+- Required combined Festival participant imports to match an existing Employee
+  whose gender was established through the Employee Directory.
+- Added focused regression coverage and documentation.
+- Did not implement Phase 4, Sport Teams, Sport Auctions, or Competition Engine.
+
+## Festival Auction Stabilization & UX Hardening
+
+Status: COMPLETE
+
+Completed on: 2026-06-12
+
+- Added stale bid detection using the observed auction ID and current bid.
+- Persisted accepted bids and deadline resets in the same transaction.
+- Prevented stale process-local timeouts from expiring a newer deadline.
+- Rejected Unsold when accepted bids exist.
+- Added Team Name to Team Owner credential emails and resends.
+- Replaced participant selection with searchable autocomplete.
+- Kept Extend visible for every active admin round.
+- Added duplicate submission guards, loaders, and clean-success import closure.
+- Auto-opened active Owner auctions and exposed both Team summaries.
+- Added prominent Owner Team labels and read-only Available/Unsold queues.
+- Replaced Own/Won/Lost filters with participant outcome categories.
+- Added focused stabilization regression coverage.
+
+No Phase 4, Sport Team, Sport Auction, scheduling, or Competition Engine work
+was added.
+
 ## Phase 3G.1 Festival Setup Wizard Stabilization
 
 Status: COMPLETE
@@ -1353,3 +1478,86 @@ Completed on: 2026-06-10
 
 Validation note: Node.js and npm were not available on `PATH` in this
 environment, so migrations, tests, lint, and builds were not executed.
+
+## Phase 3H - Application UX, Stability And Workflow Hardening
+
+Status: COMPLETE
+
+Completed on: 2026-06-12
+
+- Audited Admin, Team Owner, Spectator, Festival, and legacy Tournament auction
+  workflows without starting Phase 4.
+- Added synchronous duplicate-submit guards and action-specific progress states
+  to high-volume Festival admin mutations and dialogs.
+- Added searchable owner, retention, Team Builder, and participant controls.
+- Added loading and filtered-empty states to major Festival setup/history views.
+- Added socket-driven refresh for Owner and Spectator overview, Team, bid
+  history, and result views.
+- Added client-side required-field and date-range validation to Festival forms.
+- Serialized legacy Tournament round start in a database transaction.
+- Blocked legacy Unsold finalization after a valid bid and aligned admin button
+  state with the server rule.
+- Expanded stabilization regression-contract tests and the completion report.
+- Did not implement Sport Teams, Sport Auctions, Competition Engine, or any
+  Phase 4 functionality.
+
+Validation note: Node.js and npm were not available on `PATH` in this
+environment, so tests, lint, and builds could not be executed.
+
+## Phase 4C - Sport Auction Engine
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Added tournament-scoped Sport Auction configuration, rounds, bids, results,
+  re-auction metadata, and operation audits.
+- Reused Festival percentage progression, persisted deadlines, pending
+  finalization, startup timer restoration, transactional locking, and history
+  patterns.
+- Derived captain bidding authority from active Employee and
+  `SportTeamCaptain` assignments.
+- Kept owner auction management separate from captain bidding authority.
+- Added derived Team spent and remaining credits from sold results.
+- Added owner lifecycle controls, one-click captain bidding, re-auction, live
+  socket refresh, history, and the dedicated Sport Auction Arena.
+- Added focused Phase 4C tests and implementation report.
+- Did not implement fixtures, matches, standings, points tables, semi-finals,
+  finals, or competition engine behavior.
+
+Validation:
+
+- Focused Phase 4A/4C backend tests: 15 passed.
+- Frontend lint: passed.
+- Frontend production build: passed with the existing large-chunk warning.
+- Full backend suite: 209 passed and 15 legacy static-contract tests failed;
+  the Phase 4C tests passed.
+
+## Phase 4D - Sport Auction Stabilization And UX Hardening
+
+Status: COMPLETE
+
+Completed on: 2026-06-14
+
+- Standardized Tournament, configuration, and round lock ordering across timer
+  expiry, bids, and finalization.
+- Serialized setup mutations against Auction launch.
+- Added live participant and Captain eligibility revalidation.
+- Added strict Pool transition and re-auction conflict checks.
+- Added reconnect-aware Socket.IO room membership and server-clock alignment.
+- Coalesced realtime refreshes and added immediate accepted-bid feedback.
+- Added irreversible-action confirmations, actionable errors, setup lock
+  states, mobile Arena hierarchy, Team allocations, and separated histories.
+- Added spectator Sport Auction discovery and navigation.
+- Added focused Phase 4D regression tests.
+- Did not implement Competition Engine, fixtures, matches, points tables,
+  standings, semi-finals, or finals.
+
+Validation:
+
+- Focused Phase 4A/4C/4D backend tests: 23 passed.
+- Frontend lint: passed.
+- Frontend production build: passed with the existing large-chunk warning.
+- Full backend suite: 217 passed and 15 legacy static-contract tests failed;
+  the focused Phase 4D tests passed.
+- `git diff --check`: passed with line-ending conversion warnings only.

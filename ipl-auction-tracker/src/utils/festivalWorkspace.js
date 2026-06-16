@@ -16,7 +16,7 @@ export const FESTIVAL_OPERATION_TABS = [
   "Teams",
   "Owners",
   "Retentions",
-  "Auction",
+  "Auction Preparation",
   "Bid History",
   "Results",
   "Audit",

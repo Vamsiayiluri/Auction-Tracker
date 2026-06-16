@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import {
@@ -26,6 +26,7 @@ export default function FestivalConfigurationStatus({
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const actionInFlight = useRef(false);
 
   const configurationState =
     festival?.configurationLockState ||
@@ -41,6 +42,8 @@ export default function FestivalConfigurationStatus({
   };
 
   const submit = async () => {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -57,6 +60,7 @@ export default function FestivalConfigurationStatus({
           "Unable to change configuration status."
       );
     } finally {
+      actionInFlight.current = false;
       setBusy(false);
     }
   };
@@ -162,7 +166,9 @@ export default function FestivalConfigurationStatus({
             disabled={busy || confirmation !== expected}
             onClick={submit}
           >
-            Confirm {action === "unlock" ? "Unlock" : "Relock"}
+            {busy
+              ? "Processing..."
+              : `Confirm ${action === "unlock" ? "Unlock" : "Relock"}`}
           </Button>
         </DialogActions>
       </Dialog>

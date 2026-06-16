@@ -1,0 +1,164 @@
+import {
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
+  Stack,
+  Typography,
+} from "@mui/material";
+import VisualTimer from "../VisualTimer";
+
+export default function ParticipantStage({
+  current,
+  leadingBid,
+  timeLeft,
+  formatMoney,
+  children,
+}) {
+  const employee = current?.participant?.employee;
+  const roundStatus = current?.status;
+
+  return (
+    <Card variant="outlined" sx={{ height: "100%" }}>
+      <CardContent>
+        <Typography variant="overline" color="text.secondary">
+          Current Participant
+        </Typography>
+
+        {current ? (
+          <Stack spacing={2}>
+            <Box>
+              <Typography
+                variant="h3"
+                sx={{ fontWeight: 900, fontSize: { xs: "2rem", md: "3rem" } }}
+              >
+                {employee?.name}
+              </Typography>
+              <Typography color="text.secondary">
+                {employee?.employeeNumber || "Employee number unavailable"} |{" "}
+                {employee?.department || "Department not set"} |{" "}
+                {employee?.gender === "female" ? "Female" : "Male"}
+              </Typography>
+            </Box>
+
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+              {(current.participant?.sports || []).map((registration) => (
+                <Chip
+                  key={registration.id}
+                  size="small"
+                  label={registration.sport?.name || registration.sportId}
+                />
+              ))}
+              {!current.participant?.sports?.length && (
+                <Chip size="small" label="No registered Sports" />
+              )}
+            </Stack>
+
+            <Divider />
+
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "repeat(2, minmax(0, 1fr))",
+                  md: "repeat(4, minmax(0, 1fr))",
+                },
+                gap: 2,
+              }}
+            >
+              <BidMetric
+                label="Base Price"
+                value={formatMoney(current.basePrice)}
+              />
+              <BidMetric
+                label="Current Bid"
+                value={
+                  current.bidCount
+                    ? formatMoney(current.currentBid)
+                    : "No bids"
+                }
+              />
+              <BidMetric
+                label="Next Bid"
+                value={formatMoney(current.nextBid)}
+              />
+              <BidMetric
+                label="Leading Team"
+                value={leadingBid?.teamName || "No leader"}
+              />
+            </Box>
+
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              alignItems={{ sm: "center" }}
+              justifyContent="center"
+              sx={{
+                borderRadius: 2,
+                bgcolor: "action.hover",
+                px: 2,
+                py: 2,
+              }}
+            >
+              {roundStatus === "live" ? (
+                <VisualTimer timeLeft={timeLeft} />
+              ) : (
+                <Chip
+                  color={roundStatus === "pending" ? "warning" : "default"}
+                  label={
+                    roundStatus === "pending"
+                      ? "Pending Finalization"
+                      : String(roundStatus || "inactive").replaceAll("_", " ")
+                  }
+                />
+              )}
+              <Box>
+                <Typography fontWeight={800}>
+                  {roundStatus === "live"
+                    ? "Bidding is open"
+                    : roundStatus === "pending"
+                      ? "Bidding is locked"
+                      : "Round is not accepting bids"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {roundStatus === "live"
+                    ? "The server resets the deadline after every accepted bid."
+                    : roundStatus === "pending"
+                      ? "An Admin must extend or finalize this participant."
+                      : "Live controls will update when the round resumes."}
+                </Typography>
+              </Box>
+            </Stack>
+
+            {children}
+          </Stack>
+        ) : (
+          <Box sx={{ py: { xs: 5, md: 9 }, textAlign: "center" }}>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              No participant is currently active
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              The next participant will appear here when an Admin starts a
+              round.
+            </Typography>
+            {children}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BidMetric({ label, value }) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography variant="h6" sx={{ fontWeight: 900 }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}

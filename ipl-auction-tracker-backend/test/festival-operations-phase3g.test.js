@@ -102,10 +102,12 @@ test("Phase 3G protects configuration and exposes re-auction actions", async () 
 });
 
 test("Phase 3G UI includes wizard, readiness, refresh, filters, and unsold actions", async () => {
-  const [detail, setup, auction, readiness, wizard, workspace] = await Promise.all([
+  const [detail, setup, queues, readiness, wizard, workspace] = await Promise.all([
     readRepo("ipl-auction-tracker/src/pages/FestivalDetail.jsx"),
     readRepo("ipl-auction-tracker/src/components/FestivalAuctionSetup.jsx"),
-    readRepo("ipl-auction-tracker/src/components/MainFestivalAuction.jsx"),
+    readRepo(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/QueueSummary.jsx"
+    ),
     readRepo("ipl-auction-tracker/src/components/FestivalReadiness.jsx"),
     readRepo("ipl-auction-tracker/src/components/FestivalSetupWizard.jsx"),
     readRepo("ipl-auction-tracker/src/utils/festivalWorkspace.js"),
@@ -115,8 +117,8 @@ test("Phase 3G UI includes wizard, readiness, refresh, filters, and unsold actio
   assert.match(setup, /operationRevision/);
   assert.match(setup, /Bid Increment Percentage/);
   assert.match(setup, /retentions\/bulk/);
-  assert.match(auction, /Re-Auction Selected/);
-  assert.match(auction, /Re-Auction All/);
+  assert.match(queues, /Re-Auction Selected/);
+  assert.match(queues, /Re-Auction All/);
   assert.match(readiness, /Team Readiness Cards/);
   assert.match(workspace, /Review & Launch/);
   assert.match(wizard, /localStorage/);

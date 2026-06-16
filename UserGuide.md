@@ -123,3 +123,9 @@ marked unsold. The admin must extend the round, sell to the highest bidder, or
 mark the player unsold. The result is then broadcast.
 
 Evidence: backend `src/controllers/auction.controller.js`.
+# Employee Gender
+
+Admins manage Gender in the Employee Directory. Gender is required and may be
+Male or Female. Employee CSV imports and exports include the Gender column.
+Festival Participants reuse the linked Employee gender; it is not entered or
+stored again on the participant record.

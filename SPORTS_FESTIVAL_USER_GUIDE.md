@@ -325,13 +325,17 @@ Admins can:
 Employee Number is the primary HR matching key. Name-only matching is not the
 normal workflow.
 
+Gender is a required Employee master attribute. Allowed values are Male and
+Female. Festival Participants, Festival rosters, and future Sport Teams reuse
+that Employee value instead of asking for gender again.
+
 ## Employee Directory CSV
 
 ```csv
-EmployeeNumber,Name,Email,Department
-EMP001,Vamsi Rao,vamsi@company.com,IT
-EMP002,Rahul Kumar,rahul@company.com,Finance
-EMP003,Priya Shah,priya@company.com,HR
+EmployeeNumber,Name,Email,Department,Gender
+EMP001,Vamsi Rao,vamsi@company.com,IT,Male
+EMP002,Rahul Kumar,rahul@company.com,Finance,Male
+EMP003,Priya Shah,priya@company.com,HR,Female
 ```
 
 The import:
@@ -339,6 +343,7 @@ The import:
 - Creates a new Employee when Employee Number is new.
 - Updates the matching Employee when Employee Number already exists.
 - Validates required fields and email format.
+- Requires Gender and accepts Male/Female case-insensitively.
 - Reports row-level errors.
 - Continues importing valid rows when other rows fail.
 - Does not create login accounts.
@@ -356,14 +361,17 @@ EMP003,Priya Shah,priya@company.com,HR,Yes,No,Yes,No,No,No,No
 
 This import can:
 
-1. Create or update the Employee.
-2. Add or reactivate the Employee as a Festival Participant.
-3. Add sports marked `Yes`.
-4. Remove sports marked `No`.
-5. Continue after row-level errors.
+1. Match an existing Employee by Employee Number.
+2. Update non-gender directory details.
+3. Add or reactivate the Employee as a Festival Participant.
+4. Add sports marked `Yes`.
+5. Remove sports marked `No`.
+6. Continue after row-level errors.
 
 `Yes` and `No` are case-insensitive. The file must be CSV; native Excel
-`.xlsx` files are not currently accepted.
+`.xlsx` files are not currently accepted. Gender is intentionally omitted:
+import Employees through the Employee Directory first so the canonical gender
+is established once.
 
 ## User Account Linking
 
@@ -622,6 +630,7 @@ Owners and spectators see:
 
 - Employee Number
 - Employee name
+- Gender
 - Department
 - Selected sports
 - Number of selected sports
@@ -844,8 +853,13 @@ Planned eligibility rule:
 ```text
 Employee belongs to Demons
 AND Employee selected Cricket
+AND Employee gender matches the event category, unless the event is Mixed
 THEN Employee may enter a Demons Cricket allocation process
 ```
+
+Future Men, Women, and Mixed event filters will read `Employee.gender`. They
+must not add a second gender field to FestivalParticipant or Sport Team
+membership records.
 
 An Employee owned by Trojans cannot be placed into a Demons Sport Team.
 
@@ -1084,7 +1098,7 @@ The admin workspace provides two modes:
 Operations is the default after launch. Configuration remains accessible, but
 locked controls stay disabled and backend validation remains authoritative.
 
-Owners use Overview, My Team, Auction, and Bid History tabs. Spectators use
+Owners use Overview, Teams, Auction, and Bid History tabs. Spectators use
 Overview, Live Auction, Teams, Results, and History tabs.
 
 Admins use dedicated Teams, Bid History, Results, and Audit tabs. Select a
@@ -1093,7 +1107,8 @@ current roster.
 
 Bid History lists auctioned participants. Select **View Bids** to see base
 price, sold price, sold Team, the full bid sequence, and timestamps. Owners can
-filter Bid History by Own Bids, Won Bids, and Lost Bids.
+filter Bid History by My Bid Activity, Won Participants, and Outbid
+Participants.
 
 This is a navigation and usability change only. Sport Teams, captains, Sport
 Auctions, scheduling, competition formats, standings, and results remain

@@ -18,9 +18,9 @@ const readRepoFile = (relativePath) =>
 test("Phase 2.1 employee CSV accepts valid rows and normalizes identity fields", () => {
   const result = parseEmployeeCsv(
     [
-      "EmployeeNumber,Name,Email,Department",
-      " emp001 ,John Smith,JOHN@COMPANY.COM,Finance",
-      "EMP002,Ravi Kumar,ravi@company.com,IT",
+      "EmployeeNumber,Name,Email,Department,Gender",
+      " emp001 ,John Smith,JOHN@COMPANY.COM,Finance,MALE",
+      "EMP002,Priya Shah,priya@company.com,IT,female",
     ].join("\n")
   );
 
@@ -28,26 +28,33 @@ test("Phase 2.1 employee CSV accepts valid rows and normalizes identity fields",
   assert.equal(result.errors.length, 0);
   assert.equal(result.rows[0].employee.employeeNumber, "EMP001");
   assert.equal(result.rows[0].employee.email, "john@company.com");
-  assert.match(employeeImportTemplate, /^EmployeeNumber,Name,Email,Department/);
+  assert.equal(result.rows[0].employee.gender, "male");
+  assert.equal(result.rows[1].employee.gender, "female");
+  assert.match(
+    employeeImportTemplate,
+    /^EmployeeNumber,Name,Email,Department,Gender/
+  );
 });
 
 test("Phase 2.1 employee CSV reports duplicates, invalid email, missing fields, and malformed rows", () => {
   const result = parseEmployeeCsv(
     [
-      "EmployeeNumber,Name,Email,Department",
-      "EMP001,John,john@company.com,Finance",
-      "EMP001,Ravi,ravi@company.com,IT",
-      "EMP003,Jane,invalid,Sales",
-      "EMP004,,employee@company.com,Operations",
+      "EmployeeNumber,Name,Email,Department,Gender",
+      "EMP001,John,john@company.com,Finance,Male",
+      "EMP001,Ravi,ravi@company.com,IT,Male",
+      "EMP003,Jane,invalid,Sales,Female",
+      "EMP004,,employee@company.com,Operations,Female",
+      "EMP006,Alex,alex@company.com,Legal,Unknown",
       '"EMP005,Broken,row',
     ].join("\n")
   );
 
-  assert.equal(result.processed, 5);
+  assert.equal(result.processed, 6);
   assert.equal(result.rows.length, 1);
   assert.ok(result.errors.some(({ message }) => /duplicated/i.test(message)));
   assert.ok(result.errors.some(({ message }) => /Email is invalid/i.test(message)));
   assert.ok(result.errors.some(({ message }) => /Name is required/i.test(message)));
+  assert.ok(result.errors.some(({ message }) => /Male or Female/i.test(message)));
   assert.ok(result.errors.some(({ message }) => /Malformed CSV row/i.test(message)));
 });
 
@@ -60,6 +67,7 @@ test("Phase 2.1 employee routes expose protected import and template endpoints",
   assert.match(routes, /router\.use\(authMiddleware, adminMiddleware\)/);
   assert.match(routes, /"\/import",\s*multipartCsvUpload/s);
   assert.match(routes, /router\.get\("\/import\/template"/);
+  assert.match(routes, /router\.get\("\/export"/);
   assert.match(controller, /where: \{ employeeNumber: row\.employee\.employeeNumber \}/);
   assert.match(controller, /created: 0/);
   assert.match(controller, /updated: 0/);
@@ -93,6 +101,8 @@ test("Phase 2.1 frontend provides debounced employee search and bulk participant
   assert.match(directory, /window\.setTimeout/);
   assert.match(directory, /Download Template/);
   assert.match(directory, /Import Employees/);
+  assert.match(directory, /Export Employees/);
+  assert.match(directory, /label="Gender"/);
   assert.match(directory, /new Blob\(\[response\.data\]/);
   assert.match(directory, /setTimeout\(\(\) => URL\.revokeObjectURL\(href\), 1000\)/);
   assert.match(directory, /Created \{importResult\.created\}/);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -10,6 +10,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
 import {
   getAuctionDisplayStatus,
@@ -32,10 +33,13 @@ export default function FestivalControlCenter({
   onReadiness,
   onAuctionStatus,
 }) {
+  const navigate = useNavigate();
   const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [activeAction, setActiveAction] = useState("");
   const [error, setError] = useState("");
+  const actionInFlight = useRef(false);
 
   const loadStatus = useCallback(async () => {
     setError("");
@@ -69,6 +73,10 @@ export default function FestivalControlCenter({
   const auctionStatus = readiness?.counts?.auctionStatus || "setup";
   const runAction = async (action) => {
     if (["open", "results", "history"].includes(action)) {
+      if (action === "open") {
+        navigate(`/auctions/festivals/${festivalId}`);
+        return;
+      }
       onNavigate(
         action === "history"
           ? "Bid History"
@@ -78,18 +86,23 @@ export default function FestivalControlCenter({
       );
       return;
     }
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
+    setActiveAction(action);
     setError("");
     try {
       await api.post(`/v2/festivals/${festivalId}/auction/${action}`);
       await loadStatus();
-      onNavigate("Auction");
+      navigate(`/auctions/festivals/${festivalId}`);
     } catch (requestError) {
       setError(
         requestError.response?.data?.message || "Auction action failed."
       );
     } finally {
+      actionInFlight.current = false;
       setBusy(false);
+      setActiveAction("");
     }
   };
 
@@ -147,7 +160,15 @@ export default function FestivalControlCenter({
                 disabled={busy || (action === "start" && readiness?.overallStatus !== "READY")}
                 onClick={() => runAction(action)}
               >
-                {action === "open" ? "Open Auction" : action === "results" ? "View Results" : action === "history" ? "View History" : `${action[0].toUpperCase()}${action.slice(1)} Auction`}
+                {activeAction === action
+                  ? "Processing..."
+                  : action === "open"
+                    ? "Open Auction"
+                    : action === "results"
+                      ? "View Results"
+                      : action === "history"
+                        ? "View History"
+                        : `${action[0].toUpperCase()}${action.slice(1)} Auction`}
               </Button>
             ))}
           </Stack>

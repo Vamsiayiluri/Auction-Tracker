@@ -1,17 +1,58 @@
-import { Alert, Box } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
 import { useAuth } from "../context/auth-context";
-import AdminDashboard from "../components/AdminDashboard";
-import ViewerDashboard from "../components/ViewerDashBoard";
-import TeamOwnerDashboard from "../components/TeamOwnerDashboard/TeamOwnerDashboard";
+import AdminProductDashboard from "../components/ProductDashboard/AdminProductDashboard";
+import CaptainProductDashboard from "../components/ProductDashboard/CaptainProductDashboard";
+import OwnerProductDashboard from "../components/ProductDashboard/OwnerProductDashboard";
+import SpectatorProductDashboard from "../components/ProductDashboard/SpectatorProductDashboard";
+import useProductDashboardData from "../components/ProductDashboard/useProductDashboardData";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const data = useProductDashboardData(user);
+  const hasCaptainAssignments = data.sportStates.some(
+    ({ tournament }) => tournament.permissions?.canBid
+  );
+
+  if (data.loading) {
+    return (
+      <Stack alignItems="center" spacing={2} sx={{ py: 10 }}>
+        <CircularProgress size={36} />
+        <Typography color="text.secondary">
+          Loading your operational dashboard...
+        </Typography>
+      </Stack>
+    );
+  }
 
   return (
     <Box>
-      {user.role === "admin" && <AdminDashboard />}
-      {user.role === "team_owner" && <TeamOwnerDashboard />}
-      {user.role === "spectator" && <ViewerDashboard />}
+      {data.error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={<Button onClick={data.reload}>Retry</Button>}
+        >
+          {data.error}
+        </Alert>
+      )}
+      {data.warnings.map((warning) => (
+        <Alert
+          key={warning}
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={<Button onClick={data.reload}>Retry</Button>}
+        >
+          {warning}
+        </Alert>
+      ))}
+      {user.role === "admin" && <AdminProductDashboard data={data} />}
+      {user.role === "team_owner" && <OwnerProductDashboard data={data} />}
+      {user.role === "spectator" &&
+        (hasCaptainAssignments ? (
+          <CaptainProductDashboard data={data} />
+        ) : (
+          <SpectatorProductDashboard data={data} />
+        ))}
       {!["admin", "team_owner", "spectator"].includes(user.role) && (
         <Alert severity="warning">
           Your account role is not configured for a dashboard yet. Please

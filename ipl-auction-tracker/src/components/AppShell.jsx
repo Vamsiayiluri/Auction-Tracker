@@ -2,7 +2,6 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import GavelRoundedIcon from "@mui/icons-material/GavelRounded";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SpaceDashboardOutlinedIcon from "@mui/icons-material/SpaceDashboardOutlined";
-import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import { useMemo, useState } from "react";
@@ -39,9 +38,11 @@ const pageTitles = {
   "/start-live-auction": "Run Auction",
   "/live-auction": "Live Auction",
   "/spectator-live-auction": "Live Auction",
-  "/festivals": "Sports Festivals",
+  "/festivals": "Festivals",
   "/festival-auctions": "Festival Auctions",
+  "/auctions": "Auctions",
   "/employees": "Employee Directory",
+  "/sport-tournaments": "Sport Tournaments",
 };
 
 const pageDescriptions = {
@@ -49,9 +50,11 @@ const pageDescriptions = {
   "/start-live-auction": "Control player rounds, bids, timers, and outcomes.",
   "/live-auction": "Place bids, monitor squads, and follow auction history.",
   "/spectator-live-auction": "Watch bids, teams, and outcomes as they happen.",
-  "/festivals": "Manage festival sports, participants, and registrations.",
+  "/festivals": "Open a Festival Command Center or create a new Festival.",
   "/festival-auctions": "Open a Main Festival Auction as an admin, owner, or spectator.",
+  "/auctions": "Open Festival and Sport Auctions from one directory.",
   "/employees": "Manage canonical employee identities and optional login links.",
+  "/sport-tournaments": "Create Sport Teams, assign Captains, and review readiness.",
 };
 
 const navigationByRole = {
@@ -61,21 +64,25 @@ const navigationByRole = {
       to: "/dashboard",
       icon: <SpaceDashboardOutlinedIcon />,
     },
-    { label: "Run Auction", to: "/start-live-auction", icon: <GavelRoundedIcon /> },
     {
-      label: "Sports Festivals",
+      label: "Festivals",
       to: "/festivals",
       icon: <EmojiEventsOutlinedIcon />,
     },
     {
-      label: "Festival Auctions",
-      to: "/festival-auctions",
+      label: "Auctions",
+      to: "/auctions",
       icon: <GavelRoundedIcon />,
     },
     {
       label: "Employees",
       to: "/employees",
       icon: <BadgeOutlinedIcon />,
+    },
+    {
+      label: "Sport Tournaments",
+      to: "/sport-tournaments",
+      icon: <EmojiEventsOutlinedIcon />,
     },
   ],
   team_owner: [
@@ -84,10 +91,14 @@ const navigationByRole = {
       to: "/dashboard",
       icon: <SpaceDashboardOutlinedIcon />,
     },
-    { label: "Live Auction", to: "/live-auction", icon: <GavelRoundedIcon /> },
     {
-      label: "Festival Auctions",
-      to: "/festival-auctions",
+      label: "Auctions",
+      to: "/auctions",
+      icon: <GavelRoundedIcon />,
+    },
+    {
+      label: "Sport Tournaments",
+      to: "/sport-tournaments",
       icon: <EmojiEventsOutlinedIcon />,
     },
   ],
@@ -98,14 +109,9 @@ const navigationByRole = {
       icon: <SpaceDashboardOutlinedIcon />,
     },
     {
-      label: "Watch Auction",
-      to: "/spectator-live-auction",
-      icon: <VisibilityRoundedIcon />,
-    },
-    {
-      label: "Festival Auctions",
-      to: "/festival-auctions",
-      icon: <EmojiEventsOutlinedIcon />,
+      label: "Auctions",
+      to: "/auctions",
+      icon: <GavelRoundedIcon />,
     },
   ],
 };
@@ -115,14 +121,54 @@ const AppShell = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const festivalPath = location.pathname.startsWith("/festivals/");
+  const festivalCommandCenterPath =
+    location.pathname.startsWith("/festivals/") &&
+    location.pathname.endsWith("/command-center");
+  const festivalResultsPath =
+    location.pathname.startsWith("/festivals/") &&
+    location.pathname.endsWith("/results");
+  const festivalManagementPath =
+    location.pathname.startsWith("/festivals/") &&
+    !festivalCommandCenterPath &&
+    !festivalResultsPath;
+  const festivalArenaPath = location.pathname.startsWith(
+    "/auctions/festivals/"
+  );
+  const sportArenaPath = location.pathname.startsWith("/auctions/sports/");
+  const arenaPath = festivalArenaPath || sportArenaPath;
+  const sportTournamentPath = location.pathname.startsWith(
+    "/sport-tournaments/"
+  );
   const pageTitle =
-    pageTitles[location.pathname] || (festivalPath ? "Festival Workspace" : "Dashboard");
+    pageTitles[location.pathname] ||
+    (festivalCommandCenterPath
+      ? "Festival Command Center"
+      : festivalResultsPath
+        ? "Festival Auction Results"
+      : festivalArenaPath
+        ? "Festival Auction Arena"
+        : sportArenaPath
+          ? "Sport Auction Arena"
+          : festivalManagementPath
+            ? "Festival Management"
+            : sportTournamentPath
+              ? "Sport Tournament Management"
+              : "Dashboard");
   const pageDescription =
     pageDescriptions[location.pathname] ||
-    (festivalPath
-      ? "Manage festival sports, participants, and registrations."
-      : pageDescriptions["/dashboard"]);
+    (festivalCommandCenterPath
+      ? "Review the Festival journey and open its management and Auction destinations."
+      : festivalResultsPath
+        ? "Review finalized Festival Auction outcomes outside the live Arena."
+      : festivalArenaPath
+        ? "Run, join, or watch the existing Main Festival Auction experience."
+        : sportArenaPath
+          ? "Run, join, or watch the existing Sport Auction experience."
+          : festivalManagementPath
+            ? "Manage Festival setup, participants, Teams, and reporting."
+            : sportTournamentPath
+              ? "Configure Sport Teams, Captains, eligibility, and readiness."
+              : pageDescriptions["/dashboard"]);
   const displayName = user?.name || "Auction user";
   const navigationItems = useMemo(
     () => navigationByRole[user?.role] ?? navigationByRole.spectator,
@@ -249,6 +295,7 @@ const AppShell = ({ children }) => {
       <Drawer
         open={mobileOpen}
         onClose={closeMobileNav}
+        aria-label="Primary navigation"
         PaperProps={{
           sx: { p: 2, width: 300 },
         }}
@@ -270,14 +317,16 @@ const AppShell = ({ children }) => {
       </Drawer>
 
       <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 } }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">{pageTitle}</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-            {pageTitle === "Dashboard"
-              ? `Welcome back, ${displayName}. ${pageDescription}`
-              : pageDescription}
-          </Typography>
-        </Box>
+        {!arenaPath && (
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h4">{pageTitle}</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              {pageTitle === "Dashboard"
+                ? `Welcome back, ${displayName}. ${pageDescription}`
+                : pageDescription}
+            </Typography>
+          </Box>
+        )}
         {children}
       </Container>
     </Box>

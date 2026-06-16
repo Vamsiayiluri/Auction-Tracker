@@ -57,7 +57,10 @@ test("Phase 3B validates lifecycle, participant, and bid commands", () => {
   assert.equal(
     festivalAuctionBidSchema.safeParse({
       params: { festivalId: "festival-1" },
-      body: {},
+      body: {
+        auctionId: "auction-1",
+        expectedCurrentBid: 700000,
+      },
     }).success,
     true
   );
@@ -125,7 +128,7 @@ test("Phase 3B serializes bids and sale finalization through transactions", asyn
 
   assert.match(controller, /sequelize\.transaction/);
   assert.match(controller, /lock: transaction\.LOCK\.UPDATE/);
-  assert.match(controller, /getNextMinimumBid/);
+  assert.match(controller, /getBidProgression/);
   assert.match(controller, /Bid exceeds the team's remaining purse/);
   assert.match(controller, /Winning team no longer has sufficient purse/);
   assert.match(controller, /FestivalTeamMembership\.create/);
@@ -159,25 +162,33 @@ test("Phase 3B uses authenticated festival rooms and required events", async () 
   );
 });
 
-test("Phase 3B UI provides admin, owner, and spectator live views only", async () => {
-  const [component, detail, page, directory, app] = await Promise.all([
+test("Phase 3B UI behavior is preserved in the dedicated Festival Arena", async () => {
+  const [component, detail, page, directory, app, participant, recent] = await Promise.all([
     readRepoFile("ipl-auction-tracker/src/components/MainFestivalAuction.jsx"),
     readRepoFile("ipl-auction-tracker/src/pages/FestivalDetail.jsx"),
     readRepoFile("ipl-auction-tracker/src/pages/FestivalLiveAuctionPage.jsx"),
     readRepoFile("ipl-auction-tracker/src/pages/FestivalAuctionDirectory.jsx"),
     readRepoFile("ipl-auction-tracker/src/App.jsx"),
+    readRepoFile(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/ParticipantStage.jsx"
+    ),
+    readRepoFile(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/RecentResultsStrip.jsx"
+    ),
   ]);
 
-  assert.match(detail, /<MainFestivalAuction/);
+  assert.doesNotMatch(detail, /<MainFestivalAuction/);
+  assert.match(detail, /Open Auction Arena/);
   assert.match(page, /<MainFestivalAuction/);
   assert.match(app, /festivals\/:festivalId\/live-auction/);
+  assert.match(app, /auctions\/festivals\/:festivalId/);
   assert.match(app, /festival-auctions/);
   assert.match(directory, /Open Main Auction/);
   assert.match(component, /Start Auction/);
-  assert.match(component, /Next Participant/);
+  assert.match(component, /Start Round/);
   assert.match(component, /Place Bid/);
-  assert.match(component, /Remaining Purse/);
-  assert.match(component, /Auction History/);
+  assert.match(participant, /Current Participant/);
+  assert.match(recent, /Recent Results/);
   assert.match(component, /join-festival-auction/);
   assert.doesNotMatch(
     component,

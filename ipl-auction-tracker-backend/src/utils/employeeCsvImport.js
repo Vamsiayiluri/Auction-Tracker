@@ -3,6 +3,7 @@ const REQUIRED_HEADERS = Object.freeze([
   "name",
   "email",
   "department",
+  "gender",
 ]);
 
 const normalizeHeader = (value) =>
@@ -42,6 +43,13 @@ const parseCsvLine = (line) => {
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+export const normalizeEmployeeGender = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "male" || normalized === "female"
+    ? normalized
+    : null;
+};
+
 export const parseEmployeeCsv = (csvText) => {
   const lines = String(csvText || "")
     .replace(/^\uFEFF/, "")
@@ -70,7 +78,7 @@ export const parseEmployeeCsv = (csvText) => {
         {
           row: headerIndex + 1,
           message:
-            "CSV header must include EmployeeNumber, Name, Email, Department",
+            "CSV header must include EmployeeNumber, Name, Email, Department, Gender",
         },
       ],
     };
@@ -102,6 +110,7 @@ export const parseEmployeeCsv = (csvText) => {
       name: String(raw.name || "").trim(),
       email: String(raw.email || "").trim().toLowerCase(),
       department: String(raw.department || "").trim(),
+      gender: normalizeEmployeeGender(raw.gender),
     };
     const rowErrors = [];
 
@@ -109,6 +118,11 @@ export const parseEmployeeCsv = (csvText) => {
     if (!employee.name) rowErrors.push("Name is required");
     if (!employee.email) rowErrors.push("Email is required");
     if (!employee.department) rowErrors.push("Department is required");
+    if (!String(raw.gender || "").trim()) {
+      rowErrors.push("Gender is required");
+    } else if (!employee.gender) {
+      rowErrors.push("Gender must be Male or Female");
+    }
     if (employee.email && !isValidEmail(employee.email)) {
       rowErrors.push("Email is invalid");
     }
@@ -134,7 +148,38 @@ export const parseEmployeeCsv = (csvText) => {
 };
 
 export const employeeImportTemplate = [
-  "EmployeeNumber,Name,Email,Department",
-  "EMP001,John Smith,john@company.com,Finance",
-  "EMP002,Ravi Kumar,ravi@company.com,IT",
+  "EmployeeNumber,Name,Email,Department,Gender",
+  "EMP001,John Smith,john@company.com,Finance,Male",
+  "EMP002,Priya Shah,priya@company.com,IT,Female",
 ].join("\n");
+
+const escapeCsvValue = (value) => {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+};
+
+export const buildEmployeeExportCsv = (employees) =>
+  [
+    [
+      "EmployeeNumber",
+      "Name",
+      "Email",
+      "Department",
+      "Gender",
+      "EmploymentStatus",
+      "IdentityStatus",
+      "HasLogin",
+    ],
+    ...employees.map((employee) => [
+      employee.employeeNumber,
+      employee.name,
+      employee.email,
+      employee.department,
+      employee.gender === "female" ? "Female" : "Male",
+      employee.employmentStatus,
+      employee.identityStatus,
+      employee.userId ? "Yes" : "No",
+    ]),
+  ]
+    .map((row) => row.map(escapeCsvValue).join(","))
+    .join("\n");

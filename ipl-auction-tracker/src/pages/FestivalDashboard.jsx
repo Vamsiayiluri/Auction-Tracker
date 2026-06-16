@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import {
@@ -39,7 +39,9 @@ export default function FestivalDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
 
   const loadFestivals = async () => {
     setLoading(true);
@@ -59,6 +61,16 @@ export default function FestivalDashboard() {
   }, []);
 
   const createFestival = async () => {
+    if (saveInFlight.current) return;
+    if (!form.name.trim() || !form.code.trim() || !form.startDate || !form.endDate) {
+      setFormError("Festival name, code, start date, and end date are required.");
+      return;
+    }
+    if (new Date(form.endDate) < new Date(form.startDate)) {
+      setFormError("End date must be on or after the start date.");
+      return;
+    }
+    saveInFlight.current = true;
     setSaving(true);
     setFormError("");
     try {
@@ -75,6 +87,7 @@ export default function FestivalDashboard() {
       setDialogOpen(false);
       setForm(emptyForm);
       await loadFestivals();
+      setNotice("Festival created.");
     } catch (requestError) {
       setFormError(
         requestError.response?.data?.errors?.[0]?.message ||
@@ -82,6 +95,7 @@ export default function FestivalDashboard() {
           "Unable to create festival."
       );
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -97,6 +111,11 @@ export default function FestivalDashboard() {
   return (
     <Box>
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {notice && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setNotice("")}>
+          {notice}
+        </Alert>
+      )}
       <Stack
         direction={{ xs: "column", sm: "row" }}
         justifyContent="space-between"
@@ -153,7 +172,9 @@ export default function FestivalDashboard() {
                 </Stack>
                 <Button
                   variant="outlined"
-                  onClick={() => navigate(`/festivals/${festival.id}`)}
+                  onClick={() =>
+                    navigate(`/festivals/${festival.id}/command-center`)
+                  }
                 >
                   Open Festival
                 </Button>

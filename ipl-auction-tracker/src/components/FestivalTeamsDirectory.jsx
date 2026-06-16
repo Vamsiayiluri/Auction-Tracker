@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import {
@@ -18,6 +18,8 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
+import { socket } from "../webSocket/socket";
+import { shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -33,16 +35,18 @@ const memberNumber = (membership) =>
 export default function FestivalTeamsDirectory({
   festivalId,
   ownerTeamOnly = false,
+  highlightOwnerTeam = false,
 }) {
   const [teams, setTeams] = useState([]);
   const [summaries, setSummaries] = useState([]);
   const [ownerTeamId, setOwnerTeamId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastRevision = useRef(0);
 
-  useEffect(() => {
+  const loadTeams = useCallback((showLoading = true) => {
     let active = true;
-    setLoading(true);
+    if (showLoading === true) setLoading(true);
     setError("");
     Promise.all([
       api.get(`/v2/festivals/${festivalId}/teams`),
@@ -71,6 +75,34 @@ export default function FestivalTeamsDirectory({
       active = false;
     };
   }, [festivalId]);
+
+  useEffect(() => {
+    const applySnapshot = (payload) => {
+      if (
+        payload?.scopeType !== "festival" ||
+        payload.scopeId !== festivalId ||
+        !shouldApplyAuctionSnapshot(lastRevision.current, payload)
+      ) {
+        return;
+      }
+      lastRevision.current = payload.revision;
+      setTeams(payload.state?.teams || []);
+      setSummaries(payload.state?.teamSummaries || []);
+      setLoading(false);
+    };
+    const joinRoom = () =>
+      socket.emit("join-festival-auction", { festivalId });
+    const cancelLoad = loadTeams();
+    socket.on("auction-state", applySnapshot);
+    socket.on("connect", joinRoom);
+    if (socket.connected) joinRoom();
+    return () => {
+      cancelLoad?.();
+      socket.emit("leave-festival-auction", { festivalId });
+      socket.off("auction-state", applySnapshot);
+      socket.off("connect", joinRoom);
+    };
+  }, [festivalId, loadTeams]);
 
   const visibleTeams = ownerTeamOnly
     ? teams.filter(({ id }) => id === ownerTeamId)
@@ -118,7 +150,9 @@ export default function FestivalTeamsDirectory({
           <Typography color="text.secondary">
             {ownerTeamOnly
               ? "Review your Owner assignment, purse, retentions, purchases, and current roster."
-              : "Select a Team to review its Owner, purse, retentions, purchases, and roster."}
+              : highlightOwnerTeam
+                ? "Review both Team summaries. Your assigned Team is highlighted."
+                : "Select a Team to review its Owner, purse, retentions, purchases, and roster."}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -149,7 +183,16 @@ export default function FestivalTeamsDirectory({
           );
 
           return (
-            <Accordion key={team.id} disableGutters>
+            <Accordion
+              key={team.id}
+              disableGutters
+              defaultExpanded={highlightOwnerTeam && team.id === ownerTeamId}
+              sx={
+                highlightOwnerTeam && team.id === ownerTeamId
+                  ? { border: 2, borderColor: "primary.main" }
+                  : undefined
+              }
+            >
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
@@ -176,6 +219,14 @@ export default function FestivalTeamsDirectory({
                       <Typography sx={{ fontWeight: 800 }}>
                         {team.name}
                       </Typography>
+                      {highlightOwnerTeam && team.id === ownerTeamId && (
+                        <Chip
+                          size="small"
+                          color="primary"
+                          label="Your Team"
+                          sx={{ mt: 0.5 }}
+                        />
+                      )}
                       <Typography variant="body2" color="text.secondary">
                         {memberships.length} roster members
                       </Typography>

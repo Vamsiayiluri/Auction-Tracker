@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -46,12 +47,12 @@ import {
   Tabs,
   Typography,
 } from "@mui/material";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "../utils/api";
 import FestivalSetupWizard from "../components/FestivalSetupWizard";
-import FestivalControlCenter from "../components/FestivalControlCenter";
 import FestivalConfigurationStatus from "../components/FestivalConfigurationStatus";
 import FestivalDetailsConfiguration from "../components/FestivalDetailsConfiguration";
+import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   FESTIVAL_OPERATION_TABS,
   getStoredSetupStep,
@@ -59,7 +60,6 @@ import {
 
 const FestivalTeamBuilder = lazy(() => import("../components/FestivalTeamBuilder"));
 const FestivalAuctionSetup = lazy(() => import("../components/FestivalAuctionSetup"));
-const MainFestivalAuction = lazy(() => import("../components/MainFestivalAuction"));
 const FestivalReadiness = lazy(() => import("../components/FestivalReadiness"));
 const FestivalOverview = lazy(() => import("../components/FestivalOverview"));
 const FestivalHistory = lazy(() => import("../components/FestivalHistory"));
@@ -72,6 +72,8 @@ const FestivalTeamsDirectory = lazy(
 
 export default function FestivalDetail() {
   const { festivalId } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [festival, setFestival] = useState(null);
   const [catalogSports, setCatalogSports] = useState([]);
   const [festivalSports, setFestivalSports] = useState([]);
@@ -91,6 +93,9 @@ export default function FestivalDetail() {
   const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const importInFlight = useRef(false);
+  const actionInFlight = useRef(false);
+  const [activeAction, setActiveAction] = useState("");
   const [rosterRevision, setRosterRevision] = useState(0);
   const [readiness, setReadiness] = useState(null);
   const [sportDialogOpen, setSportDialogOpen] = useState(false);
@@ -104,6 +109,10 @@ export default function FestivalDetail() {
     )
   );
   const [activeTab, setActiveTab] = useState(() => {
+    const requestedSection = searchParams.get("section");
+    if (FESTIVAL_OPERATION_TABS.includes(requestedSection)) {
+      return requestedSection;
+    }
     const storedTab = localStorage.getItem(
       `festival-workspace-tab:${festivalId}`
     );
@@ -116,10 +125,6 @@ export default function FestivalDetail() {
     adminWorkspaceMode === "configuration" ||
     (adminWorkspaceMode === "auto" && auctionStatus === "setup");
   const operationsView = !configurationView;
-  const openOperationsTab = useCallback((tab) => {
-    setAdminWorkspaceMode("operations");
-    setActiveTab(tab);
-  }, []);
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -192,6 +197,12 @@ export default function FestivalDetail() {
   }, [loadWorkspace]);
 
   useEffect(() => {
+    refreshReadiness().catch(() => {
+      setError("Unable to load the latest Festival readiness.");
+    });
+  }, [refreshReadiness]);
+
+  useEffect(() => {
     loadRegistrationData().catch(() => {
       setError("Unable to load the active Festival section.");
     });
@@ -200,6 +211,14 @@ export default function FestivalDetail() {
   useEffect(() => {
     localStorage.setItem(`festival-workspace-tab:${festivalId}`, activeTab);
   }, [activeTab, festivalId]);
+
+  useEffect(() => {
+    const requestedSection = searchParams.get("section");
+    if (FESTIVAL_OPERATION_TABS.includes(requestedSection)) {
+      setAdminWorkspaceMode("operations");
+      setActiveTab(requestedSection);
+    }
+  }, [searchParams]);
 
   const enabledSportIds = useMemo(
     () => new Set(festivalSports.map((item) => item.sportId)),
@@ -210,10 +229,23 @@ export default function FestivalDetail() {
     (sport) => !enabledSportIds.has(sport.id)
   );
 
-  const addSports = async () => {
-    if (!selectedSportIds.length) return;
+  const beginAction = (action) => {
+    if (actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true);
+    setActiveAction(action);
     setError("");
+    return true;
+  };
+
+  const endAction = () => {
+    actionInFlight.current = false;
+    setBusy(false);
+    setActiveAction("");
+  };
+
+  const addSports = async () => {
+    if (!selectedSportIds.length || !beginAction("add-sports")) return;
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/sports/bulk`,
@@ -231,7 +263,7 @@ export default function FestivalDetail() {
         requestError.response?.data?.message || "Unable to add selected sports."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -252,9 +284,7 @@ export default function FestivalDetail() {
   };
 
   const addSelectedParticipants = async () => {
-    if (!selectedEmployees.length) return;
-    setBusy(true);
-    setError("");
+    if (!selectedEmployees.length || !beginAction("add-participants")) return;
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/bulk`,
@@ -274,13 +304,12 @@ export default function FestivalDetail() {
         requestError.response?.data?.message || "Unable to add participants."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const addAllEmployees = async () => {
-    setBusy(true);
-    setError("");
+    if (!beginAction("add-all-employees")) return;
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/add-all`
@@ -295,14 +324,17 @@ export default function FestivalDetail() {
           "Unable to add all employees to the festival."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const removeSelectedParticipants = async () => {
-    if (!selectedParticipantIds.length) return;
-    setBusy(true);
-    setError("");
+    if (
+      !selectedParticipantIds.length ||
+      !beginAction("remove-participants")
+    ) {
+      return;
+    }
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/bulk-remove`,
@@ -321,7 +353,7 @@ export default function FestivalDetail() {
           "Unable to remove selected participants."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -397,8 +429,7 @@ export default function FestivalDetail() {
     ) {
       return;
     }
-    setBusy(true);
-    setError("");
+    if (!beginAction("save-sports")) return;
     try {
       if (selectionParticipant) {
         await api.post(`/v2/festivals/${festivalId}/participant-sports/bulk`, {
@@ -423,12 +454,13 @@ export default function FestivalDetail() {
           "Unable to register sports."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const uploadImport = async () => {
-    if (!importFile) return;
+    if (!importFile || importInFlight.current) return;
+    importInFlight.current = true;
     const formData = new FormData();
     formData.append("csv", importFile);
     setBusy(true);
@@ -449,6 +481,13 @@ export default function FestivalDetail() {
       setImportResult(response.data);
       setImportProgress(100);
       await invalidateFestivalSetup();
+      if (!response.data.failed) {
+        setImportOpen(false);
+        setImportFile(null);
+        setNotice(
+          `Festival import complete. Processed ${response.data.processed}; succeeded ${response.data.succeeded}.`
+        );
+      }
     } catch (requestError) {
       setImportResult({
         processed: 0,
@@ -460,6 +499,7 @@ export default function FestivalDetail() {
           ],
       });
     } finally {
+      importInFlight.current = false;
       setBusy(false);
     }
   };
@@ -484,8 +524,7 @@ export default function FestivalDetail() {
   };
 
   const updateRosterFormationMode = async (rosterFormationMode) => {
-    setBusy(true);
-    setError("");
+    if (!beginAction("roster-mode")) return;
     try {
       const response = await api.patch(
         `/v2/festivals/${festivalId}/roster-formation-mode`,
@@ -502,7 +541,7 @@ export default function FestivalDetail() {
           "Unable to change roster formation mode."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -524,6 +563,7 @@ export default function FestivalDetail() {
       participant.employee?.employeeNumber,
       participant.employee?.name,
       participant.employee?.department,
+      participant.employee?.gender,
       participant.status,
       ].some((field) => String(field || "").toLowerCase().includes(value));
     const matchesSport =
@@ -546,22 +586,47 @@ export default function FestivalDetail() {
         </Alert>
       )}
 
-      <FestivalControlCenter
-        festival={festival}
-        festivalId={festivalId}
-        revision={rosterRevision}
-        onReadiness={setReadiness}
-        onAuctionStatus={setAuctionStatus}
-        onNavigate={openOperationsTab}
-      />
-      <FestivalConfigurationStatus
-        festival={festival}
-        festivalId={festivalId}
-        onChanged={async (nextFestival) => {
-          setFestival(nextFestival);
-          await invalidateFestivalSetup();
-        }}
-      />
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            gap={1.5}
+          >
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography variant="h5" fontWeight={800}>
+                  {festival?.name || "Festival Management"}
+                </Typography>
+                <Chip size="small" label={festival?.status || "setup"} />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`Auction: ${String(auctionStatus).replaceAll("_", " ")}`}
+                />
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Configure participants, teams, owners, retention, and auction readiness.
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
+            >
+              Open Auction Hub
+            </Button>
+          </Stack>
+          <Box sx={{ mt: 1.25 }}>
+            <AuctionContextNavigation
+              commandCenter={`/festivals/${festivalId}/command-center`}
+              management={`/festivals/${festivalId}/manage`}
+              hub={`/festivals/${festivalId}/auction-hub`}
+              arena={`/auctions/festivals/${festivalId}`}
+              results={`/festivals/${festivalId}/results`}
+            />
+          </Box>
+        </CardContent>
+      </Card>
 
       <Card variant="outlined" sx={{ mb: 2 }}>
         <Tabs
@@ -577,6 +642,17 @@ export default function FestivalDetail() {
           />
         </Tabs>
       </Card>
+
+      {configurationView && (
+        <FestivalConfigurationStatus
+          festival={festival}
+          festivalId={festivalId}
+          onChanged={async (nextFestival) => {
+            setFestival(nextFestival);
+            await invalidateFestivalSetup();
+          }}
+        />
+      )}
 
       {operationsView && (
         <Card variant="outlined" sx={{ mb: 2 }}>
@@ -735,7 +811,9 @@ export default function FestivalDetail() {
                 disabled={!selectedSportIds.length || busy || lifecycleLocked}
                 onClick={addSports}
               >
-                Add Selected Sports
+                {activeAction === "add-sports"
+                  ? "Adding Sports..."
+                  : "Add Selected Sports"}
               </Button>
             </Stack>
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
@@ -803,7 +881,9 @@ export default function FestivalDetail() {
                   disabled={busy || locked}
                   onClick={addAllEmployees}
                 >
-                  Add All Employees To Festival
+                  {activeAction === "add-all-employees"
+                    ? "Adding Employees..."
+                    : "Add All Employees To Festival"}
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
@@ -814,7 +894,9 @@ export default function FestivalDetail() {
                 disabled={!selectedEmployees.length || busy || locked}
                 onClick={addSelectedParticipants}
               >
-                Add Selected Participants
+                {activeAction === "add-participants"
+                  ? "Adding Participants..."
+                  : "Add Selected Participants"}
               </Button>
             </Stack>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
@@ -903,12 +985,64 @@ export default function FestivalDetail() {
           />
         )}
 
-      {operationsView && activeTab === "Auction" && (
-        <MainFestivalAuction
-          festivalId={festivalId}
-          showHistory={false}
-          onRosterChanged={invalidateFestivalSetup}
-        />
+      {operationsView && activeTab === "Auction Preparation" && (
+        <Stack spacing={2}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                justifyContent="space-between"
+                spacing={2}
+              >
+                <Box>
+                  <Typography variant="h6">Auction Preparation</Typography>
+                  <Typography color="text.secondary">
+                    Review server readiness here. Budget, Owner, Retention, and
+                    Pool configuration remain in Edit Festival Configuration.
+                    Live rounds run only in the dedicated Arena.
+                  </Typography>
+                </Box>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  alignSelf={{ md: "center" }}
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setAdminWorkspaceMode("configuration");
+                      setActiveStep(4);
+                    }}
+                  >
+                    Edit Budget
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setAdminWorkspaceMode("configuration");
+                      setActiveStep(7);
+                    }}
+                  >
+                    Manage Pool
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={() =>
+                      navigate(`/auctions/festivals/${festivalId}`)
+                    }
+                  >
+                    Open Auction Arena
+                  </Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+          <FestivalReadiness
+            festivalId={festivalId}
+            revision={rosterRevision}
+            onLoaded={setReadiness}
+          />
+        </Stack>
       )}
 
       {operationsView && activeTab === "Bid History" && (
@@ -981,7 +1115,9 @@ export default function FestivalDetail() {
               disabled={!selectedParticipantIds.length || busy}
               onClick={removeSelectedParticipants}
             >
-              Remove Selected Participants ({selectedParticipantIds.length})
+              {activeAction === "remove-participants"
+                ? "Removing Participants..."
+                : `Remove Selected Participants (${selectedParticipantIds.length})`}
             </Button>
             <Button
               variant="contained"
@@ -1013,6 +1149,7 @@ export default function FestivalDetail() {
                   <TableCell>Employee Number</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Department</TableCell>
+                  <TableCell>Gender</TableCell>
                   <TableCell>Selected Sports</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -1039,6 +1176,11 @@ export default function FestivalDetail() {
                     </TableCell>
                     <TableCell>
                       {participant.employee?.department || "-"}
+                    </TableCell>
+                    <TableCell>
+                      {participant.employee?.gender === "female"
+                        ? "Female"
+                        : "Male"}
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
@@ -1144,7 +1286,9 @@ export default function FestivalDetail() {
             disabled={busy || !selectedSports.length}
             onClick={saveSportSelection}
           >
-            Add Selected Sports
+            {activeAction === "save-sports"
+              ? "Saving Sports..."
+              : "Add Selected Sports"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1160,8 +1304,9 @@ export default function FestivalDetail() {
           <Stack spacing={2}>
             <Alert severity="info">
               Export Microsoft Forms responses as CSV using the template.
-              EmployeeNumber is the identity key. The import creates or updates
-              employees, festival participants, and selected sports.
+              EmployeeNumber is the identity key. Employees must already exist
+              in the Employee Directory with Gender. This import updates
+              employee details, festival participation, and selected sports.
             </Alert>
             <Button component="label" variant="outlined">
               {importFile ? importFile.name : "Select CSV File"}
@@ -1175,7 +1320,12 @@ export default function FestivalDetail() {
                 }}
               />
             </Button>
-            {busy && <LinearProgress variant="determinate" value={importProgress} />}
+            {busy && (
+              <LinearProgress
+                variant={importProgress >= 100 ? "indeterminate" : "determinate"}
+                value={importProgress}
+              />
+            )}
             {importResult && (
               <Alert severity={importResult.failed ? "warning" : "success"}>
                 Processed {importResult.processed ?? 0}. Succeeded{" "}
@@ -1214,7 +1364,7 @@ export default function FestivalDetail() {
             disabled={busy || !importFile}
             onClick={uploadImport}
           >
-            Import
+            {busy ? "Importing..." : "Import"}
           </Button>
         </DialogActions>
       </Dialog>

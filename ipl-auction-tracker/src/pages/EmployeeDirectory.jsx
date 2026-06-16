@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import FileUploadRoundedIcon from "@mui/icons-material/FileUploadRounded";
@@ -35,6 +35,7 @@ const emptyEmployee = {
   name: "",
   email: "",
   department: "",
+  gender: "",
   employmentStatus: "active",
   identityStatus: "verified",
 };
@@ -42,6 +43,7 @@ const emptyEmployee = {
 export default function EmployeeDirectory() {
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState("");
+  const [genderFilter, setGenderFilter] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -53,18 +55,25 @@ export default function EmployeeDirectory() {
   const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const importInFlight = useRef(false);
+  const saveInFlight = useRef(false);
 
   const loadEmployees = useCallback(async (searchValue) => {
     setError("");
     try {
       const response = await api.get("/v2/employees", {
-        params: { page: 1, pageSize: 100, search: searchValue || undefined },
+        params: {
+          page: 1,
+          pageSize: 100,
+          search: searchValue || undefined,
+          gender: genderFilter || undefined,
+        },
       });
       setEmployees(response.data.data || []);
     } catch {
       setError("Unable to load employees.");
     }
-  }, []);
+  }, [genderFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -87,6 +96,7 @@ export default function EmployeeDirectory() {
       name: employee.name || "",
       email: employee.email || "",
       department: employee.department || "",
+      gender: employee.gender || "",
       employmentStatus: employee.employmentStatus,
       identityStatus: employee.identityStatus,
     });
@@ -95,6 +105,12 @@ export default function EmployeeDirectory() {
   };
 
   const saveEmployee = async () => {
+    if (saveInFlight.current) return;
+    if (!form.employeeNumber.trim() || !form.name.trim() || !form.gender) {
+      setError("Employee number, name, and gender are required.");
+      return;
+    }
+    saveInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -125,7 +141,33 @@ export default function EmployeeDirectory() {
           "Unable to save employee."
       );
     } finally {
+      saveInFlight.current = false;
       setBusy(false);
+    }
+  };
+
+  const exportEmployees = async () => {
+    setError("");
+    try {
+      const response = await api.get("/v2/employees/export", {
+        params: {
+          search: search || undefined,
+          gender: genderFilter || undefined,
+        },
+        responseType: "blob",
+      });
+      const href = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = "employees.csv";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+      setNotice("Employee export downloaded.");
+    } catch {
+      setError("Unable to export employees.");
     }
   };
 
@@ -175,7 +217,8 @@ export default function EmployeeDirectory() {
   };
 
   const uploadImport = async () => {
-    if (!importFile) return;
+    if (!importFile || importInFlight.current) return;
+    importInFlight.current = true;
     const formData = new FormData();
     formData.append("csv", importFile);
     setBusy(true);
@@ -192,6 +235,13 @@ export default function EmployeeDirectory() {
       setImportResult(response.data);
       setImportProgress(100);
       await loadEmployees(search);
+      if (!response.data.failed) {
+        setImportOpen(false);
+        setImportFile(null);
+        setNotice(
+          `Employee import complete. Created ${response.data.created}; updated ${response.data.updated}.`
+        );
+      }
     } catch (requestError) {
       setImportResult({
         created: 0,
@@ -203,6 +253,7 @@ export default function EmployeeDirectory() {
           ],
       });
     } finally {
+      importInFlight.current = false;
       setBusy(false);
     }
   };
@@ -238,6 +289,13 @@ export default function EmployeeDirectory() {
           </Button>
           <Button
             variant="outlined"
+            startIcon={<DownloadRoundedIcon />}
+            onClick={exportEmployees}
+          >
+            Export Employees
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={<FileUploadRoundedIcon />}
             onClick={() => {
               setImportOpen(true);
@@ -260,13 +318,29 @@ export default function EmployeeDirectory() {
 
       <Card variant="outlined">
         <CardContent>
-          <TextField
-            fullWidth
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
             sx={{ mb: 2 }}
-            label="Search employee number, name, email, or department"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          >
+            <TextField
+              fullWidth
+              label="Search employee number, name, email, or department"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <TextField
+              select
+              label="Gender"
+              value={genderFilter}
+              onChange={(event) => setGenderFilter(event.target.value)}
+              sx={{ minWidth: 160 }}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="male">Male</MenuItem>
+              <MenuItem value="female">Female</MenuItem>
+            </TextField>
+          </Stack>
           <TableContainer>
             <Table>
               <TableHead>
@@ -275,6 +349,7 @@ export default function EmployeeDirectory() {
                   <TableCell>Name</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Department</TableCell>
+                  <TableCell>Gender</TableCell>
                   <TableCell>Identity</TableCell>
                   <TableCell>Login</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -287,6 +362,9 @@ export default function EmployeeDirectory() {
                     <TableCell>{employee.name}</TableCell>
                     <TableCell>{employee.email || "-"}</TableCell>
                     <TableCell>{employee.department || "-"}</TableCell>
+                    <TableCell>
+                      {employee.gender === "female" ? "Female" : "Male"}
+                    </TableCell>
                     <TableCell>
                       <Chip size="small" label={employee.identityStatus} />
                     </TableCell>
@@ -340,6 +418,21 @@ export default function EmployeeDirectory() {
                 }))
               }
             />
+            <TextField
+              select
+              required
+              label="Gender"
+              value={form.gender}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  gender: event.target.value,
+                }))
+              }
+            >
+              <MenuItem value="male">Male</MenuItem>
+              <MenuItem value="female">Female</MenuItem>
+            </TextField>
             {editingEmployee && (
               <>
                 <TextField
@@ -388,7 +481,12 @@ export default function EmployeeDirectory() {
           </Button>
           <Button
             variant="contained"
-            disabled={busy || !form.employeeNumber.trim() || !form.name.trim()}
+            disabled={
+              busy ||
+              !form.employeeNumber.trim() ||
+              !form.name.trim() ||
+              !form.gender
+            }
             onClick={saveEmployee}
           >
             Save
@@ -406,9 +504,9 @@ export default function EmployeeDirectory() {
         <DialogContent dividers>
           <Stack spacing={2}>
             <Alert severity="info">
-              Upload EmployeeNumber, Name, Email, and Department. Existing
-              employees are updated by EmployeeNumber; login accounts are not
-              required.
+              Upload EmployeeNumber, Name, Email, Department, and Gender.
+              Gender accepts Male or Female. Existing employees are updated by
+              EmployeeNumber; login accounts are not required.
             </Alert>
             <Button component="label" variant="outlined">
               {importFile ? importFile.name : "Select Employee CSV"}
@@ -423,7 +521,10 @@ export default function EmployeeDirectory() {
               />
             </Button>
             {busy && (
-              <LinearProgress variant="determinate" value={importProgress} />
+              <LinearProgress
+                variant={importProgress >= 100 ? "indeterminate" : "determinate"}
+                value={importProgress}
+              />
             )}
             {importResult && (
               <Alert severity={importResult.failed ? "warning" : "success"}>
@@ -457,7 +558,7 @@ export default function EmployeeDirectory() {
             disabled={busy || !importFile}
             onClick={uploadImport}
           >
-            Import
+            {busy ? "Importing..." : "Import"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -519,21 +519,24 @@ const AuctionLive = () => {
                 </Alert>
               )}
               <Stack spacing={1} sx={{ mt: 3 }}>
-                {auctionStatus === "live" ? (
+                {auctionStatus === "live" && (
                   <Alert severity="info" variant="outlined">
                     Waiting for bids. The timer restarts automatically after
                     each valid bid.
                   </Alert>
-                ) : (
+                )}
+                <Button
+                  variant="contained"
+                  fullWidth
+                  disabled={busy || auctionStatus !== "pending"}
+                  onClick={extendRound}
+                >
+                  {busy && auctionStatus === "pending"
+                    ? "Processing..."
+                    : "Extend 20 Seconds"}
+                </Button>
+                {auctionStatus === "pending" && (
                   <>
-                    <Button
-                      variant="contained"
-                      fullWidth
-                      disabled={busy}
-                      onClick={extendRound}
-                    >
-                      Extend 20 Seconds
-                    </Button>
                     <Button
                       variant="contained"
                       color="success"
@@ -547,11 +550,16 @@ const AuctionLive = () => {
                       variant="outlined"
                       color="error"
                       fullWidth
-                      disabled={busy}
+                      disabled={busy || Boolean(highestBidder)}
                       onClick={markUnsold}
                     >
                       Mark Unsold
                     </Button>
+                    {highestBidder && (
+                      <Typography variant="body2" color="text.secondary">
+                        Unsold is unavailable because this round has a valid bid.
+                      </Typography>
+                    )}
                   </>
                 )}
               </Stack>

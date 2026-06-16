@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -27,6 +27,7 @@ export default function FestivalDetailsConfiguration({
 }) {
   const [form, setForm] = useState(() => toForm(festival));
   const [busy, setBusy] = useState(false);
+  const saveInFlight = useRef(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -37,6 +38,12 @@ export default function FestivalDetailsConfiguration({
     setForm((current) => ({ ...current, [field]: event.target.value }));
 
   const save = async () => {
+    if (saveInFlight.current) return;
+    if (new Date(form.endDate) < new Date(form.startDate)) {
+      setError("End date must be on or after the start date.");
+      return;
+    }
+    saveInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -51,6 +58,7 @@ export default function FestivalDetailsConfiguration({
           "Unable to update Festival details."
       );
     } finally {
+      saveInFlight.current = false;
       setBusy(false);
     }
   };
@@ -130,7 +138,7 @@ export default function FestivalDetailsConfiguration({
             onClick={save}
             sx={{ alignSelf: "flex-start" }}
           >
-            Save Festival Details
+            {busy ? "Saving..." : "Save Festival Details"}
           </Button>
         </Stack>
       </CardContent>

@@ -5,6 +5,8 @@ const employeeNumberSchema = nonEmptyString("Employee number")
   .max(80, "Employee number must be at most 80 characters")
   .transform((value) => value.toUpperCase());
 
+const genderSchema = z.enum(["male", "female"]);
+
 const optionalText = (fieldName, maxLength) =>
   z
     .union([
@@ -37,6 +39,7 @@ const employeeBody = {
   ),
   email: optionalEmail,
   department: optionalText("Department", 160),
+  gender: genderSchema,
   employmentStatus: z.enum(["active", "inactive"]).optional(),
 };
 
@@ -52,6 +55,7 @@ export const updateEmployeeSchema = z.object({
       name: employeeBody.name.optional(),
       email: optionalEmail,
       department: optionalText("Department", 160),
+      gender: genderSchema.optional(),
       employmentStatus: z.enum(["active", "inactive"]).optional(),
       identityStatus: z
         .enum(["verified", "provisional", "needs_review"])
@@ -76,6 +80,18 @@ export const listEmployeesSchema = z.object({
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(25),
     search: z.string().trim().max(160).optional(),
+    gender: genderSchema.optional(),
+    employmentStatus: z.enum(["active", "inactive"]).optional(),
+    identityStatus: z
+      .enum(["verified", "provisional", "needs_review"])
+      .optional(),
+  }),
+});
+
+export const exportEmployeesSchema = z.object({
+  query: z.object({
+    search: z.string().trim().max(160).optional(),
+    gender: genderSchema.optional(),
     employmentStatus: z.enum(["active", "inactive"]).optional(),
     identityStatus: z
       .enum(["verified", "provisional", "needs_review"])

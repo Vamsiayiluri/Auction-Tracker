@@ -112,6 +112,7 @@ test("Festival participant responses use canonical employee identity", () => {
       name: "Employee One",
       email: "employee@example.com",
       department: "Finance",
+      gender: "female",
       employmentStatus: "active",
       source: "manual",
       identityStatus: "verified",
@@ -120,6 +121,7 @@ test("Festival participant responses use canonical employee identity", () => {
   });
 
   assert.equal(response.employee.employeeNumber, "EMP001");
+  assert.equal(response.employee.gender, "female");
   assert.equal(response.employee.hasLogin, false);
   assert.deepEqual(Object.keys(response.employee), [
     "id",
@@ -127,6 +129,7 @@ test("Festival participant responses use canonical employee identity", () => {
     "name",
     "email",
     "department",
+    "gender",
     "employmentStatus",
     "source",
     "identityStatus",

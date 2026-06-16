@@ -44,14 +44,14 @@ test("wizard exposes the complete setup journey and validates progression", () =
   assert.equal(getStoredSetupStep("Removed Step"), 0);
 });
 
-test("operations navigation contains only Phase 3G.1 workspaces", () => {
+test("operations navigation keeps management sections and separates the Arena", () => {
   assert.deepEqual(FESTIVAL_OPERATION_TABS, [
     "Overview",
     "Participants",
     "Teams",
     "Owners",
     "Retentions",
-    "Auction",
+    "Auction Preparation",
     "Bid History",
     "Results",
     "Audit",
@@ -74,7 +74,9 @@ test("workspace preserves state and mounts only the active tab or step", async (
   assert.match(source, /festival-setup-step-v2:/);
   assert.match(source, /festival-workspace-tab:/);
   assert.match(source, /activeStep === 2/);
-  assert.match(source, /activeTab === "Auction"/);
+  assert.match(source, /activeTab === "Auction Preparation"/);
+  assert.match(source, /Open Auction Arena/);
+  assert.doesNotMatch(source, /<MainFestivalAuction/);
   assert.match(source, /activeTab === "Bid History"/);
   assert.match(source, /activeTab === "Results"/);
   assert.match(source, /activeTab === "Audit"/);
@@ -102,9 +104,9 @@ test("control center, overview, history, and responsive navigation are wired", a
   assert.match(history, /Retentions/);
   assert.match(history, /Audit Log/);
   assert.match(bidHistory, /View Bids/);
-  assert.match(bidHistory, /Own Bids/);
-  assert.match(bidHistory, /Won Bids/);
-  assert.match(bidHistory, /Lost Bids/);
+  assert.match(bidHistory, /My Bid Activity/);
+  assert.match(bidHistory, /Won Participants/);
+  assert.match(bidHistory, /Outbid Participants/);
   assert.match(detail, /variant="scrollable"/);
   assert.match(detail, /allowScrollButtonsMobile/);
 });

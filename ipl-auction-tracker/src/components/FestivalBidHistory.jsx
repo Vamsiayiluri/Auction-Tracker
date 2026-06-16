@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -26,6 +26,8 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
+import { socket } from "../webSocket/socket";
+import { shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
 
 const formatMoney = (value) =>
   value === null || value === undefined
@@ -40,14 +42,19 @@ export default function FestivalBidHistory({
 }) {
   const [auctions, setAuctions] = useState([]);
   const [ownerTeamId, setOwnerTeamId] = useState(null);
-  const [filter, setFilter] = useState(ownerView ? "Own Bids" : "All");
+  const [ownerTeamName, setOwnerTeamName] = useState("");
+  const [filter, setFilter] = useState(
+    ownerView ? "My Bid Activity" : "All"
+  );
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastRevision = useRef(0);
 
-  useEffect(() => {
+  const loadHistory = useCallback((showLoading = true) => {
     let active = true;
-    setLoading(true);
+    if (showLoading === true) setLoading(true);
+    setError("");
     Promise.all([
       api.get(`/v2/festivals/${festivalId}/auction/history`),
       ownerView
@@ -59,6 +66,13 @@ export default function FestivalBidHistory({
         setAuctions(historyResponse.data.data || []);
         setOwnerTeamId(
           currentResponse?.data?.data?.viewer?.festivalTeamId || null
+        );
+        const viewerTeamId =
+          currentResponse?.data?.data?.viewer?.festivalTeamId || null;
+        setOwnerTeamName(
+          currentResponse?.data?.data?.teamSummaries?.find(
+            ({ festivalTeamId }) => festivalTeamId === viewerTeamId
+          )?.team?.name || ""
         );
       })
       .catch((requestError) => {
@@ -77,6 +91,41 @@ export default function FestivalBidHistory({
     };
   }, [festivalId, ownerView]);
 
+  useEffect(() => {
+    const applySnapshot = (payload) => {
+      if (
+        payload?.scopeType !== "festival" ||
+        payload.scopeId !== festivalId ||
+        !shouldApplyAuctionSnapshot(lastRevision.current, payload)
+      ) {
+        return;
+      }
+      lastRevision.current = payload.revision;
+      setAuctions(payload.history || []);
+      setOwnerTeamName((currentName) => {
+        if (!ownerTeamId) return currentName;
+        return (
+          payload.state?.teamSummaries?.find(
+            ({ festivalTeamId }) => festivalTeamId === ownerTeamId
+          )?.team?.name || currentName
+        );
+      });
+      setLoading(false);
+    };
+    const joinRoom = () =>
+      socket.emit("join-festival-auction", { festivalId });
+    const cancelLoad = loadHistory();
+    socket.on("auction-state", applySnapshot);
+    socket.on("connect", joinRoom);
+    if (socket.connected) joinRoom();
+    return () => {
+      cancelLoad?.();
+      socket.emit("leave-festival-auction", { festivalId });
+      socket.off("auction-state", applySnapshot);
+      socket.off("connect", joinRoom);
+    };
+  }, [festivalId, loadHistory, ownerTeamId]);
+
   const auctionedPlayers = useMemo(
     () =>
       auctions.filter((auction) => {
@@ -85,8 +134,8 @@ export default function FestivalBidHistory({
           ({ festivalTeamId }) => festivalTeamId === ownerTeamId
         );
         const won = auction.result?.festivalTeamId === ownerTeamId;
-        if (filter === "Won Bids") return won;
-        if (filter === "Lost Bids") return ownBid && !won;
+        if (filter === "Won Participants") return won;
+        if (filter === "Outbid Participants") return ownBid && !won;
         return ownBid;
       }),
     [auctions, filter, ownerTeamId, ownerView]
@@ -106,9 +155,12 @@ export default function FestivalBidHistory({
         <Typography variant="h5" sx={{ fontWeight: 800 }}>
           Bid History
         </Typography>
+        {ownerView && ownerTeamName && (
+          <Chip color="primary" label={`Team: ${ownerTeamName}`} sx={{ my: 1 }} />
+        )}
         <Typography color="text.secondary">
           {ownerView
-            ? "Review your bids and separate won and lost participant rounds."
+            ? "Review participants your Team bid on, won, or was outbid on."
             : "Review auctioned participants and open the complete bid sequence."}
         </Typography>
       </Box>
@@ -121,9 +173,11 @@ export default function FestivalBidHistory({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           >
-            <MenuItem value="Own Bids">Own Bids</MenuItem>
-            <MenuItem value="Won Bids">Won Bids</MenuItem>
-            <MenuItem value="Lost Bids">Lost Bids</MenuItem>
+            <MenuItem value="My Bid Activity">My Bid Activity</MenuItem>
+            <MenuItem value="Won Participants">Won Participants</MenuItem>
+            <MenuItem value="Outbid Participants">
+              Outbid Participants
+            </MenuItem>
           </Select>
         </FormControl>
       )}

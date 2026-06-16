@@ -41,17 +41,17 @@ test("Festival Bid History reuses the Tournament player-first dialog pattern", a
   assert.match(festivalHistory, /bid\.bidNumber/);
 });
 
-test("Owner Bid History separates own, won, and lost bids", async () => {
+test("Owner Bid History uses participant outcome categories", async () => {
   const history = await readFrontend("components/FestivalBidHistory.jsx");
-  assert.match(history, /Own Bids/);
-  assert.match(history, /Won Bids/);
-  assert.match(history, /Lost Bids/);
+  assert.match(history, /My Bid Activity/);
+  assert.match(history, /Won Participants/);
+  assert.match(history, /Outbid Participants/);
   assert.match(history, /festivalTeamId === ownerTeamId/);
   assert.match(history, /auction\.result\?\.festivalTeamId === ownerTeamId/);
   assert.match(history, /Your Bid/);
 });
 
-test("Festival workspace exposes aligned admin and Owner navigation", async () => {
+test("Festival workspace exposes aligned management and dedicated Arena navigation", async () => {
   const [workspace, detail, viewer] = await Promise.all([
     readFrontend("utils/festivalWorkspace.js"),
     readFrontend("pages/FestivalDetail.jsx"),
@@ -62,10 +62,9 @@ test("Festival workspace exposes aligned admin and Owner navigation", async () =
   }
   assert.match(detail, /FestivalTeamsDirectory/);
   assert.match(detail, /FestivalBidHistory/);
-  assert.match(
-    viewer,
-    /const ownerTabs = \["Overview", "My Team", "Auction", "Bid History"\]/
-  );
+  assert.match(workspace, /"Auction Preparation"/);
+  assert.match(viewer, /<MainFestivalAuction festivalId=\{festivalId\}/);
+  assert.doesNotMatch(viewer, /ownerTabs|activeTab/);
 });
 
 test("alignment changes do not add auction mutations or Phase 4 concepts", async () => {

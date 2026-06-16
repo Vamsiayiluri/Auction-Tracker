@@ -910,10 +910,16 @@ employee-to-participant selection, sport-selection checkboxes, CSV import, and
 row-level import results.
 
 The HR import is an EmployeeNumber-driven Excel-compatible CSV workflow. Each
-valid row transactionally creates or updates Employee, FestivalParticipant, and
-FestivalParticipantSport records. `Yes`/`No` is case-insensitive and `No`
-removes a prior selection, making re-import idempotent. Native binary `.xlsx`
-parsing remains deferred.
+Employee Directory row creates or updates the canonical Employee and requires
+Gender. The Festival participant/sport import then matches that existing
+Employee and transactionally updates FestivalParticipant and
+FestivalParticipantSport records without copying gender. `Yes`/`No` is
+case-insensitive and `No` removes a prior selection, making re-import
+idempotent. Native binary `.xlsx` parsing remains deferred.
+
+`Employees.gender` is restricted to `male` and `female`. Future Men, Women,
+and Mixed sport eligibility derives from this field; FestivalParticipant and
+future sport membership tables must not duplicate it.
 
 ## Phase 3B Main Festival Live Auction
 

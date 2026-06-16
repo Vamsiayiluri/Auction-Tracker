@@ -65,6 +65,16 @@ const moneySchema = (fieldName) =>
     .positive(`${fieldName} must be greater than zero`)
     .max(Number.MAX_SAFE_INTEGER, `${fieldName} is too large`);
 
+const nonNegativeMoneySchema = (fieldName) =>
+  z.coerce
+    .number({
+      required_error: `${fieldName} is required`,
+      invalid_type_error: `${fieldName} must be a number`,
+    })
+    .int(`${fieldName} must be an integer`)
+    .min(0, `${fieldName} cannot be negative`)
+    .max(Number.MAX_SAFE_INTEGER, `${fieldName} is too large`);
+
 export const createFestivalSchema = z
   .object({
     body: z.object({
@@ -359,7 +369,12 @@ export const festivalAuctionStartParticipantSchema = z.object({
 
 export const festivalAuctionBidSchema = z.object({
   params: festivalIdParams,
-  body: z.object({}).strict().optional().default({}),
+  body: z
+    .object({
+      auctionId: idSchema("Auction ID"),
+      expectedCurrentBid: nonNegativeMoneySchema("Expected current bid"),
+    })
+    .strict(),
 });
 
 export const festivalReauctionSchema = z.object({

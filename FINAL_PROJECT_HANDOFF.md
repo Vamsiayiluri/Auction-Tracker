@@ -1,5 +1,22 @@
 # Final Project Handoff
 
+## Employee Gender Foundation
+
+Completed on: 2026-06-14
+
+`Employees.gender` is now the required canonical source for Male/Female
+classification. Festival Participants and auction records do not duplicate the
+field; responses derive it from Employee. Employee create/edit, search filters,
+CSV import/template, CSV export, Festival participant views, migration, tests,
+and documentation were updated.
+
+Migration `202606140001-employee-gender.js` stages nullable column creation,
+backfills legacy rows, enforces `NOT NULL`, and adds an index. Because no prior
+gender source existed, backfilled rows use `male` as a placeholder and are
+marked `needs_review`; admins must verify them.
+
+No Phase 4, Sport Team, Sport Auction, or Competition Engine work was added.
+
 ## Festival Workspace Enhancement
 
 Completed on: 2026-06-11
@@ -613,9 +630,9 @@ Admins create Employees manually or by CSV.
 Employee import format:
 
 ```csv
-EmployeeNumber,Name,Email,Department
-EMP001,Vamsi Rao,vamsi@company.com,IT
-EMP002,Rahul Kumar,rahul@company.com,Finance
+EmployeeNumber,Name,Email,Department,Gender
+EMP001,Vamsi Rao,vamsi@company.com,IT,Male
+EMP002,Priya Shah,priya@company.com,Finance,Female
 ```
 
 Import behavior:
@@ -623,7 +640,7 @@ Import behavior:
 - Match by normalized Employee Number.
 - Create missing Employees.
 - Update existing Employees.
-- Validate required fields and email format.
+- Validate required fields, gender, and email format.
 - Reject duplicate Employee Numbers within the file.
 - Continue processing valid rows after row failures.
 - Do not create User accounts.

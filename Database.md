@@ -1,5 +1,60 @@
 # Database Analysis
 
+## Phase 4B Sport Auction Preparation Foundation
+
+Migration `202606140003-sport-auction-preparation-foundation.js` additively
+creates `SportTeamBudgets` and `SportAuctionPools`.
+
+`SportTeamBudgets` stores integer allocation credits independently from
+Festival and legacy Tournament budgets. Effective credits are derived from:
+
+```text
+allocatedCredits + adjustmentCredits
+```
+
+One row is allowed per Sport Team in one Sport Tournament. Configuration user
+and timestamp fields provide audit attribution.
+
+`SportAuctionPools` stores the pre-auction participant snapshot. State values
+are `available`, `sold`, and `unsold`, although Phase 4B creates only
+`available` rows. One row is allowed per participant and Sport Tournament.
+
+Pool generation deletes and replaces one Tournament's snapshot in a
+transaction. Eligibility remains authoritative; readiness detects stale Pool
+snapshots.
+
+No live Sport Auction, bid, timer, result, fixture, match, standing, or
+competition table is added.
+
+## Phase 4A Sport Tournament Foundation
+
+Migration `202606140002-sport-tournament-foundation.js` additively creates:
+
+- `SportTournaments`
+- `SportTeams`
+- `SportTeamCaptains`
+- `SportTeamMemberships`
+
+`SportTournaments` belongs to one Festival, parent Festival Team, enabled
+Festival Sport, and catalog Sport. It stores division, gender eligibility,
+configured Team count, and the approved lifecycle enum. Phase 4A uses only
+`draft`, `setup`, and `ready`.
+
+`SportTeams` is Tournament-scoped. Names and codes are unique within one Sport
+Tournament.
+
+`SportTeamCaptains` assigns a normal Festival Participant to one Sport Team.
+Unique indexes enforce one Captain per Team and one Captained Team per
+participant in the same Sport Tournament.
+
+`SportTeamMemberships` records the Captain's roster membership and reserves
+future `auction` and `admin_override` provenance values. Unique
+`(sportTournamentId, festivalParticipantId)` prevents membership in two Teams
+within one Tournament while allowing cross-Sport participation.
+
+No Sport Auction, bid, budget, fixture, match, standing, or competition table
+is created.
+
 ## Phase 3G Festival Operations
 
 Migration `202606100005-festival-operations-stabilization.js` adds persistent
@@ -36,6 +91,25 @@ Evidence: `ipl-auction-tracker-backend/scripts/migrate.js`,
 
 Sequelize adds `createdAt` and `updatedAt` to every model because timestamps are
 not disabled.
+
+## Employee Gender Foundation
+
+Migration `202606140001-employee-gender.js` adds
+`Employees.gender ENUM('male','female') NOT NULL` and
+`employees_gender_idx`.
+
+The migration is recovery-safe for MySQL non-transactional DDL:
+
+1. Add the column as nullable when missing.
+2. Backfill existing null rows to `male` and set `identityStatus` to
+   `needs_review`.
+3. Change the column to `NOT NULL`.
+4. Add the gender index when missing.
+
+Existing records must be reviewed and corrected by HR/admin because the prior
+schema contained no reliable gender source. New manual and imported Employees
+require an explicit gender. FestivalParticipant does not store gender; every
+participant response derives it through the canonical Employee relationship.
 
 ## Users
 
@@ -390,6 +464,10 @@ Employee Number is unique and required by current create/import workflows.
 Legacy backfilled Employees have no invented Employee Number and are marked
 `needs_review`.
 
+Current Employee columns also include required `gender` with allowed values
+`male` and `female`. The field remains Employee-owned and is not duplicated in
+FestivalParticipants, memberships, auction pools, bids, or results.
+
 ## Festival Team Builder (Phase 3)
 
 Migration: `202606090004-festival-team-builder.js`.
@@ -498,3 +576,21 @@ password in `Users.password`, and remain blocked by server middleware until
 `mustChangePassword` is cleared. Festival operation audits record
 `user_auto_created`, `owner_assigned`, `credentials_sent`, and
 `password_reset_completed`.
+
+## Sport Auction Engine (Phase 4C)
+
+Migration `202606140004-sport-auction-engine.js` adds:
+
+- `SportAuctionConfigs`
+- `SportAuctions`
+- `SportAuctionBids`
+- `SportAuctionResults`
+- `SportOperationAudits`
+- `SportAuctionPools.reauctionCount`
+- `SportAuctionPools.lastReauctionedAt`
+
+All auction rows are scoped by `sportTournamentId`. Bids reference the active
+`SportTeamCaptain` assignment used to authorize them. Sold results reference
+the winning Sport Team and are the source for derived spent and remaining Team
+credits. Each participant attempt is retained as a separate `SportAuctions`
+row; pool re-auction metadata does not erase prior bids or results.

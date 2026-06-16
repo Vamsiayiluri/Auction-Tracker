@@ -4,6 +4,7 @@ import sequelize from "../config/dbconfig.js";
 import { Employee, User } from "../models/index.js";
 import { toEmployeeResponse } from "../utils/employeeResponse.js";
 import {
+  buildEmployeeExportCsv,
   employeeImportTemplate,
   parseEmployeeCsv,
 } from "../utils/employeeCsvImport.js";
@@ -17,6 +18,27 @@ const conflictResponse = (res, message) =>
 
 const isUniqueConflict = (error) =>
   error?.name === "SequelizeUniqueConstraintError";
+
+const buildEmployeeWhere = ({
+  search,
+  gender,
+  employmentStatus,
+  identityStatus,
+}) => ({
+  ...(gender ? { gender } : {}),
+  ...(employmentStatus ? { employmentStatus } : {}),
+  ...(identityStatus ? { identityStatus } : {}),
+  ...(search
+    ? {
+        [Op.or]: [
+          { employeeNumber: { [Op.like]: `%${search}%` } },
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { department: { [Op.like]: `%${search}%` } },
+        ],
+      }
+    : {}),
+});
 
 export const createEmployee = async (req, res) => {
   try {
@@ -41,22 +63,21 @@ export const createEmployee = async (req, res) => {
 
 export const getEmployees = async (req, res) => {
   try {
-    const { page, pageSize, search, employmentStatus, identityStatus } =
+    const {
+      page,
+      pageSize,
+      search,
+      gender,
+      employmentStatus,
+      identityStatus,
+    } =
       req.query;
-    const where = {
-      ...(employmentStatus ? { employmentStatus } : {}),
-      ...(identityStatus ? { identityStatus } : {}),
-      ...(search
-        ? {
-            [Op.or]: [
-              { employeeNumber: { [Op.like]: `%${search}%` } },
-              { name: { [Op.like]: `%${search}%` } },
-              { email: { [Op.like]: `%${search}%` } },
-              { department: { [Op.like]: `%${search}%` } },
-            ],
-          }
-        : {}),
-    };
+    const where = buildEmployeeWhere({
+      search,
+      gender,
+      employmentStatus,
+      identityStatus,
+    });
 
     const { rows, count } = await Employee.findAndCountAll({
       where,
@@ -80,6 +101,28 @@ export const getEmployees = async (req, res) => {
   } catch (error) {
     console.error("Error fetching employees:", error);
     return res.status(500).json({ message: "Failed to fetch employees" });
+  }
+};
+
+export const exportEmployees = async (req, res) => {
+  try {
+    const employees = await Employee.findAll({
+      where: buildEmployeeWhere(req.query),
+      order: [
+        ["name", "ASC"],
+        ["employeeNumber", "ASC"],
+      ],
+    });
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="employees.csv"'
+    );
+    return res.status(200).send(buildEmployeeExportCsv(employees));
+  } catch (error) {
+    console.error("Error exporting employees:", error);
+    return res.status(500).json({ message: "Failed to export employees" });
   }
 };
 
@@ -229,6 +272,7 @@ export const importEmployees = async (req, res) => {
             name: row.employee.name,
             email: row.employee.email,
             department: row.employee.department,
+            gender: row.employee.gender,
             employmentStatus: "active",
             ...(employee.identityStatus === "needs_review"
               ? { identityStatus: "verified", source: "hr_import" }

@@ -4,7 +4,11 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFestivalBidProgression } from "../src/utils/festivalBidProgression.js";
-import { updateFestivalAuctionConfigSchema } from "../src/validation/festival.validation.js";
+import {
+  festivalAuctionBidSchema,
+  updateFestivalAuctionConfigSchema,
+} from "../src/validation/festival.validation.js";
+import { calculateFestivalTeamBudget } from "../src/utils/festivalAuctionBudget.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..", "..");
@@ -62,6 +66,39 @@ test("Festival progression does not compound", () => {
   );
 });
 
+test("Festival progression accepts the base price as the opening bid", () => {
+  assert.deepEqual(
+    getFestivalBidProgression({
+      basePrice: 100,
+      incrementPercentage: 20,
+    }),
+    {
+      basePrice: 100,
+      incrementPercentage: 20,
+      incrementAmount: 20,
+      currentBid: 0,
+      nextBid: 100,
+    }
+  );
+  assert.equal(
+    festivalAuctionBidSchema.safeParse({
+      params: { festivalId: "festival-1" },
+      body: {
+        auctionId: "auction-1",
+        expectedCurrentBid: 0,
+      },
+    }).success,
+    true
+  );
+  assert.equal(
+    calculateFestivalTeamBudget({
+      totalBudget: 1_000,
+      auctionAmounts: [100],
+    }).remainingBudget,
+    900
+  );
+});
+
 test("Festival config migration removes profiles and adds percentage", async () => {
   const [migration, model] = await Promise.all([
     readBackend(
@@ -91,6 +128,8 @@ test("Festival API exposes the complete progression and uses it for bids", async
     assert.match(controller, new RegExp(field));
   }
   assert.match(controller, /const amount = progression\.nextBid/);
+  assert.match(controller, /highestBid\?\.amount \?\? 0/);
+  assert.match(controller, /finalAmount: outcome === "sold" \? highestBid\.amount/);
   assert.match(configController, /incrementPercentage/);
   assert.doesNotMatch(controller, /incrementProfile|customIncrementRules/);
 });
@@ -104,8 +143,7 @@ test("Festival UI uses percentage setup and keeps owner bidding one-click", asyn
   assert.match(setup, /<MenuItem value=\{20\}>20%<\/MenuItem>/);
   assert.match(setup, /<MenuItem value=\{25\}>25%<\/MenuItem>/);
   assert.doesNotMatch(setup, /Increment Profile|conservative|aggressive/);
-  assert.match(live, /current\.incrementPercentage/);
-  assert.match(live, /current\.incrementAmount/);
-  assert.match(live, />\s*Place Bid\s*<\/Button>/s);
+  assert.match(live, /current\?\.nextBid/);
+  assert.match(live, /Place Bid \$\{formatMoney\(current\?\.nextBid\)\}/);
   assert.doesNotMatch(live, /label="Bid Amount"/);
 });

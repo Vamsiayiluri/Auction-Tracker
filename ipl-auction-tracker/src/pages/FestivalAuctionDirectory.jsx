@@ -64,7 +64,7 @@ export default function FestivalAuctionDirectory() {
               <Button
                 variant="contained"
                 onClick={() =>
-                  navigate(`/festivals/${festival.id}/live-auction`)
+                  navigate(`/auctions/festivals/${festival.id}`)
                 }
               >
                 Open Main Auction

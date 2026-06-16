@@ -70,7 +70,7 @@ test("Phase 3F timer deadlines reset and preserve paused remaining time", () => 
   assert.equal(getFestivalAuctionRemainingMs(deadline, 25_000), 0);
 });
 
-test("Phase 3F accepts an admin base price and rejects owner-supplied amounts", () => {
+test("Festival bids require observed auction state and reject owner-supplied amounts", () => {
   assert.equal(
     festivalAuctionStartParticipantSchema.safeParse({
       params: { festivalId: "festival-1", participantId: "participant-1" },
@@ -81,7 +81,10 @@ test("Phase 3F accepts an admin base price and rejects owner-supplied amounts", 
   assert.equal(
     festivalAuctionBidSchema.safeParse({
       params: { festivalId: "festival-1" },
-      body: {},
+      body: {
+        auctionId: "auction-1",
+        expectedCurrentBid: 100000,
+      },
     }).success,
     true
   );
@@ -106,7 +109,8 @@ test("Phase 3F persists timer state and pending finalization", async () => {
   }
   assert.match(model, /"paused", "pending"/);
   assert.match(controller, /markFestivalAuctionPending/);
-  assert.match(controller, /resetFestivalAuctionTimer/);
+  assert.match(controller, /createFestivalAuctionDeadline/);
+  assert.match(controller, /await auction\.update/);
   assert.match(controller, /restoreFestivalAuctionTimers/);
 });
 
@@ -151,16 +155,25 @@ test("Phase 3F keeps lifecycle authorization server-side", async () => {
 });
 
 test("Phase 3F UI removes manual owner bids and renders aligned live panels", async () => {
-  const component = await readRepoFile(
-    "ipl-auction-tracker/src/components/MainFestivalAuction.jsx"
-  );
+  const files = await Promise.all([
+    readRepoFile("ipl-auction-tracker/src/components/MainFestivalAuction.jsx"),
+    readRepoFile(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/ParticipantStage.jsx"
+    ),
+    readRepoFile(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/LiveBidStream.jsx"
+    ),
+    readRepoFile(
+      "ipl-auction-tracker/src/components/FestivalAuctionArena/TeamPanels.jsx"
+    ),
+  ]);
+  const component = files.join("\n");
   assert.doesNotMatch(component, /label="Bid Amount"/);
   assert.match(component, /label="Base Price"/);
-  assert.match(component, /incrementPercentage/);
-  assert.match(component, /incrementAmount/);
-  assert.match(component, /Next bid:/);
+  assert.match(component, /Search available participant/);
+  assert.match(component, /current\.nextBid/);
   assert.match(component, /<VisualTimer/);
-  assert.match(component, /Bid Number/);
+  assert.match(component, /bid\.bidNumber/);
   assert.match(component, /playersPurchased/);
-  assert.match(component, /Auction History/);
+  assert.doesNotMatch(component, /Auction History/);
 });

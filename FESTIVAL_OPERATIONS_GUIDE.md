@@ -68,6 +68,10 @@ Employees support text/status/pagination. Participants support text, sport, and
 registration status. Retentions support text and Team. Auction Pool supports
 text, sport, and Available/Sold/Unsold state.
 
+Employee Gender is maintained in the Employee Directory and displayed through
+Festival Participant Employee data. Do not add Gender to Festival participant
+imports; import or correct the Employee first.
+
 ## Team Refresh
 
 Team mutations increment a shared parent revision. Team lists, Owner and

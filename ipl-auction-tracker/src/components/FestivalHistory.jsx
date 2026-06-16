@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   FormControl,
   InputLabel,
   MenuItem,
@@ -22,6 +23,8 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
+import { socket } from "../webSocket/socket";
+import { shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
 
 const FESTIVAL_HISTORY_SECTIONS = [
   "Auction Results",
@@ -53,10 +56,14 @@ export default function FestivalHistory({
   const [audits, setAudits] = useState([]);
   const [search, setSearch] = useState("");
   const [outcome, setOutcome] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastRevision = useRef(0);
 
-  useEffect(() => {
+  const loadHistory = useCallback((showLoading = true) => {
     let active = true;
+    if (showLoading === true) setLoading(true);
+    setError("");
     api
       .get(`/v2/festivals/${festivalId}/auction/history`)
       .then((response) => {
@@ -71,11 +78,42 @@ export default function FestivalHistory({
               "Unable to load Festival history."
           );
         }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
   }, [festivalId]);
+
+  useEffect(() => {
+    const applySnapshot = (payload) => {
+      if (
+        payload?.scopeType !== "festival" ||
+        payload.scopeId !== festivalId ||
+        !shouldApplyAuctionSnapshot(lastRevision.current, payload)
+      ) {
+        return;
+      }
+      lastRevision.current = payload.revision;
+      setAuctions(payload.history || []);
+      setAudits(payload.audits || []);
+      setLoading(false);
+    };
+    const joinRoom = () =>
+      socket.emit("join-festival-auction", { festivalId });
+    const cancelLoad = loadHistory();
+    socket.on("auction-state", applySnapshot);
+    socket.on("connect", joinRoom);
+    if (socket.connected) joinRoom();
+    return () => {
+      cancelLoad?.();
+      socket.emit("leave-festival-auction", { festivalId });
+      socket.off("auction-state", applySnapshot);
+      socket.off("connect", joinRoom);
+    };
+  }, [festivalId, loadHistory]);
 
   const filteredAuctions = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -109,6 +147,11 @@ export default function FestivalHistory({
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error">{error}</Alert>}
+      {loading && (
+        <Box sx={{ display: "grid", placeItems: "center", py: 6 }}>
+          <CircularProgress size={30} />
+        </Box>
+      )}
       {availableSections.length > 1 && (
         <Card variant="outlined">
           <Tabs
@@ -126,7 +169,7 @@ export default function FestivalHistory({
         </Card>
       )}
 
-      {activeSection === "Auction Results" && (
+      {!loading && activeSection === "Auction Results" && (
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
           <TextField
             fullWidth
@@ -150,7 +193,7 @@ export default function FestivalHistory({
         </Stack>
       )}
 
-      {activeSection === "Auction Results" && (
+      {!loading && activeSection === "Auction Results" && (
         <HistoryTable
           title="Auction Results"
           columns={[
@@ -185,10 +228,17 @@ export default function FestivalHistory({
               </TableCell>
             </TableRow>
           ))}
+          {!filteredAuctions.length && (
+            <TableRow>
+              <TableCell colSpan={6} align="center">
+                No auction results match the current filters.
+              </TableCell>
+            </TableRow>
+          )}
         </HistoryTable>
       )}
 
-      {["Re-Auction History", "Owner Activity", "Retentions", "Audit Log"].includes(
+      {!loading && ["Re-Auction History", "Owner Activity", "Retentions", "Audit Log"].includes(
         activeSection
       ) && <AuditSection title={activeSection} rows={auditRows} />}
     </Stack>

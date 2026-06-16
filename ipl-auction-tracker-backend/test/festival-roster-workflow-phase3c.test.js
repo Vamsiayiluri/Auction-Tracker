@@ -229,7 +229,9 @@ test("Phase 3C workspace conditionally exposes manual or auction controls", asyn
   assert.match(detail, /value="manual"/);
   assert.match(detail, /rosterFormationMode === "auction"/);
   assert.match(detail, /<FestivalAuctionSetup/);
-  assert.match(detail, /<MainFestivalAuction/);
+  assert.match(detail, /Auction Preparation/);
+  assert.match(detail, /Open Auction Arena/);
+  assert.doesNotMatch(detail, /<MainFestivalAuction/);
   assert.match(builder, /const manualMode = rosterFormationMode === "manual"/);
   assert.match(builder, /\{manualMode && \(/);
   assert.match(builder, /Auto Balance/);

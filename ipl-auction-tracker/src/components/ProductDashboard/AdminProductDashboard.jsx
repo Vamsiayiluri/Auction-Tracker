@@ -1,0 +1,342 @@
+import { Button, Stack } from "@mui/material";
+import { useNavigate } from "react-router-dom";
+import {
+  ActionCard,
+  DashboardGrid,
+  DashboardHero,
+  DashboardSection,
+  EmptyDashboardState,
+} from "./DashboardPrimitives";
+import {
+  formatStatus,
+  formatValue,
+  participantName,
+  sportArenaRoute,
+  sportManagementRoute,
+  statusColor,
+} from "./dashboardHelpers";
+
+export default function AdminProductDashboard({ data }) {
+  const navigate = useNavigate();
+
+  const festivalAttention = data.festivalStates.flatMap(
+    ({ festival, current, readiness }) => {
+      const items = [];
+      if (current?.current?.status === "pending") {
+        items.push({
+          id: `festival-pending:${festival.id}`,
+          eyebrow: "Waiting for Confirmation",
+          title: festival.name,
+          description: `${participantName(current.current)} is waiting for an admin decision.`,
+          status: "urgent",
+          severity: "urgent",
+          route: `/auctions/festivals/${festival.id}`,
+          action: "Open Live Auction",
+        });
+      } else if (current?.config?.auctionStatus === "paused") {
+        items.push({
+          id: `festival-paused:${festival.id}`,
+          eyebrow: "Festival Auction Paused",
+          title: festival.name,
+          description: "The main Festival Auction is paused. Resume it when bidding should continue.",
+          status: "paused",
+          severity: "warning",
+          route: `/auctions/festivals/${festival.id}`,
+          action: "Open Live Auction",
+        });
+      } else if (readiness?.blockers?.length) {
+        items.push({
+          id: `festival-blocked:${festival.id}`,
+          eyebrow: "Setup Incomplete",
+          title: festival.name,
+          description: readiness.blockers[0],
+          secondary: `${readiness.blockers.length} setup issue(s)`,
+          status: "blocked",
+          severity: "warning",
+          route: `/festivals/${festival.id}/manage`,
+          action: "Fix Setup Issues",
+        });
+      }
+      return items;
+    }
+  );
+
+  const sportAttention = data.sportStates.flatMap(
+    ({ tournament, current, readiness }) => {
+      if (current?.current?.status === "pending") {
+        return [{
+          id: `sport-pending:${tournament.id}`,
+          eyebrow: "Waiting for Confirmation",
+          title: tournament.name,
+          description: `${participantName(current.current)} is waiting for a manager decision.`,
+          status: "urgent",
+          severity: "urgent",
+          route: sportArenaRoute(tournament.id),
+          action: "Open Live Auction",
+        }];
+      }
+      if (tournament.status === "auction_paused") {
+        return [{
+          id: `sport-paused:${tournament.id}`,
+          eyebrow: "Sport Auction Paused",
+          title: tournament.name,
+          description: "The Sport Auction is paused. Resume it when bidding should continue.",
+          status: "paused",
+          severity: "warning",
+          route: sportArenaRoute(tournament.id),
+          action: "Open Live Auction",
+        }];
+      }
+      if (
+        ["draft", "setup"].includes(tournament.status) &&
+        readiness?.blockers?.length
+      ) {
+        return [{
+          id: `sport-blocked:${tournament.id}`,
+          eyebrow: "Setup Incomplete",
+          title: tournament.name,
+          description: readiness.blockers[0],
+          secondary: `${readiness.blockers.length} setup issue(s)`,
+          status: "blocked",
+          severity: "warning",
+          route: sportManagementRoute(tournament.id),
+          action: "Fix Setup Issues",
+        }];
+      }
+      return [];
+    }
+  );
+  const attention = [...festivalAttention, ...sportAttention];
+
+  const liveAuctions = [
+    ...data.festivalStates
+      .filter(({ current }) =>
+        data.activeAuctionStatuses.has(current?.config?.auctionStatus)
+      )
+      .map(({ festival, current }) => ({
+        id: `festival-live:${festival.id}`,
+        eyebrow: "Festival Auction",
+        title: festival.name,
+        description: `${participantName(current.current)} | Current bid ${formatValue(
+          current.current?.currentBid,
+          festival.currencyCode || "INR"
+        )}`,
+        status: current.config.auctionStatus,
+        route: `/auctions/festivals/${festival.id}`,
+      })),
+    ...data.sportStates
+      .filter(({ tournament }) =>
+        data.activeSportStatuses.has(tournament.status)
+      )
+      .map(({ tournament, current }) => ({
+        id: `sport-live:${tournament.id}`,
+        eyebrow: "Sport Auction",
+        title: tournament.name,
+        description: `${participantName(current?.current)} | Current bid ${formatValue(
+          current?.current?.currentCredits,
+          "credits"
+        )}`,
+        status: tournament.status,
+        route: sportArenaRoute(tournament.id),
+      })),
+  ];
+
+  const nextActions = [
+    ...data.festivalStates
+      .filter(
+        ({ current, readiness }) =>
+          readiness?.overallStatus === "READY" &&
+          current?.config?.auctionStatus === "setup"
+      )
+      .map(({ festival }) => ({
+        id: `festival-ready:${festival.id}`,
+        title: festival.name,
+        description: "Festival Auction preparation is ready for review and launch.",
+        status: "ready",
+        route: `/festivals/${festival.id}/manage`,
+        action: "Review Festival",
+      })),
+    ...data.sportStates
+      .filter(({ tournament }) => tournament.status === "ready")
+      .map(({ tournament }) => ({
+        id: `sport-ready:${tournament.id}`,
+        title: tournament.name,
+        description: "Sport Auction setup is complete.",
+        status: "ready",
+        route: sportArenaRoute(tournament.id),
+        action: "Open Live Auction",
+      })),
+    ...data.sportStates
+      .filter(({ tournament }) => tournament.status === "auction_completed")
+      .map(({ tournament }) => ({
+        id: `competition-next:${tournament.id}`,
+        title: tournament.name,
+        description:
+          "Sport rosters are complete. Competition setup is the next product phase.",
+        status: "competition pending",
+        route: sportManagementRoute(tournament.id),
+        action: "Review Rosters",
+      })),
+  ].slice(0, 8);
+
+  return (
+    <Stack spacing={5}>
+      <DashboardHero
+        eyebrow="Admin Dashboard"
+        title="Manage Festivals, Auctions, and Teams from one place."
+        description="Live auctions, setup issues, and next actions appear first."
+        actionLabel="View Active Auctions"
+        onAction={() => navigate("/auctions")}
+      />
+
+      <DashboardSection
+        title="Action Required"
+        description="Paused auctions, setup issues, and decisions waiting for you."
+      >
+        {attention.length ? (
+          <DashboardGrid>
+            {attention.slice(0, 9).map((item) => (
+              <ActionCard
+                key={item.id}
+                {...item}
+                onAction={() => navigate(item.route)}
+                actionLabel={item.action}
+              />
+            ))}
+          </DashboardGrid>
+        ) : (
+          <EmptyDashboardState>
+            No urgent Festival or Sport Auction actions were found.
+          </EmptyDashboardState>
+        )}
+      </DashboardSection>
+
+      <DashboardSection
+        title="Live Now"
+        description="Festival and Sport Auctions currently live or paused."
+        action={
+          <Button onClick={() => navigate("/auctions")}>View All Auctions</Button>
+        }
+      >
+        {liveAuctions.length ? (
+          <DashboardGrid>
+            {liveAuctions.map((item) => (
+              <ActionCard
+                key={item.id}
+                {...item}
+                status={formatStatus(item.status)}
+                statusColor={statusColor(item.status)}
+                severity="live"
+                actionLabel="Open Live Auction"
+                onAction={() => navigate(item.route)}
+              />
+            ))}
+          </DashboardGrid>
+        ) : (
+          <EmptyDashboardState>No Auctions are live right now.</EmptyDashboardState>
+        )}
+      </DashboardSection>
+
+      <DashboardSection
+        title="Festival Progress"
+        description="Where each Festival is in setup, auction, and results."
+      >
+        {data.festivalStates.length ? (
+          <DashboardGrid columns={2}>
+            {data.festivalStates.map(({ festival, current, readiness }) => {
+              const sportChildren = data.tournaments.filter(
+                ({ festivalId }) => festivalId === festival.id
+              );
+              const auctionStatus =
+                current?.config?.auctionStatus ||
+                readiness?.counts?.auctionStatus ||
+                "setup";
+              const currentStage =
+                auctionStatus === "completed"
+                  ? sportChildren.length
+                    ? "Sport Tournaments and Sport Auctions"
+                    : "Create Sport Tournaments"
+                  : auctionStatus === "live" || auctionStatus === "paused"
+                    ? "Main Festival Auction"
+                    : readiness?.overallStatus === "READY"
+                      ? "Ready for Main Auction"
+                      : "Festival setup";
+              return (
+                <ActionCard
+                  key={festival.id}
+                  eyebrow="Festival"
+                  title={festival.name}
+                  description={`Current stage: ${currentStage}`}
+                  secondary={`${readiness?.blockers?.length || 0} setup issue(s) | ${sportChildren.length} Sport Tournament(s)`}
+                  status={formatStatus(auctionStatus)}
+                  statusColor={statusColor(auctionStatus)}
+                  actionLabel="View Festival"
+                  onAction={() =>
+                    navigate(`/festivals/${festival.id}/command-center`)
+                  }
+                />
+              );
+            })}
+          </DashboardGrid>
+        ) : (
+          <EmptyDashboardState>No Festivals have been created.</EmptyDashboardState>
+        )}
+      </DashboardSection>
+
+      <DashboardSection
+        title="Next Actions"
+        description="Auctions ready to start and setup work to review."
+      >
+        {nextActions.length ? (
+          <DashboardGrid>
+            {nextActions.map((item) => (
+              <ActionCard
+                key={item.id}
+                {...item}
+                statusColor={statusColor(item.status)}
+                actionLabel={item.action}
+                onAction={() => navigate(item.route)}
+              />
+            ))}
+          </DashboardGrid>
+        ) : (
+          <EmptyDashboardState>
+            No auctions or setup tasks need action right now.
+          </EmptyDashboardState>
+        )}
+      </DashboardSection>
+
+      <DashboardSection
+        title="Recent Outcomes"
+        description="Latest Festival and Sport Auction results."
+      >
+        {data.recentOutcomes.length ? (
+          <DashboardGrid>
+            {data.recentOutcomes.slice(0, 6).map((outcome) => (
+              <ActionCard
+                key={outcome.id}
+                eyebrow={outcome.type}
+                title={outcome.title}
+                description={
+                  outcome.outcome === "sold"
+                    ? `${outcome.teamName || "Team"} | ${formatValue(
+                        outcome.value,
+                        outcome.unit
+                      )}`
+                    : "Marked unsold"
+                }
+                secondary={outcome.context}
+                status={outcome.outcome}
+                statusColor={outcome.outcome === "sold" ? "success" : "warning"}
+                actionLabel="View Auction Details"
+                onAction={() => navigate(outcome.route)}
+              />
+            ))}
+          </DashboardGrid>
+        ) : (
+          <EmptyDashboardState>No completed Auction outcomes yet.</EmptyDashboardState>
+        )}
+      </DashboardSection>
+    </Stack>
+  );
+}

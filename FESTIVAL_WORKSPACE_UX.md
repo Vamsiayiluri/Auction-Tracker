@@ -70,14 +70,15 @@ the backend remains authoritative for every mutation.
 Owner workspace tabs:
 
 - Overview
-- My Team
+- Teams
 - Auction
 - Bid History
 
 The Auction section remains shared and derives bidding identity server-side.
-My Team loads the authenticated Owner's assigned Team, Owner identity,
-remaining purse, retentions, purchased players, and current roster. Bid
-History filters the Owner's own bids into Own Bids, Won Bids, and Lost Bids.
+Teams displays both Festival Team summaries read-only and highlights the
+authenticated Owner's assigned Team, Owner identity, remaining purse,
+retentions, purchased players, and current roster. Bid History filters Owner
+activity into My Bid Activity, Won Participants, and Outbid Participants.
 
 ## Spectator Journey
 

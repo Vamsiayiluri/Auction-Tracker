@@ -43,6 +43,7 @@ test("Phase 2 validates employee and sport registration payloads", () => {
         name: "John",
         email: "john@example.com",
         department: "Finance",
+        gender: "male",
       },
     }).success,
     true
@@ -104,6 +105,19 @@ test("Phase 2 import parses EmployeeNumber and case-insensitive Yes/No", () => {
     "volleyball",
   ]);
   assert.ok(result.rows[0].deselectedSportIds.includes("throwball"));
+});
+
+test("Phase 2 participant import does not duplicate Employee gender", () => {
+  const result = parseFestivalParticipantCsv(
+    [
+      "EmployeeNumber,Name,Email,Department,Chess,Badminton,Carrom,TableTennis,Cricket,Volleyball,Throwball",
+      "EMP001,John,john@example.com,Finance,Yes,No,No,No,Yes,No,No",
+    ].join("\n"),
+    enabledSportIds
+  );
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(Object.hasOwn(result.rows[0].employee, "gender"), false);
 });
 
 test("Phase 2 import reports malformed, duplicate, and disabled sport rows", () => {

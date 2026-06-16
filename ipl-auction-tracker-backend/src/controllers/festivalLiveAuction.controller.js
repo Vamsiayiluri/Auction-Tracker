@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Transaction } from "sequelize";
 import sequelize from "../config/dbconfig.js";
 import {
   Employee,
@@ -29,13 +30,22 @@ import {
   toAuctionConfigResponse,
 } from "./festivalMainAuction.controller.js";
 import { getFestivalReadiness } from "../utils/festivalReadiness.js";
-import { toFestivalParticipantResponse } from "../utils/festivalResponse.js";
+import {
+  toFestivalParticipantResponse,
+  toFestivalTeamMembershipResponse,
+  toFestivalTeamResponse,
+} from "../utils/festivalResponse.js";
+import { createAuctionSynchronizationService } from "../utils/auctionSynchronization.js";
 
 const roomName = (festivalId) => `festival-auction:${festivalId}`;
 const festivalAuctionTimers = new Map();
+const DEADLINE_MATCH_TOLERANCE_MS = 1_500;
 const emitFestivalEvent = (festivalId, event, payload) =>
   io.to(roomName(festivalId)).emit(event, payload);
+const logExpiry = (message, details) =>
+  console.info(`[festival-auction-expiry] ${message}`, details);
 const toMoney = (value) => Number(value || 0);
+let festivalSynchronizationService;
 const getBidProgression = (auction, config, currentBid) =>
   getFestivalBidProgression({
     basePrice: auction.basePrice,
@@ -128,13 +138,27 @@ const toAuction = (auction, configOrBudget = 0) => {
     bidNumber: index + 1,
   }));
   const highestBid = bids.at(-1);
-  const currentBid = highestBid?.amount || toMoney(auction.basePrice);
+  const currentBid = highestBid?.amount ?? 0;
   const progression = getBidProgression(auction, config, currentBid);
+  const awaitingAdminDecision = auction.status === "pending";
   return {
     id: auction.id,
     festivalId: auction.festivalId,
     festivalParticipantId: auction.festivalParticipantId,
     status: auction.status,
+    lifecycleState:
+      auction.status === "live"
+        ? "ACTIVE"
+        : awaitingAdminDecision
+          ? "ADMIN_DECISION"
+          : auction.status.toUpperCase(),
+    expiryState: awaitingAdminDecision ? "EXPIRED" : null,
+    expired: awaitingAdminDecision,
+    adminActions: {
+      extend: awaitingAdminDecision,
+      sell: awaitingAdminDecision && Boolean(highestBid),
+      unsold: awaitingAdminDecision && !highestBid,
+    },
     basePrice: progression.basePrice,
     incrementPercentage: progression.incrementPercentage,
     incrementAmount: progression.incrementAmount,
@@ -142,6 +166,7 @@ const toAuction = (auction, configOrBudget = 0) => {
       ? toParticipant(auction.participant)
       : undefined,
     bids,
+    bidCount: bids.length,
     currentBid: progression.currentBid,
     leadingTeam: highestBid?.teamName || null,
     attemptNumber: auction.attemptNumber,
@@ -203,6 +228,139 @@ const loadCurrentAuction = async (config, transaction, lock = false) => {
 const loadAuctionResponse = (auctionId) =>
   FestivalAuction.findByPk(auctionId, { include: auctionInclude });
 
+const toUnsoldParticipant = (entry) => {
+  entry.participant.setDataValue("poolState", entry.state);
+  entry.participant.setDataValue("reauctionCount", entry.reauctionCount);
+  return toParticipant(entry.participant);
+};
+
+const loadFestivalAuctionSharedState = async (festivalId, transaction) => {
+  const config = await FestivalAuctionConfig.findOne({
+    where: { festivalId },
+    transaction,
+  });
+  if (!config) return null;
+  const auction = config.currentParticipantId
+    ? await FestivalAuction.findOne({
+        where: {
+          festivalId,
+          festivalParticipantId: config.currentParticipantId,
+        },
+        include: auctionInclude,
+        order: [["attemptNumber", "DESC"]],
+        transaction,
+      })
+    : null;
+  const [teamSummaries, pool, unsoldEntries, teams, memberships] =
+    await Promise.all([
+    getTeamSummaries(festivalId, config),
+    getPoolParticipants(festivalId),
+    FestivalAuctionPool.findAll({
+      where: { festivalId, state: "unsold" },
+      include: [participantInclude],
+      order: [["updatedAt", "DESC"]],
+      transaction,
+    }),
+    FestivalTeam.findAll({
+      where: { festivalId },
+      order: [["name", "ASC"], ["id", "ASC"]],
+      transaction,
+    }),
+    FestivalTeamMembership.findAll({
+      where: { festivalId },
+      include: [participantInclude, { model: FestivalTeam, as: "team" }],
+      order: [["assignedAt", "ASC"]],
+      transaction,
+    }),
+  ]);
+  return {
+    config: toAuctionConfigResponse(config),
+    current: toAuction(auction, config),
+    budgets: teamSummaries,
+    teamSummaries,
+    teams: teams.map((team) => ({
+      ...toFestivalTeamResponse(team),
+      members: memberships
+        .filter(({ festivalTeamId }) => festivalTeamId === team.id)
+        .map(toFestivalTeamMembershipResponse),
+    })),
+    pool: pool.map(toParticipant),
+    unsold: unsoldEntries.map(toUnsoldParticipant),
+  };
+};
+
+const loadFestivalAuctionHistory = async (festivalId, transaction) => {
+  const [auctions, audits, config] = await Promise.all([
+    FestivalAuction.findAll({
+      where: { festivalId },
+      include: auctionInclude,
+      order: [["startedAt", "DESC"]],
+      transaction,
+    }),
+    FestivalOperationAudit.findAll({
+      where: { festivalId },
+      order: [["createdAt", "DESC"]],
+      limit: 500,
+      transaction,
+    }),
+    loadConfig(festivalId, transaction),
+  ]);
+  return {
+    history: auctions.map((auction) => toAuction(auction, config)),
+    audits: audits.map((audit) => ({
+      id: audit.id,
+      action: audit.action,
+      entityType: audit.entityType,
+      entityId: audit.entityId,
+      details: audit.details,
+      createdAt: audit.createdAt,
+    })),
+  };
+};
+
+export const getFestivalAuctionSynchronizationSnapshot = async (festivalId) => {
+  return sequelize.transaction(
+    {
+      isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ,
+      readOnly: true,
+    },
+    async (transaction) => {
+      const [state, historyPayload] = await Promise.all([
+        loadFestivalAuctionSharedState(festivalId, transaction),
+        loadFestivalAuctionHistory(festivalId, transaction),
+      ]);
+      return { state, ...historyPayload };
+    }
+  );
+};
+
+const getFestivalSynchronizationService = () => {
+  if (!festivalSynchronizationService) {
+    festivalSynchronizationService = createAuctionSynchronizationService({
+      io,
+      scopeType: "festival",
+      roomName,
+      loadSnapshot: getFestivalAuctionSynchronizationSnapshot,
+    });
+  }
+  return festivalSynchronizationService;
+};
+
+const publishFestivalAuctionState = async (festivalId, reason) => {
+  try {
+    return await getFestivalSynchronizationService().publish(
+      festivalId,
+      reason
+    );
+  } catch (error) {
+    console.error("Failed to publish Festival Auction state:", error.message);
+    return null;
+  }
+};
+
+export const sendFestivalAuctionStateToSocket = (socket, festivalId, reason) =>
+  getFestivalSynchronizationService().sendToSocket(socket, festivalId, reason);
+
 const getAuctionBidState = async (auction, config, transaction) => {
   const highestBid = await FestivalAuctionBid.findOne({
     where: { festivalAuctionId: auction.id },
@@ -212,7 +370,7 @@ const getAuctionBidState = async (auction, config, transaction) => {
     ],
     transaction,
   });
-  const currentBid = highestBid?.amount || auction.basePrice;
+  const currentBid = highestBid?.amount ?? 0;
   const progression = getBidProgression(auction, config, currentBid);
   return {
     highestBid,
@@ -220,19 +378,50 @@ const getAuctionBidState = async (auction, config, transaction) => {
   };
 };
 
-const markFestivalAuctionPending = async (auctionId) => {
+const markFestivalAuctionPending = async (auctionId, expectedEndsAt = null) => {
+  logExpiry("expiry processing started", {
+    auctionId,
+    expectedEndsAt,
+    processedAt: new Date().toISOString(),
+  });
   const result = await sequelize.transaction(async (transaction) => {
     const auction = await FestivalAuction.findByPk(auctionId, {
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
-    if (!auction || auction.status !== "live") return null;
+    if (!auction || auction.status !== "live") {
+      return { outcome: "ignored", auctionId };
+    }
+    const storedDeadline = auction.endsAt
+      ? new Date(auction.endsAt).getTime()
+      : null;
+    if (expectedEndsAt) {
+      const scheduledDeadline = new Date(expectedEndsAt).getTime();
+      if (
+        storedDeadline === null ||
+        Math.abs(storedDeadline - scheduledDeadline) >
+          DEADLINE_MATCH_TOLERANCE_MS
+      ) {
+        return {
+          outcome: "stale",
+          auctionId,
+          endsAt: auction.endsAt,
+        };
+      }
+    }
+    if (storedDeadline && storedDeadline > Date.now()) {
+      return {
+        outcome: "not_due",
+        auctionId,
+        endsAt: auction.endsAt,
+      };
+    }
     const config = await loadConfig(auction.festivalId, transaction, true);
     if (
       !config ||
       config.currentParticipantId !== auction.festivalParticipantId
     ) {
-      return null;
+      return { outcome: "ignored", auctionId };
     }
     await auction.update(
       { status: "pending", endsAt: null, pausedRemainingMs: null },
@@ -240,6 +429,7 @@ const markFestivalAuctionPending = async (auctionId) => {
     );
     const bidState = await getAuctionBidState(auction, config, transaction);
     return {
+      outcome: "expired",
       festivalId: auction.festivalId,
       auctionId: auction.id,
       festivalParticipantId: auction.festivalParticipantId,
@@ -248,13 +438,39 @@ const markFestivalAuctionPending = async (auctionId) => {
       ...bidState,
     };
   });
-  if (!result) return null;
+  if (result.outcome === "not_due") {
+    scheduleFestivalAuctionEnd(result.auctionId, result.endsAt);
+    logExpiry("expiry processing deferred", {
+      auctionId: result.auctionId,
+      endsAt: result.endsAt,
+    });
+    return result;
+  }
+  if (result.outcome !== "expired") {
+    logExpiry("expiry processing completed without transition", result);
+    return result;
+  }
   clearFestivalAuctionTimer(auctionId);
+  logExpiry("expiry processing completed", {
+    auctionId: result.auctionId,
+    festivalId: result.festivalId,
+    roundStatus: result.roundStatus,
+    hasValidBid: Boolean(result.highestBid),
+  });
   emitFestivalEvent(
     result.festivalId,
     "auction-pending-finalization",
     result
   );
+  await publishFestivalAuctionState(
+    result.festivalId,
+    "auction-pending-finalization"
+  );
+  logExpiry("socket event emitted", {
+    auctionId: result.auctionId,
+    festivalId: result.festivalId,
+    event: "auction-pending-finalization",
+  });
   return result;
 };
 
@@ -267,24 +483,18 @@ const scheduleFestivalAuctionEnd = (auctionId, endsAt) => {
     if (!active || new Date(active.endsAt).getTime() !== deadline.getTime()) {
       return;
     }
+    logExpiry("timer reached zero", {
+      auctionId,
+      endsAt: deadline.toISOString(),
+      triggeredAt: new Date().toISOString(),
+    });
     try {
-      await markFestivalAuctionPending(auctionId);
+      await markFestivalAuctionPending(auctionId, deadline);
     } catch (error) {
       console.error("Error expiring festival auction:", error.message);
     }
-  }, remainingMs);
+  }, remainingMs + 10);
   festivalAuctionTimers.set(auctionId, { timer, endsAt: deadline });
-};
-
-const resetFestivalAuctionTimer = async (auctionId) => {
-  const endsAt = createFestivalAuctionDeadline();
-  const [updated] = await FestivalAuction.update(
-    { status: "live", endsAt, pausedRemainingMs: null },
-    { where: { id: auctionId, status: "live" } }
-  );
-  if (!updated) return null;
-  scheduleFestivalAuctionEnd(auctionId, endsAt);
-  return endsAt;
 };
 
 export const restoreFestivalAuctionTimers = async () => {
@@ -455,6 +665,7 @@ export const startFestivalAuction = async (req, res) => {
     });
     if (payload.status) return res.status(payload.status).json(payload);
     emitFestivalEvent(req.params.festivalId, "auction-started", payload.data);
+    await publishFestivalAuctionState(req.params.festivalId, "auction-started");
     return res.status(200).json(payload);
   } catch (error) {
     console.error("Error starting festival auction:", error);
@@ -491,6 +702,7 @@ export const pauseFestivalAuction = async (req, res) => {
       remainingMs: result.remainingMs,
     };
     emitFestivalEvent(req.params.festivalId, "auction-paused", payload);
+    await publishFestivalAuctionState(req.params.festivalId, "auction-paused");
     return res.status(200).json({ data: payload });
   } catch (error) {
     console.error("Error pausing festival auction:", error);
@@ -542,6 +754,7 @@ export const resumeFestivalAuction = async (req, res) => {
       endsAt: result.endsAt,
     };
     emitFestivalEvent(req.params.festivalId, "auction-resumed", payload);
+    await publishFestivalAuctionState(req.params.festivalId, "auction-resumed");
     return res.status(200).json({ data: payload });
   } catch (error) {
     console.error("Error resuming festival auction:", error);
@@ -580,6 +793,7 @@ export const extendFestivalAuction = async (req, res) => {
     };
     emitFestivalEvent(req.params.festivalId, "auction-extended", payload);
     emitFestivalEvent(req.params.festivalId, "auction-timer-updated", payload);
+    await publishFestivalAuctionState(req.params.festivalId, "auction-extended");
     return res.status(200).json({ data: payload });
   } catch (error) {
     console.error("Error extending festival auction:", error);
@@ -617,6 +831,10 @@ export const completeFestivalAuction = async (req, res) => {
       req.params.festivalId,
       "auction-completed",
       result.data
+    );
+    await publishFestivalAuctionState(
+      req.params.festivalId,
+      "auction-completed"
     );
     return res.status(200).json(result);
   } catch (error) {
@@ -725,6 +943,10 @@ export const startFestivalAuctionParticipant = async (req, res) => {
       "participant-started",
       payload
     );
+    await publishFestivalAuctionState(
+      req.params.festivalId,
+      "participant-started"
+    );
     return res.status(201).json({ data: payload });
   } catch (error) {
     console.error("Error starting auction participant:", error);
@@ -766,6 +988,12 @@ export const placeFestivalAuctionBid = async (req, res) => {
           message: "Only an assigned Festival Team owner can bid",
         };
       }
+      if (req.body.auctionId !== auction.id) {
+        return {
+          status: 409,
+          message: "Auction state changed. Refresh before bidding again.",
+        };
+      }
       const highestBid = await FestivalAuctionBid.findOne({
         where: { festivalAuctionId: auction.id },
         order: [
@@ -781,7 +1009,13 @@ export const placeFestivalAuctionBid = async (req, res) => {
           message: "Your team already holds the highest bid",
         };
       }
-      const currentBid = highestBid?.amount || auction.basePrice;
+      const currentBid = highestBid?.amount ?? 0;
+      if (toMoney(req.body.expectedCurrentBid) !== toMoney(currentBid)) {
+        return {
+          status: 409,
+          message: "A newer bid was already accepted. Review the latest bid.",
+        };
+      }
       const budgets = await calculateTeamBudgets(
         req.params.festivalId,
         config,
@@ -816,17 +1050,28 @@ export const placeFestivalAuctionBid = async (req, res) => {
         },
         { transaction }
       );
+      const bidCount = await FestivalAuctionBid.count({
+        where: { festivalAuctionId: auction.id },
+        transaction,
+      });
+      const endsAt = createFestivalAuctionDeadline();
+      await auction.update(
+        { endsAt, pausedRemainingMs: null },
+        { transaction }
+      );
       return {
         bidId: bid.id,
         auctionId: auction.id,
         basePrice: progression.basePrice,
+        bidCount,
+        endsAt,
       };
     });
     if (result.status) return res.status(result.status).json(result);
     const bid = await FestivalAuctionBid.findByPk(result.bidId, {
       include: bidInclude,
     });
-    const endsAt = await resetFestivalAuctionTimer(result.auctionId);
+    scheduleFestivalAuctionEnd(result.auctionId, result.endsAt);
     const config = await loadConfig(req.params.festivalId);
     const progression = getFestivalBidProgression({
       basePrice: result.basePrice,
@@ -835,16 +1080,19 @@ export const placeFestivalAuctionBid = async (req, res) => {
     });
     const payload = {
       ...toBid(bid),
-      endsAt,
+      bidNumber: result.bidCount,
+      bidCount: result.bidCount,
+      endsAt: result.endsAt,
       ...progression,
     };
     emitFestivalEvent(req.params.festivalId, "bid-placed", payload);
     emitFestivalEvent(req.params.festivalId, "auction-timer-updated", {
       festivalId: req.params.festivalId,
       auctionId: result.auctionId,
-      endsAt,
+      endsAt: result.endsAt,
       roundStatus: "live",
     });
+    await publishFestivalAuctionState(req.params.festivalId, "bid-placed");
     return res.status(201).json({ data: payload });
   } catch (error) {
     if (error?.name === "SequelizeUniqueConstraintError") {
@@ -907,6 +1155,12 @@ const finalizeParticipant = async (req, res, outcome) => {
         return {
           status: 400,
           message: "Participant cannot be sold without a winning bid",
+        };
+      }
+      if (outcome === "unsold" && highestBid) {
+        return {
+          status: 400,
+          message: "Participant cannot be marked unsold after bids exist",
         };
       }
       if (outcome === "sold") {
@@ -1025,6 +1279,10 @@ const finalizeParticipant = async (req, res, outcome) => {
       outcome === "sold" ? "participant-sold" : "participant-unsold",
       payload
     );
+    await publishFestivalAuctionState(
+      req.params.festivalId,
+      outcome === "sold" ? "participant-sold" : "participant-unsold"
+    );
     return res.status(200).json({ data: payload });
   } catch (error) {
     if (error?.name === "SequelizeUniqueConstraintError") {
@@ -1045,13 +1303,13 @@ export const markFestivalAuctionParticipantUnsold = (req, res) =>
 
 export const getFestivalAuctionCurrent = async (req, res) => {
   try {
-    const config = await FestivalAuctionConfig.findOne({
+    let config = await FestivalAuctionConfig.findOne({
       where: { festivalId: req.params.festivalId },
     });
     if (!config) {
       return res.status(404).json({ success: false, message: "Auction not configured" });
     }
-    const auction = config.currentParticipantId
+    let auction = config.currentParticipantId
       ? await FestivalAuction.findOne({
           where: {
             festivalId: req.params.festivalId,
@@ -1061,33 +1319,34 @@ export const getFestivalAuctionCurrent = async (req, res) => {
           order: [["attemptNumber", "DESC"]],
         })
       : null;
-    const [teamSummaries, pool, unsoldEntries, owner] = await Promise.all([
-      getTeamSummaries(req.params.festivalId, config),
-      getPoolParticipants(req.params.festivalId),
-      FestivalAuctionPool.findAll({
-        where: { festivalId: req.params.festivalId, state: "unsold" },
-        include: [participantInclude],
-        order: [["updatedAt", "DESC"]],
-      }),
+    if (
+      auction?.status === "live" &&
+      auction.endsAt &&
+      new Date(auction.endsAt).getTime() <= Date.now()
+    ) {
+      logExpiry("overdue round detected during current-state read", {
+        auctionId: auction.id,
+        festivalId: req.params.festivalId,
+        endsAt: auction.endsAt,
+      });
+      await markFestivalAuctionPending(auction.id, auction.endsAt);
+      config = await FestivalAuctionConfig.findOne({
+        where: { festivalId: req.params.festivalId },
+      });
+      auction = await FestivalAuction.findByPk(auction.id, {
+        include: auctionInclude,
+      });
+    }
+    const [sharedState, owner] = await Promise.all([
+      loadFestivalAuctionSharedState(req.params.festivalId),
       req.user.role === "team_owner"
         ? findOwnerForUser(req.params.festivalId, req.user.id)
         : null,
     ]);
     return res.status(200).json({
       data: {
-        config: toAuctionConfigResponse(config),
-        current: toAuction(auction, config),
-        budgets: teamSummaries,
-        teamSummaries,
-        pool: pool.map(toParticipant),
-        unsold: unsoldEntries.map((entry) => {
-          entry.participant.setDataValue("poolState", entry.state);
-          entry.participant.setDataValue(
-            "reauctionCount",
-            entry.reauctionCount
-          );
-          return toParticipant(entry.participant);
-        }),
+        ...sharedState,
+        serverTime: new Date().toISOString(),
         viewer: {
           isAdmin: req.user.role === "admin",
           isOwner: Boolean(owner),
@@ -1161,6 +1420,10 @@ export const reauctionFestivalParticipants = async (req, res) => {
     });
     if (result.status) return res.status(result.status).json(result);
     emitFestivalEvent(req.params.festivalId, "participants-reauctioned", result);
+    await publishFestivalAuctionState(
+      req.params.festivalId,
+      "participants-reauctioned"
+    );
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     console.error("Error re-auctioning festival participants:", error);
@@ -1185,30 +1448,13 @@ export const getFestivalAuctionReadiness = async (req, res) => {
 
 export const getFestivalAuctionHistory = async (req, res) => {
   try {
-    const [auctions, audits] = await Promise.all([
-      FestivalAuction.findAll({
-        where: { festivalId: req.params.festivalId },
-        include: auctionInclude,
-        order: [["startedAt", "DESC"]],
-      }),
-      FestivalOperationAudit.findAll({
-        where: { festivalId: req.params.festivalId },
-        order: [["createdAt", "DESC"]],
-        limit: 500,
-      }),
-    ]);
-    const config = await loadConfig(req.params.festivalId);
+    const { history, audits } = await loadFestivalAuctionHistory(
+      req.params.festivalId
+    );
     return res.status(200).json({
-      data: auctions.map((auction) => toAuction(auction, config)),
-      audits: audits.map((audit) => ({
-        id: audit.id,
-        action: audit.action,
-        entityType: audit.entityType,
-        entityId: audit.entityId,
-        details: audit.details,
-        createdAt: audit.createdAt,
-      })),
-      meta: { count: auctions.length, auditCount: audits.length },
+      data: history,
+      audits,
+      meta: { count: history.length, auditCount: audits.length },
     });
   } catch (error) {
     console.error("Error fetching festival auction history:", error);

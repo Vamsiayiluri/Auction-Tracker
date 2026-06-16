@@ -10,6 +10,7 @@ export const toEmployeeResponse = (employee) => {
     name: plain.name,
     email: plain.email,
     department: plain.department,
+    gender: plain.gender,
     employmentStatus: plain.employmentStatus,
     source: plain.source,
     identityStatus: plain.identityStatus,

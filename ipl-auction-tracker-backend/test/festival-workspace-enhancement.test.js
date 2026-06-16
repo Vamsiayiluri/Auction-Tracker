@@ -20,23 +20,26 @@ test("admin workspace keeps Operations and Edit Configuration modes", async () =
   assert.match(detail, /locked=\{locked\}/);
 });
 
-test("owner workspace exposes only requested sections", async () => {
-  const page = await readFrontend("pages/FestivalLiveAuctionPage.jsx");
-  assert.match(
-    page,
-    /const ownerTabs = \["Overview", "My Team", "Auction", "Bid History"\]/
-  );
-  assert.match(page, /ownerTeamOnly/);
-  assert.match(page, /FestivalBidHistory festivalId=\{festivalId\} ownerView/);
+test("owner Arena opens directly and keeps Team reporting outside the live route", async () => {
+  const [page, arena] = await Promise.all([
+    readFrontend("pages/FestivalLiveAuctionPage.jsx"),
+    readFrontend("components/MainFestivalAuction.jsx"),
+  ]);
+  assert.match(page, /<MainFestivalAuction festivalId=\{festivalId\}/);
+  assert.doesNotMatch(page, /ownerTabs|activeTab|FestivalBidHistory/);
+  assert.match(arena, /MyTeamPanel/);
+  assert.match(arena, /OwnerBidControls/);
 });
 
-test("spectator workspace exposes requested read-only sections", async () => {
-  const page = await readFrontend("pages/FestivalLiveAuctionPage.jsx");
-  assert.match(
-    page,
-    /const spectatorTabs = \[\s*"Overview",\s*"Live Auction",\s*"Teams",\s*"Results",\s*"History"/s
-  );
-  assert.match(page, /sections=\{\["Auction Results"\]\}/);
+test("spectator Arena is tab-free and does not mount management reporting", async () => {
+  const [page, arena] = await Promise.all([
+    readFrontend("pages/FestivalLiveAuctionPage.jsx"),
+    readFrontend("components/MainFestivalAuction.jsx"),
+  ]);
+  assert.doesNotMatch(page, /spectatorTabs|<Tabs|FestivalHistory/);
+  assert.match(arena, /LiveBidStream/);
+  assert.match(arena, /TeamPurseComparison/);
+  assert.match(arena, /RecentResultsStrip/);
 });
 
 test("admin history is split into dedicated bid, result, and audit workspaces", async () => {
@@ -62,7 +65,7 @@ test("admin history is split into dedicated bid, result, and audit workspaces", 
   assert.match(bidHistory, /View Bids/);
 });
 
-test("viewer workspace lazy loads and fetches only mounted sections", async () => {
+test("Arena lazy loads one state owner while management reports remain separate", async () => {
   const [page, auction, teams, bidHistory, overview] = await Promise.all([
     readFrontend("pages/FestivalLiveAuctionPage.jsx"),
     readFrontend("components/MainFestivalAuction.jsx"),
@@ -72,16 +75,13 @@ test("viewer workspace lazy loads and fetches only mounted sections", async () =
   ]);
   assert.match(page, /lazy\(/);
   assert.match(page, /<Suspense/);
-  assert.match(page, /activeTab === "My Team"/);
-  assert.match(page, /activeTab === "Teams"/);
-  assert.match(
-    auction,
-    /showHistory\s*\?\s*api\.get\(`\/v2\/festivals\/\$\{festivalId\}\/auction\/history`\)\s*:\s*null/s
-  );
+  assert.doesNotMatch(page, /activeTab|FestivalTeamsDirectory/);
+  assert.match(auction, /\/auction\/current/);
+  assert.match(auction, /\/auction\/history/);
+  assert.equal((auction.match(/socket\.on\("auction-state"/g) || []).length, 1);
   assert.match(teams, /\/teams`/);
   assert.match(teams, /\/auction\/current`/);
   assert.match(bidHistory, /\/auction\/history`/);
-  assert.match(page, /activeTab === "Bid History"/);
   assert.match(overview, /\/auction\/current`/);
 });
 

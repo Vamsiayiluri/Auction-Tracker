@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -11,6 +11,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -56,6 +57,10 @@ export default function FestivalTeamBuilder({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [activeAction, setActiveAction] = useState("");
+  const actionInFlight = useRef(false);
 
   const loadTeamBuilder = useCallback(async () => {
     void participantRevision;
@@ -79,6 +84,8 @@ export default function FestivalTeamBuilder({
         requestError.response?.data?.message ||
           "Unable to load festival team assignments."
       );
+    } finally {
+      setLoading(false);
     }
   }, [festivalId, participantRevision, operationRevision]);
 
@@ -103,9 +110,23 @@ export default function FestivalTeamBuilder({
     setDialogOpen(true);
   };
 
-  const saveTeam = async () => {
+  const beginAction = (action) => {
+    if (actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true);
+    setActiveAction(action);
     setError("");
+    return true;
+  };
+
+  const endAction = () => {
+    actionInFlight.current = false;
+    setBusy(false);
+    setActiveAction("");
+  };
+
+  const saveTeam = async () => {
+    if (!beginAction("save-team")) return;
     try {
       const payload = {
         name: form.name,
@@ -130,13 +151,12 @@ export default function FestivalTeamBuilder({
         requestError.response?.data?.message || "Unable to save festival team."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const deleteTeam = async (team) => {
-    setBusy(true);
-    setError("");
+    if (!beginAction(`delete-team:${team.id}`)) return;
     try {
       await api.delete(`/v2/festivals/${festivalId}/teams/${team.id}`);
       setNotice(`${team.name} deleted.`);
@@ -148,14 +168,12 @@ export default function FestivalTeamBuilder({
           "Unable to delete festival team."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const moveParticipant = async (participantId, teamId) => {
-    if (!teamId) return;
-    setBusy(true);
-    setError("");
+    if (!teamId || !beginAction(`move:${participantId}`)) return;
     try {
       await api.post(`/v2/festivals/${festivalId}/team-assignments`, {
         participantId,
@@ -170,13 +188,12 @@ export default function FestivalTeamBuilder({
           "Unable to update participant assignment."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const autoBalance = async () => {
-    setBusy(true);
-    setError("");
+    if (!beginAction("auto-balance")) return;
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/team-assignments/auto-balance`,
@@ -191,13 +208,12 @@ export default function FestivalTeamBuilder({
           "Unable to auto-balance participants."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
   const lockAssignments = async () => {
-    setBusy(true);
-    setError("");
+    if (!beginAction("lock-assignments")) return;
     try {
       await api.patch(
         `/v2/festivals/${festivalId}/team-assignments/lock`,
@@ -212,7 +228,7 @@ export default function FestivalTeamBuilder({
           "Unable to lock festival team assignments."
       );
     } finally {
-      setBusy(false);
+      endAction();
     }
   };
 
@@ -232,6 +248,35 @@ export default function FestivalTeamBuilder({
     (manualMode
       ? assignmentsLocked || assignmentStatus !== "draft"
       : false);
+  const normalizedSearch = search.trim().toLowerCase();
+  const matchesParticipant = (participant) =>
+    !normalizedSearch ||
+    [
+      participant?.employee?.name,
+      participant?.employee?.employeeNumber,
+      participant?.employee?.email,
+    ].some((field) =>
+      String(field || "").toLowerCase().includes(normalizedSearch)
+    );
+  const visibleAssignmentsByTeam = new Map(
+    teams.map((team) => [
+      team.id,
+      (assignmentsByTeam.get(team.id) || []).filter((membership) =>
+        matchesParticipant(membership.participant)
+      ),
+    ])
+  );
+  const visibleUnassigned = unassigned.filter(matchesParticipant);
+
+  if (loading) {
+    return (
+      <Card id="festival-teams" variant="outlined" sx={{ mb: 3 }}>
+        <CardContent sx={{ display: "grid", placeItems: "center", py: 8 }}>
+          <CircularProgress size={30} />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card id="festival-teams" variant="outlined" sx={{ mb: 3 }}>
@@ -271,7 +316,9 @@ export default function FestivalTeamBuilder({
                   disabled={busy || locked || activeTeams.length < 2}
                   onClick={autoBalance}
                 >
-                  Auto Balance
+                  {activeAction === "auto-balance"
+                    ? "Balancing..."
+                    : "Auto Balance"}
                 </Button>
                 <Button
                   variant="contained"
@@ -284,7 +331,9 @@ export default function FestivalTeamBuilder({
                   }
                   onClick={lockAssignments}
                 >
-                  Lock Assignments
+                  {activeAction === "lock-assignments"
+                    ? "Locking..."
+                    : "Lock Assignments"}
                 </Button>
               </>
             )}
@@ -311,6 +360,14 @@ export default function FestivalTeamBuilder({
             {unassigned.length === 1 ? " is" : "s are"} not assigned.
           </Alert>
         )}
+        <TextField
+          fullWidth
+          size="small"
+          label="Search by employee name, number, or email"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ mb: 2 }}
+        />
 
         <Box
           sx={{
@@ -354,7 +411,9 @@ export default function FestivalTeamBuilder({
                       disabled={busy || teamConfigurationLocked}
                       onClick={() => deleteTeam(team)}
                     >
-                      Delete
+                      {activeAction === `delete-team:${team.id}`
+                        ? "Deleting..."
+                        : "Delete"}
                     </Button>
                   </Stack>
                 </Stack>
@@ -380,7 +439,7 @@ export default function FestivalTeamBuilder({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {(assignmentsByTeam.get(team.id) || []).map(
+                      {(visibleAssignmentsByTeam.get(team.id) || []).map(
                         (membership) => (
                           <TableRow key={membership.id}>
                             <TableCell>
@@ -447,6 +506,15 @@ export default function FestivalTeamBuilder({
                           </TableRow>
                         )
                       )}
+                      {!visibleAssignmentsByTeam.get(team.id)?.length && (
+                        <TableRow>
+                          <TableCell colSpan={manualMode ? 3 : 2} align="center">
+                            {normalizedSearch
+                              ? "No roster members match this search."
+                              : "No participants assigned to this team."}
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -471,7 +539,7 @@ export default function FestivalTeamBuilder({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {unassigned.map((participant) => (
+                  {visibleUnassigned.map((participant) => (
                     <TableRow key={participant.id}>
                       <TableCell>
                         {participant.employee?.name}
@@ -514,6 +582,13 @@ export default function FestivalTeamBuilder({
                       </TableCell>
                     </TableRow>
                   ))}
+                  {!visibleUnassigned.length && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        No unassigned participants match this search.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -579,7 +654,7 @@ export default function FestivalTeamBuilder({
             disabled={busy || !form.name.trim() || !form.code.trim()}
             onClick={saveTeam}
           >
-            Save
+            {activeAction === "save-team" ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
       </Dialog>

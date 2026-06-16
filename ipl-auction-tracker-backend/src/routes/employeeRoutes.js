@@ -2,6 +2,7 @@ import express from "express";
 import {
   createEmployee,
   downloadEmployeeImportTemplate,
+  exportEmployees,
   getEmployeeById,
   getEmployees,
   importEmployees,
@@ -18,6 +19,7 @@ import {
   createEmployeeSchema,
   employeeImportSchema,
   employeeIdSchema,
+  exportEmployeesSchema,
   linkEmployeeUserSchema,
   listEmployeesSchema,
   updateEmployeeSchema,
@@ -34,6 +36,7 @@ router.post(
   importEmployees
 );
 router.get("/import/template", downloadEmployeeImportTemplate);
+router.get("/export", validate(exportEmployeesSchema), exportEmployees);
 router.post("/", validate(createEmployeeSchema), createEmployee);
 router.get("/", validate(listEmployeesSchema), getEmployees);
 router.get("/:employeeId", validate(employeeIdSchema), getEmployeeById);

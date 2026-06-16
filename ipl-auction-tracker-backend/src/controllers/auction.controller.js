@@ -158,6 +158,13 @@ const finalizePlayerAuctionWithOutcome = async (playerId, outcome) => {
       transaction,
     });
     if (outcome === "highest" && !highestBid) return null;
+    if (outcome === "unsold" && highestBid) {
+      const error = new Error(
+        "Player cannot be marked unsold after a valid bid"
+      );
+      error.statusCode = 409;
+      throw error;
+    }
 
     if (outcome === "highest" && highestBid) {
       const winningTournamentTeam = await TournamentTeam.findOne({
@@ -315,82 +322,109 @@ export const startAuction = async (req, res) => {
   try {
     const { playerId } = req.params;
     const { auctionId, tournamentId } = req.body;
-
-    const player = await Player.findByPk(playerId);
-    if (!player) return res.status(404).json({ message: "Player not found" });
-
-    if (!player.tournamentId) {
-      return res
-        .status(400)
-        .json({ message: "Player must belong to a tournament" });
-    }
-
-    const tournament = await Tournament.findByPk(player.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-    if (tournament.status === "completed") {
-      return res.status(400).json({ message: "Tournament is already completed" });
-    }
-
-    if (tournamentId && player.tournamentId !== tournamentId) {
-      return res
-        .status(400)
-        .json({ message: "Player does not belong to this tournament" });
-    }
-
-    if (player.isSold || player.auctionId) {
-      return res.status(400).json({
-        message: "This player has already completed an auction round",
+    const outcome = await sequelizeDb.transaction(async (transaction) => {
+      const player = await Player.findByPk(playerId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
       });
-    }
+      if (!player) return { status: 404, message: "Player not found" };
+      if (!player.tournamentId) {
+        return {
+          status: 400,
+          message: "Player must belong to a tournament",
+        };
+      }
 
-    const participatingTeamCount = await TournamentTeam.count({
-      where: { tournamentId: player.tournamentId },
-    });
-    if (!participatingTeamCount) {
-      return res.status(400).json({
-        message: "Tournament has no participating teams configured",
+      const tournament = await Tournament.findByPk(player.tournamentId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
       });
-    }
+      if (!tournament) return { status: 404, message: "Tournament not found" };
+      if (tournament.status === "completed") {
+        return { status: 400, message: "Tournament is already completed" };
+      }
+      if (tournamentId && player.tournamentId !== tournamentId) {
+        return {
+          status: 400,
+          message: "Player does not belong to this tournament",
+        };
+      }
+      if (player.isSold || player.auctionId || player.isInAuction) {
+        return {
+          status: 409,
+          message: "This player has already started or completed an auction round",
+        };
+      }
 
-    const activeAuction = await Auction.findOne({
-      where: {
-        tournamentId: player.tournamentId,
-        status: { [Op.in]: [AUCTION_STATUS.LIVE, AUCTION_STATUS.PENDING] },
-      },
-    });
-    if (activeAuction) {
-      const activePlayer = activeAuction.currentPlayerId
-        ? await Player.findByPk(activeAuction.currentPlayerId)
-        : null;
-      return res.status(400).json({
-        message: `Auction is already running for ${
-          activePlayer?.name || "another player"
-        }`,
+      const participatingTeamCount = await TournamentTeam.count({
+        where: { tournamentId: player.tournamentId },
+        transaction,
       });
+      if (!participatingTeamCount) {
+        return {
+          status: 400,
+          message: "Tournament has no participating teams configured",
+        };
+      }
+
+      const activeAuction = await Auction.findOne({
+        where: {
+          tournamentId: player.tournamentId,
+          status: { [Op.in]: [AUCTION_STATUS.LIVE, AUCTION_STATUS.PENDING] },
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (activeAuction) {
+        const activePlayer = activeAuction.currentPlayerId
+          ? await Player.findByPk(activeAuction.currentPlayerId, { transaction })
+          : null;
+        return {
+          status: 409,
+          message: `Auction is already running for ${
+            activePlayer?.name || "another player"
+          }`,
+        };
+      }
+
+      const startedAt = new Date();
+      const endsAt = new Date(startedAt.getTime() + AUCTION_DURATION_MS);
+      player.isInAuction = true;
+      player.auctionId = auctionId;
+      await player.save({ transaction });
+      await Auction.create(
+        {
+          id: auctionId,
+          currentPlayerId: player.id,
+          tournamentId: player.tournamentId,
+          status: AUCTION_STATUS.LIVE,
+          startedAt,
+          endsAt,
+        },
+        { transaction }
+      );
+      await tournament.update(
+        { status: AUCTION_STATUS.LIVE },
+        { transaction }
+      );
+
+      return {
+        player: player.toJSON(),
+        tournamentBudget: tournament.budget,
+        endsAt,
+      };
+    });
+
+    if (outcome.status) {
+      return res.status(outcome.status).json({ message: outcome.message });
     }
 
-    const startedAt = new Date();
-    const endsAt = new Date(startedAt.getTime() + AUCTION_DURATION_MS);
-    player.isInAuction = true;
-    player.auctionId = auctionId;
-    await player.save();
-    await Auction.create({
-      id: auctionId,
-      currentPlayerId: player.id,
-      tournamentId: player.tournamentId,
-      status: AUCTION_STATUS.LIVE,
-      startedAt,
-      endsAt,
-    });
-    await Tournament.update(
-      { status: AUCTION_STATUS.LIVE },
-      { where: { id: player.tournamentId } }
-    );
-
+    const { player, tournamentBudget, endsAt } = outcome;
     scheduleAuctionEnd(player.id, endsAt);
-    const nextMinimumBid = getNextMinimumBid(player.basePrice, tournament.budget);
+    const nextMinimumBid = getNextMinimumBid(
+      player.basePrice,
+      tournamentBudget
+    );
     emitToTournament(player.tournamentId, "auction-started", {
       id: player.id,
       tournamentId: player.tournamentId,
@@ -405,9 +439,12 @@ export const startAuction = async (req, res) => {
       nextMinimumBid,
     });
 
-    res.status(200).json({ message: `Auction started for ${player.name}` });
+    return res
+      .status(200)
+      .json({ message: `Auction started for ${player.name}` });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error starting auction:", error);
+    return res.status(500).json({ message: "Unable to start auction" });
   }
 };
 
@@ -491,7 +528,10 @@ export const markUnsold = async (req, res) => {
 
     return res.status(200).json({ message: "Player marked unsold", result });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Unable to mark player unsold" });
   }
 };
 

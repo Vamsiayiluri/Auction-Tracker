@@ -977,6 +977,7 @@ export const getFestivalParticipants = async (req, res) => {
                   { name: { [Op.like]: `%${search}%` } },
                   { email: { [Op.like]: `%${search}%` } },
                   { department: { [Op.like]: `%${search}%` } },
+                  { gender: { [Op.like]: `%${search}%` } },
                 ],
               }
             : undefined,
@@ -1365,22 +1366,13 @@ export const importParticipantSports = async (req, res) => {
             employee = provisionalMatches[0] || null;
             reconciledLegacyEmployee = Boolean(employee);
           }
-          let employeeCreated = false;
+          const employeeCreated = false;
           let employeeUpdated = false;
 
           if (!employee) {
-            employee = await Employee.create(
-              {
-                id: crypto.randomUUID(),
-                ...row.employee,
-                employmentStatus: "active",
-                source: "hr_import",
-                identityStatus: "verified",
-                userId: null,
-              },
-              { transaction }
+            throw new Error(
+              "Employee not found; import the Employee Directory CSV with Gender first"
             );
-            employeeCreated = true;
           } else {
             const updates = {
               ...(reconciledLegacyEmployee
@@ -1510,7 +1502,9 @@ export const importParticipantSports = async (req, res) => {
           row: row.rowNumber,
           message: isUniqueConflict(error)
             ? "Employee or participant conflicts with existing data"
-            : "Row could not be imported",
+            : error.message?.startsWith("Employee not found;")
+              ? error.message
+              : "Row could not be imported",
         });
       }
     }

@@ -191,3 +191,20 @@ restart, every live auction receives a fresh 20-second timer. Evidence:
   provides one button that sends the next server-provided minimum bid.
 - The Word document calls Socket.IO updates future-facing in one section, while
   code implements them.
+# Employee Gender Foundation
+
+`Employee` remains the canonical corporate identity for Festival workflows.
+Required gender is stored once as `male` or `female` on `Employees`.
+`FestivalParticipants` and all roster/auction records derive gender through
+their Employee relationship and do not duplicate it.
+
+Future Men, Women, and Mixed sport allocation filters should combine:
+
+```text
+Festival Team membership
++ selected Festival sport
++ Employee.gender when the event is not Mixed
+```
+
+This foundation does not introduce Sport Teams, Sport Auctions, or competition
+behavior.

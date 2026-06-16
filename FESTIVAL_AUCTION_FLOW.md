@@ -6,7 +6,7 @@ Admins default to Operations View after the Main Auction starts. Edit Festival
 Configuration remains available for reference and permitted setup actions;
 existing backend locking and validation continue to reject unsafe changes.
 
-Owners use Overview, My Team, Auction, and Bid History. Spectators use Overview,
+Owners use Overview, Teams, Auction, and Bid History. Spectators use Overview,
 Live Auction, Teams, Results, and History. These are navigation changes only:
 Owner identity, bid calculation, timer behavior, finalization, purse checks,
 and authorization are unchanged.
@@ -84,11 +84,11 @@ pending -> sold | unsold
 
 ## Bid Lifecycle
 
-1. Current bid starts at the base price.
-2. The server calls shared `getNextMinimumBid`.
+1. Current bid starts at zero and the opening bid equals the base price.
+2. After the opening bid, the server advances by the fixed base-price percentage.
 3. Owner and Team identity are server-derived.
 4. Remaining purse and leading Team are validated.
-5. The exact next amount is persisted.
+5. The exact offered amount is persisted.
 6. The deadline resets to 20 seconds.
 7. Socket events update every connected viewer.
 
@@ -109,8 +109,9 @@ Auction uses expiry plus extend instead.
 
 Bid History lists auctioned participants. **View Bids** displays base price,
 sold price, sold Team, every numbered bid, and each timestamp. Owner history
-can be filtered to Own Bids, Won Bids, or Lost Bids. Results continues to show
-sold/unsold outcome, winning Team, final amount, and finalized timestamp.
+can be filtered to My Bid Activity, Won Participants, or Outbid Participants.
+Results continues to show sold/unsold outcome, winning Team, final amount, and
+finalized timestamp.
 
 ## Teams Behavior
 

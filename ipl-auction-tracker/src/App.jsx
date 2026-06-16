@@ -1,7 +1,9 @@
 import {
   BrowserRouter as Router,
+  Navigate,
   Routes,
   Route,
+  useParams,
 } from "react-router-dom";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -18,14 +20,33 @@ import SpectatorAuctionPage from "./pages/SpectatorAuctionPage";
 import FestivalDashboard from "./pages/FestivalDashboard";
 import FestivalDetail from "./pages/FestivalDetail";
 import FestivalLiveAuctionPage from "./pages/FestivalLiveAuctionPage";
-import FestivalAuctionDirectory from "./pages/FestivalAuctionDirectory";
+import FestivalAuctionResultsPage from "./pages/FestivalAuctionResultsPage";
+import FestivalAuctionHub from "./pages/FestivalAuctionHub";
+import FestivalCommandCenter from "./pages/FestivalCommandCenter";
+import AuctionDirectory from "./pages/AuctionDirectory";
 import EmployeeDirectory from "./pages/EmployeeDirectory";
+import SportTournamentDirectory from "./pages/SportTournamentDirectory";
+import SportTournamentWorkspace from "./pages/SportTournamentWorkspace";
+import SportTournamentCommandCenter from "./pages/SportTournamentCommandCenter";
+import SportAuctionArena from "./pages/SportAuctionArena";
+import SportAuctionHub from "./pages/SportAuctionHub";
+import SportAuctionResultsPage from "./pages/SportAuctionResultsPage";
 import AppShell from "./components/AppShell";
 import {
   DefaultRoute,
   GuestRoute,
   ProtectedRoute,
 } from "./components/RouteGuards";
+
+const FestivalAuctionCompatibilityRedirect = () => {
+  const { festivalId } = useParams();
+  return <Navigate to={`/auctions/festivals/${festivalId}`} replace />;
+};
+
+const SportAuctionCompatibilityRedirect = () => {
+  const { sportTournamentId } = useParams();
+  return <Navigate to={`/auctions/sports/${sportTournamentId}`} replace />;
+};
 
 export default function AppRouter() {
   return (
@@ -119,7 +140,71 @@ export default function AppRouter() {
             }
           />
           <Route
+            path="/festivals/:festivalId/command-center"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppShell>
+                  <FestivalCommandCenter />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festivals/:festivalId/manage"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppShell>
+                  <FestivalDetail />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/festivals/:festivalId/live-auction"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <FestivalAuctionCompatibilityRedirect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festival-auctions"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <Navigate to="/auctions?type=festival" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/auctions"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <AppShell>
+                  <AuctionDirectory />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/festivals/:festivalId/auction-hub"
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "team_owner", "spectator"]}
+              >
+                <AppShell>
+                  <FestivalAuctionHub />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/auctions/festivals/:festivalId"
             element={
               <ProtectedRoute
                 allowedRoles={["admin", "team_owner", "spectator"]}
@@ -131,13 +216,43 @@ export default function AppRouter() {
             }
           />
           <Route
-            path="/festival-auctions"
+            path="/festivals/:festivalId/results"
             element={
               <ProtectedRoute
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
                 <AppShell>
-                  <FestivalAuctionDirectory />
+                  <FestivalAuctionResultsPage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments/:id/auction-hub"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportAuctionHub />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments/:id/results"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportAuctionResultsPage />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/auctions/sports/:sportTournamentId"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportAuctionArena />
                 </AppShell>
               </ProtectedRoute>
             }
@@ -148,6 +263,44 @@ export default function AppRouter() {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
                   <EmployeeDirectory />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportTournamentDirectory />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments/:sportTournamentId/auction"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <SportAuctionCompatibilityRedirect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments/:sportTournamentId"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportTournamentCommandCenter />
+                </AppShell>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sport-tournaments/:sportTournamentId/manage"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
+                <AppShell>
+                  <SportTournamentWorkspace />
                 </AppShell>
               </ProtectedRoute>
             }

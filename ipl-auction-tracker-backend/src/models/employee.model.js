@@ -25,6 +25,10 @@ const Employee = sequelize.define(
       type: DataTypes.STRING(160),
       allowNull: true,
     },
+    gender: {
+      type: DataTypes.ENUM("male", "female"),
+      allowNull: false,
+    },
     employmentStatus: {
       type: DataTypes.ENUM("active", "inactive"),
       allowNull: false,
@@ -58,6 +62,7 @@ const Employee = sequelize.define(
         fields: ["userId"],
       },
       { name: "employees_email_idx", fields: ["email"] },
+      { name: "employees_gender_idx", fields: ["gender"] },
       {
         name: "employees_status_name_idx",
         fields: ["employmentStatus", "name"],

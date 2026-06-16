@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Stack,
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
+import { socket } from "../webSocket/socket";
+import {
+  mergeAuctionSnapshotState,
+  shouldApplyAuctionSnapshot,
+} from "../utils/auctionSynchronization";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
@@ -18,10 +24,14 @@ const formatMoney = (value) =>
 export default function FestivalViewerOverview({ festivalId, ownerView = false }) {
   const [festival, setFestival] = useState(null);
   const [auction, setAuction] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastRevision = useRef(0);
 
-  useEffect(() => {
+  const loadOverview = useCallback((showLoading = true) => {
     let active = true;
+    if (showLoading === true) setLoading(true);
+    setError("");
     Promise.all([
       api.get(`/v2/festivals/${festivalId}`),
       api.get(`/v2/festivals/${festivalId}/auction/current`),
@@ -38,16 +48,54 @@ export default function FestivalViewerOverview({ festivalId, ownerView = false }
               "Unable to load Festival overview."
           );
         }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
   }, [festivalId]);
 
+  useEffect(() => {
+    const applySnapshot = (payload) => {
+      if (
+        payload?.scopeType !== "festival" ||
+        payload.scopeId !== festivalId ||
+        !shouldApplyAuctionSnapshot(lastRevision.current, payload)
+      ) {
+        return;
+      }
+      lastRevision.current = payload.revision;
+      setAuction((previous) => mergeAuctionSnapshotState(previous, payload));
+      setLoading(false);
+    };
+    const joinRoom = () =>
+      socket.emit("join-festival-auction", { festivalId });
+    const cancelLoad = loadOverview();
+    socket.on("auction-state", applySnapshot);
+    socket.on("connect", joinRoom);
+    if (socket.connected) joinRoom();
+    return () => {
+      cancelLoad?.();
+      socket.emit("leave-festival-auction", { festivalId });
+      socket.off("auction-state", applySnapshot);
+      socket.off("connect", joinRoom);
+    };
+  }, [festivalId, loadOverview]);
+
   const ownerTeam = auction?.teamSummaries?.find(
     ({ festivalTeamId }) =>
       festivalTeamId === auction?.viewer?.festivalTeamId
   );
+
+  if (loading && !festival) {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
+        <CircularProgress size={30} />
+      </Box>
+    );
+  }
 
   return (
     <Stack spacing={2}>
