@@ -42,6 +42,20 @@ export default function OwnerProductDashboard({ data }) {
         label: "View My Auction Details",
         route: `/festivals/${primaryFestival.festival.id}/auction-hub`,
       }
+    : ownerFestivalStates.some(
+        ({ current }) => current?.config?.auctionStatus === "setup"
+      )
+      ? {
+          title: "Waiting For Festival Setup",
+          description:
+            "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete.",
+          label: "View Festival Overview",
+          route: `/festivals/${
+            ownerFestivalStates.find(
+              ({ current }) => current?.config?.auctionStatus === "setup"
+            )?.festival.id
+          }/command-center`,
+        }
     : primarySport
       ? {
           title: `Manage ${primarySport.tournament.name}`,
@@ -52,7 +66,7 @@ export default function OwnerProductDashboard({ data }) {
       : {
           title: "Review my auctions",
           description:
-            "No assigned auction is live. Review upcoming auctions and setup issues.",
+            "No assigned auction is live. Review upcoming auctions and setup status.",
           label: "View Active Auctions",
           route: "/auctions",
         };
@@ -68,9 +82,9 @@ export default function OwnerProductDashboard({ data }) {
       title: tournament.name,
       description:
         tournament.status === "ready"
-          ? "Sport Auction setup is complete."
+            ? "Sport Auction setup is complete."
           : tournament.status === "auction_completed"
-            ? "Review final Sport rosters before competition setup."
+            ? "Review final Sport team members before competition setup."
             : readiness?.blockers?.[0] || "Continue Sport Tournament setup.",
       status: tournament.status,
       route:
@@ -81,7 +95,7 @@ export default function OwnerProductDashboard({ data }) {
         tournament.status === "ready"
           ? "Open Live Auction"
           : tournament.status === "auction_completed"
-            ? "Review Rosters"
+            ? "Review Results"
             : "Continue Setup",
     }));
 
@@ -97,7 +111,7 @@ export default function OwnerProductDashboard({ data }) {
 
       <DashboardSection
         title="My Festival Team"
-        description="Assigned Festival Team, purse, and roster context."
+        description="Assigned Festival Team, purse, and team member context."
       >
         {data.ownerContexts.length ? (
           <DashboardGrid>
@@ -125,16 +139,24 @@ export default function OwnerProductDashboard({ data }) {
                         )} purse remaining`
                       : "Festival Team assignment is active."
                   }
-                  secondary={`${team?.members?.length || 0} roster member(s)`}
+                  secondary={`${team?.members?.length || 0} team member(s)`}
                   status={formatStatus(
                     festivalState?.current?.config?.auctionStatus || "setup"
                   )}
                   statusColor={statusColor(
                     festivalState?.current?.config?.auctionStatus
                   )}
-                  actionLabel="View Auction Details"
+                  actionLabel={
+                    festivalState?.current?.config?.auctionStatus === "setup"
+                      ? "View Festival Overview"
+                      : "View Auction Details"
+                  }
                   onAction={() =>
-                    navigate(`/festivals/${context.festivalId}/auction-hub`)
+                    navigate(
+                      festivalState?.current?.config?.auctionStatus === "setup"
+                        ? `/festivals/${context.festivalId}/command-center`
+                        : `/festivals/${context.festivalId}/auction-hub`
+                    )
                   }
                 />
               );
@@ -197,7 +219,7 @@ export default function OwnerProductDashboard({ data }) {
 
       <DashboardSection
         title="What Is Next"
-        description="Upcoming auctions, setup issues, and roster review."
+        description="Upcoming auctions, setup issues, and result review."
       >
         {whatIsNext.length ? (
           <DashboardGrid>

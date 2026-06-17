@@ -1,5 +1,9 @@
 import { Button, Stack } from "@mui/material";
 import { NavLink } from "react-router-dom";
+import {
+  AUCTION_STAGE,
+  shouldShowResults,
+} from "../utils/auctionStages";
 
 export default function AuctionContextNavigation({
   commandCenter,
@@ -7,14 +11,42 @@ export default function AuctionContextNavigation({
   hub,
   arena,
   results,
+  stage,
+  hasResults = false,
 }) {
-  const items = [
+  const stageItems = {
+    [AUCTION_STAGE.SETUP]: [
+      ["Overview", commandCenter],
+      ["Setup", management],
+    ],
+    [AUCTION_STAGE.READY]: [
+      ["Overview", commandCenter],
+      ["Setup", management],
+      shouldShowResults({ stage, resultCount: hasResults ? 1 : 0 })
+        ? ["Results", results]
+        : null,
+    ],
+    [AUCTION_STAGE.LIVE]: [
+      ["Overview", commandCenter],
+      ["Auction Details", hub],
+      ["Live Auction", arena],
+      shouldShowResults({ stage, resultCount: hasResults ? 1 : 0 })
+        ? ["Results", results]
+        : null,
+    ],
+    [AUCTION_STAGE.COMPLETED]: [
+      ["Overview", commandCenter],
+      ["Results", results],
+      ["Auction Details", hub],
+    ],
+  };
+  const items = (stageItems[stage] || [
     ["Overview", commandCenter],
     ["Setup", management],
     ["Auction Details", hub],
     ["Live Auction", arena],
     ["Results", results],
-  ].filter(([, destination]) => Boolean(destination));
+  ]).filter((item) => item && Boolean(item[1]));
 
   return (
     <Stack

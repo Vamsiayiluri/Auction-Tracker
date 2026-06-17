@@ -1,7 +1,3 @@
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
-import CheckCircleOutlineRoundedIcon from "@mui/icons-material/CheckCircleOutlineRounded";
-import GavelRoundedIcon from "@mui/icons-material/GavelRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import SportsRoundedIcon from "@mui/icons-material/SportsRounded";
 import {
   Alert,
@@ -33,14 +29,21 @@ import {
   statusColor,
 } from "../components/ProductDashboard/dashboardHelpers";
 import useFestivalCommandCenterData from "../hooks/useFestivalCommandCenterData";
+import {
+  getFestivalAuctionStageFromState,
+  getStageLabel,
+  isCompletedStage,
+  isLiveStage,
+  isReadyStage,
+  isSetupStage,
+  shouldShowResults,
+} from "../utils/auctionStages";
+import {
+  FESTIVAL_SETUP_STEPS,
+  getSetupCompletion,
+} from "../utils/festivalWorkspace";
 
 const activeSportStatuses = new Set(["auction_live", "auction_paused"]);
-const competitionReadyStatuses = new Set([
-  "auction_completed",
-  "competition_pending",
-  "competition_live",
-  "competition_completed",
-]);
 
 const blockerCategory = (message) => {
   const normalized = message.toLowerCase();
@@ -200,16 +203,38 @@ export default function FestivalCommandCenter() {
     data.festivalAuction?.config?.auctionStatus ||
     data.festivalReadiness?.counts?.auctionStatus ||
     "setup";
+  const festivalStage = getFestivalAuctionStageFromState({
+    festival: data.festival,
+    auction: data.festivalAuction,
+    readiness: data.festivalReadiness,
+    auctionStatus: festivalAuctionStatus,
+  });
+  const setupStage = isSetupStage(festivalStage);
+  const readyStage = isReadyStage(festivalStage);
+  const liveStage = isLiveStage(festivalStage);
+  const completedStage = isCompletedStage(festivalStage);
+  const showResults = shouldShowResults({
+    stage: festivalStage,
+    resultCount: recentOutcomes.length,
+  });
+  const setupCompletion = getSetupCompletion(data.festivalReadiness);
+  const completedSetupSteps = setupCompletion.filter(Boolean).length;
+  const setupProgress = setupCompletion.length
+    ? Math.round((completedSetupSteps / setupCompletion.length) * 100)
+    : 0;
+  const nextSetupStep =
+    FESTIVAL_SETUP_STEPS[setupCompletion.findIndex((completed) => !completed)] ||
+    "Review & Launch";
   const sportArenaTarget =
     data.sportTournaments.find(({ status }) =>
       activeSportStatuses.has(status)
-    ) ||
-    data.sportTournaments.find(({ status }) => status === "ready") ||
-    data.sportTournaments.find(
-      ({ status }) => status === "auction_completed"
     );
 
-  const openResults = () => navigate(`/festivals/${festivalId}/results`);
+  const openSetup = () => navigate(`/festivals/${festivalId}/manage`);
+  const createSportTournament = () =>
+    navigate(`/sport-tournaments?festivalId=${festivalId}&create=1`);
+  const openFestivalAuction = () =>
+    navigate(`/auctions/festivals/${festivalId}`);
 
   return (
     <Stack spacing={3}>
@@ -238,21 +263,15 @@ export default function FestivalCommandCenter() {
             </Box>
             <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
               <Chip
-                label={`Festival: ${formatStatus(data.festival.status)}`}
+                label={`Festival Status: ${formatStatus(data.festival.status)}`}
               />
               <Chip
-                color={statusColor(festivalAuctionStatus)}
-                label={`Auction: ${formatStatus(festivalAuctionStatus)}`}
-              />
-              <Chip
-                color={
-                  data.festivalReadiness?.overallStatus === "READY"
-                    ? "success"
-                    : "warning"
-                }
-                label={`Setup: ${formatStatus(
-                  data.festivalReadiness?.overallStatus || "unknown"
-                )}`}
+                color={setupStage ? "warning" : statusColor(festivalAuctionStatus)}
+                label={`Auction Status: ${
+                  setupStage
+                    ? getStageLabel(festivalStage)
+                    : formatStatus(festivalAuctionStatus)
+                }`}
               />
             </Stack>
           </Stack>
@@ -264,171 +283,163 @@ export default function FestivalCommandCenter() {
               hub={`/festivals/${festivalId}/auction-hub`}
               arena={`/auctions/festivals/${festivalId}`}
               results={`/festivals/${festivalId}/results`}
+              stage={festivalStage}
+              hasResults={showResults}
             />
           </Box>
         </CardContent>
       </Card>
 
       <DashboardSection
-        title="Quick Actions"
-        description="Move directly to the correct operational surface."
+        title={setupStage ? "Setup Progress" : "Quick Actions"}
+        description={
+          setupStage
+            ? "Complete the required setup steps before auction surfaces become primary."
+            : "Actions that change or start the next Festival workflow."
+        }
       >
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} flexWrap="wrap">
-          <Button
-            variant="contained"
-            onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
-          >
-            View Auction Details
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<GavelRoundedIcon />}
-            onClick={() => navigate(`/auctions/festivals/${festivalId}`)}
-          >
-            Open Live Festival Auction
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<GroupsRoundedIcon />}
-            onClick={() => navigate(`/festivals/${festivalId}/manage`)}
-          >
-            Festival Management
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<SportsRoundedIcon />}
-            onClick={() =>
-              navigate(`/sport-tournaments?festivalId=${festivalId}&create=1`)
-            }
-          >
-            Create Sport Tournament
-          </Button>
-          <Button
-            color="success"
-            variant="outlined"
-            disabled={!sportArenaTarget}
-            onClick={() =>
-              sportArenaTarget &&
-              navigate(sportArenaRoute(sportArenaTarget.id))
-            }
-          >
-            Open Live Sport Auction
-          </Button>
-          <Button variant="outlined" onClick={openResults}>
-            View Results
-          </Button>
-        </Stack>
+        {setupStage ? (
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={2}>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  justifyContent="space-between"
+                  spacing={2}
+                >
+                  <Box>
+                    <Typography variant="h5">Continue Festival Setup</Typography>
+                    <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+                      Next required step: {nextSetupStep}
+                    </Typography>
+                  </Box>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button variant="contained" onClick={openSetup}>
+                      Continue Setup
+                    </Button>
+                    <Button variant="outlined" onClick={data.reload}>
+                      Refresh Setup Check
+                    </Button>
+                  </Stack>
+                </Stack>
+                <Box>
+                  <Stack direction="row" justifyContent="space-between" spacing={2}>
+                    <Typography variant="body2">
+                      {completedSetupSteps} of {setupCompletion.length} steps complete
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {setupProgress}%
+                    </Typography>
+                  </Stack>
+                  <LinearProgress
+                    variant="determinate"
+                    value={setupProgress}
+                    sx={{ mt: 1, height: 8, borderRadius: 4 }}
+                  />
+                </Box>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {FESTIVAL_SETUP_STEPS.map((step, index) => (
+                    <Chip
+                      key={step}
+                      size="small"
+                      color={setupCompletion[index] ? "success" : "default"}
+                      variant={setupCompletion[index] ? "filled" : "outlined"}
+                      label={setupCompletion[index] ? `${step}: done` : step}
+                    />
+                  ))}
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        ) : (
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} flexWrap="wrap">
+            {readyStage && (
+              <Button
+                variant="contained"
+                onClick={openFestivalAuction}
+              >
+                Launch Auction
+              </Button>
+            )}
+            {liveStage && (
+              <Button
+                variant="contained"
+                onClick={openFestivalAuction}
+              >
+                Open Live Auction
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={<SportsRoundedIcon />}
+              onClick={createSportTournament}
+            >
+              Create Sport Tournament
+            </Button>
+            {liveStage && sportArenaTarget && (
+              <Button
+                color="success"
+                variant="outlined"
+                onClick={() => navigate(sportArenaRoute(sportArenaTarget.id))}
+              >
+                Open Live Sport Auction
+              </Button>
+            )}
+          </Stack>
+        )}
       </DashboardSection>
 
+      {!setupStage && liveActivity.length > 0 && (
       <DashboardSection
         title="Live Activity"
         description="Active and paused Auctions within this Festival."
       >
-        {liveActivity.length ? (
-          <DashboardGrid>
-            {liveActivity.map((activity) => (
-              <ActionCard
-                key={activity.id}
-                {...activity}
-                status={formatStatus(activity.status)}
-                statusColor={statusColor(activity.status)}
-                severity="live"
-                actionLabel={
-                  activity.eyebrow === "Festival Auction"
-                    ? "View Festival Auction Details"
-                    : "View Sport Auction Details"
-                }
-                onAction={() => navigate(activity.route)}
-              />
-            ))}
-          </DashboardGrid>
-        ) : (
-          <EmptyDashboardState>
-            No Festival or Sport Auction is live right now.
-          </EmptyDashboardState>
-        )}
+        <DashboardGrid>
+          {liveActivity.map((activity) => (
+            <ActionCard
+              key={activity.id}
+              {...activity}
+              status={formatStatus(activity.status)}
+              statusColor={statusColor(activity.status)}
+              severity="live"
+              actionLabel="Open"
+              onAction={() => navigate(activity.route)}
+            />
+          ))}
+        </DashboardGrid>
       </DashboardSection>
+      )}
 
+      {blockers.length > 0 && (
       <DashboardSection
         title="Setup Issues"
         description="Festival and Sport setup items that need attention."
       >
-        {blockers.length ? (
-          <DashboardGrid>
-            {blockers.slice(0, 12).map((blocker) => (
-              <ActionCard
-                key={blocker.id}
-                eyebrow={blocker.category}
-                title={blocker.title}
-                description={blocker.message}
-                    status="Setup Incomplete"
-                statusColor="warning"
-                severity="warning"
-                    actionLabel="Fix Issues"
-                onAction={() => navigate(blocker.route)}
-              />
-            ))}
-          </DashboardGrid>
-        ) : (
-          <Alert
-            severity="success"
-            icon={<CheckCircleOutlineRoundedIcon />}
-          >
-                No Festival or Sport Tournament setup issues were found.
-          </Alert>
-        )}
+        <DashboardGrid>
+          {blockers.slice(0, 12).map((blocker) => (
+            <ActionCard
+              key={blocker.id}
+              eyebrow={blocker.category}
+              title={blocker.title}
+              description={blocker.message}
+              status="Setup Incomplete"
+              statusColor="warning"
+              severity="warning"
+              actionLabel="Fix Issues"
+              onAction={() => navigate(blocker.route)}
+            />
+          ))}
+        </DashboardGrid>
       </DashboardSection>
+      )}
 
       <DashboardSection
-        title="Festival Auction Status"
-        description="Main Festival Auction status and setup progress."
-      >
-        <Card variant="outlined">
-          <CardContent>
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              justifyContent="space-between"
-              spacing={3}
-            >
-              <Box>
-                <Typography variant="h5">Main Festival Auction</Typography>
-                <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                  {participantName(data.festivalAuction?.current)}
-                </Typography>
-                {data.festivalAuction?.current && (
-                  <Typography sx={{ mt: 1 }}>
-                    Current bid:{" "}
-                    {formatValue(
-                      data.festivalAuction.current.currentBid,
-                      data.festival.currencyCode || "INR"
-                    )}
-                  </Typography>
-                )}
-              </Box>
-              <Stack alignItems={{ md: "flex-end" }} spacing={1.5}>
-                <Chip
-                  color={statusColor(festivalAuctionStatus)}
-                  label={formatStatus(festivalAuctionStatus)}
-                />
-                <Typography variant="body2" color="text.secondary">
-                      {data.festivalReadiness?.blockers?.length || 0} setup issue(s)
-                </Typography>
-                <Button
-                  variant="contained"
-                  endIcon={<ArrowForwardRoundedIcon />}
-                      onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
-                    >
-                      View Auction Details
-                </Button>
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
-      </DashboardSection>
-
-      <DashboardSection
-        title="Sport Tournament Status"
-        description="Preparation, Auction, and future Competition handoff for every child Tournament."
+        title={setupStage ? "Sport Tournament Setup" : "Sport Tournament Status"}
+        description={
+          setupStage
+            ? "Sport Tournaments remain secondary while the Festival setup is incomplete."
+            : "Preparation and Auction status for every child Tournament."
+        }
       >
         {data.sportTournaments.length ? (
           <DashboardGrid columns={2}>
@@ -475,33 +486,19 @@ export default function FestivalCommandCenter() {
                         variant={active ? "contained" : "outlined"}
                         onClick={() =>
                           navigate(
-                                tournament.status === "auction_completed"
-                                  ? `/sport-tournaments/${tournament.id}/results`
-                                  : active
-                                    ? `/sport-tournaments/${tournament.id}/auction-hub`
-                                    : tournament.status === "ready"
-                                      ? sportArenaRoute(tournament.id)
-                                      : sportManagementRoute(tournament.id)
+                            tournament.status === "auction_completed"
+                              ? `/sport-tournaments/${tournament.id}/results`
+                              : active
+                                ? `/sport-tournaments/${tournament.id}/auction-hub`
+                                : sportManagementRoute(tournament.id)
                           )
                         }
                       >
                         {active
-                              ? "View Auction Details"
-                          : tournament.status === "ready"
-                            ? "Open Live Sport Auction"
+                          ? "View Auction Details"
                           : tournament.status === "auction_completed"
                             ? "View Auction Results"
                             : "Manage Tournament"}
-                      </Button>
-                          <Button
-                            color="inherit"
-                            onClick={() =>
-                              navigate(
-                                `/sport-tournaments/${tournament.id}/manage`
-                              )
-                            }
-                          >
-                        Management
                       </Button>
                     </Stack>
                   </CardContent>
@@ -516,77 +513,34 @@ export default function FestivalCommandCenter() {
         )}
       </DashboardSection>
 
+      {showResults && recentOutcomes.length > 0 && (
       <DashboardSection
-        title="Competition Setup"
-            description="Future competition setup after Sport team rosters are complete."
-      >
-        {data.sportTournaments.length ? (
-          <DashboardGrid>
-            {data.sportTournaments.map((tournament) => {
-              const ready = competitionReadyStatuses.has(tournament.status);
-              return (
-                <ActionCard
-                  key={`competition:${tournament.id}`}
-                    eyebrow="Competition Setup"
-                  title={tournament.name}
-                  description={
-                    ready
-                          ? "Sport Auction rosters are complete. Competition setup is the next phase."
-                          : "Complete Sport Auction rosters before Competition setup."
-                  }
-                  status={ready ? "ready for future phase" : "not ready"}
-                  statusColor={ready ? "success" : "default"}
-                  actionLabel="Review Sport Tournament"
-                  onAction={() =>
-                    navigate(sportManagementRoute(tournament.id))
-                  }
-                />
-              );
-            })}
-          </DashboardGrid>
-        ) : (
-          <EmptyDashboardState>
-            Create a Sport Tournament before evaluating Competition readiness.
-          </EmptyDashboardState>
-        )}
-      </DashboardSection>
-
-      <DashboardSection
-        title="Recent Results"
+        title={completedStage ? "Results" : "Recent Results"}
         description="Latest Festival and Sport Auction outcomes."
       >
-        {recentOutcomes.length ? (
-          <DashboardGrid>
-            {recentOutcomes.map((outcome) => (
-              <ActionCard
-                key={outcome.id}
-                eyebrow={outcome.context}
-                title={outcome.title}
-                description={
-                  outcome.outcome === "sold"
-                    ? `${outcome.teamName || "Team"} | ${formatValue(
-                        outcome.value,
-                        outcome.unit
-                      )}`
-                    : "Marked unsold"
-                }
-                status={outcome.outcome}
-                statusColor={outcome.outcome === "sold" ? "success" : "warning"}
-                actionLabel="View Results"
-                onAction={() =>
-                  outcome.unit === "credits"
-                    ? navigate(outcome.route)
-                    : openResults()
-                }
-              />
-            ))}
-          </DashboardGrid>
-        ) : (
-          <EmptyDashboardState>
-            No completed Auction results are available yet.
-          </EmptyDashboardState>
-        )}
+        <DashboardGrid>
+          {recentOutcomes.map((outcome) => (
+            <ActionCard
+              key={outcome.id}
+              eyebrow={outcome.context}
+              title={outcome.title}
+              description={
+                outcome.outcome === "sold"
+                  ? `${outcome.teamName || "Team"} | ${formatValue(
+                      outcome.value,
+                      outcome.unit
+                    )}`
+                  : "Marked unsold"
+              }
+              status={outcome.outcome}
+              statusColor={outcome.outcome === "sold" ? "success" : "warning"}
+              actionLabel="Open Results"
+              onAction={() => navigate(outcome.route)}
+            />
+          ))}
+        </DashboardGrid>
       </DashboardSection>
+      )}
     </Stack>
   );
 }

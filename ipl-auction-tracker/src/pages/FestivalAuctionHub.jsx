@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   FormControl,
   InputLabel,
   MenuItem,
@@ -26,10 +25,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
+  AuctionActivityFeed,
+  BidHistorySummary,
+  buildAuctionActivity,
   HubMetric,
   HubMetrics,
   HubProgress,
   HubTeamCard,
+  LastAuctionResultPanel,
 } from "../components/AuctionHubPrimitives";
 import { formatAuctionValue } from "../utils/auctionHub";
 import api from "../utils/api";
@@ -38,6 +41,7 @@ import {
   shouldApplyAuctionSnapshot,
 } from "../utils/auctionSynchronization";
 import { socket } from "../webSocket/socket";
+import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const sections = ["Overview", "Teams", "Bid History", "Results", "Statistics"];
 
@@ -59,6 +63,7 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
   const [participantFilter, setParticipantFilter] = useState("");
+  const [selectedBidRound, setSelectedBidRound] = useState(null);
   const lastRevision = useRef(0);
 
   const load = useCallback(async () => {
@@ -113,6 +118,7 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     () => history.filter(({ result }) => Boolean(result)),
     [history]
   );
+  const lastResult = results[0] || null;
   const sold = results.filter(({ result }) => result.outcome === "sold");
   const unsold = results.filter(({ result }) => result.outcome === "unsold");
   const remaining = (state?.pool?.length || 0) + (state?.unsold?.length || 0);
@@ -139,25 +145,50 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
   );
   const saleValues = sold.map(({ result }) => Number(result.finalAmount || 0));
   const totalSpent = saleValues.reduce((sum, value) => sum + value, 0);
-  const filteredBids = bids.filter((bid) => {
+  const filteredRounds = history.filter((round) => {
     const matchesTeam =
-      teamFilter === "all" || String(bid.festivalTeamId) === teamFilter;
-    const matchesParticipant = bid.participant
+      teamFilter === "all" ||
+      String(round.result?.festivalTeamId) === teamFilter ||
+      (round.bids || []).some((bid) => String(bid.festivalTeamId) === teamFilter);
+    const matchesParticipant = participantName(round)
       .toLowerCase()
       .includes(participantFilter.trim().toLowerCase());
     return matchesTeam && matchesParticipant;
+  });
+  const activityEntries = buildAuctionActivity({
+    history,
+    status: state?.config?.auctionStatus,
+    label: "Festival Auction",
+    formatValue: formatAuctionValue,
   });
   const changeSection = (_, value) => {
     setSection(value);
     setSearchParams(value === "Overview" ? {} : { section: value });
   };
+  const auctionStatus = state?.config?.auctionStatus || "setup";
 
   if (loading && !state) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 10 }}>
-        <CircularProgress />
-        <Typography color="text.secondary">Loading auction details...</Typography>
-      </Stack>
+      <LoadingStateCard
+        title="Loading Festival Auction Details"
+        message="Preparing teams, spending, bid summaries, and results."
+      />
+    );
+  }
+
+  if (auctionStatus === "setup" && !state?.viewer?.isAdmin) {
+    return (
+      <ProductStateCard
+        eyebrow="Festival Auction"
+        title={state?.viewer?.isOwner ? "Waiting For Festival Setup" : "Auction Not Started Yet"}
+        message={
+          state?.viewer?.isOwner
+            ? "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete."
+            : "The Festival is still being prepared. Auction details, bid history, and results will appear after launch."
+        }
+        actionLabel="View Festival Overview"
+        onAction={() => navigate(`/festivals/${festivalId}/command-center`)}
+      />
     );
   }
 
@@ -197,9 +228,15 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
             </Box>
             <Button
               variant="contained"
-              onClick={() => navigate(`/auctions/festivals/${festivalId}`)}
+              onClick={() =>
+                navigate(
+                  auctionStatus === "completed"
+                    ? `/festivals/${festivalId}/results`
+                    : `/auctions/festivals/${festivalId}`
+                )
+              }
             >
-              Open Live Auction
+              {auctionStatus === "completed" ? "View Results" : "Open Live Auction"}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.5, pt: 1.5, borderTop: 1, borderColor: "divider" }}>
@@ -271,38 +308,17 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
             <HubMetric label="Remaining" value={remaining} />
             <HubMetric label="Accepted Bids" value={bids.length} />
           </HubMetrics>
+          <LastAuctionResultPanel
+            round={lastResult}
+            label="Festival Auction"
+            formatValue={formatAuctionValue}
+          />
           <Card variant="outlined">
             <CardContent>
               <HubProgress completed={results.length} total={total} />
-              <Typography variant="h6" fontWeight={800} sx={{ mt: 2 }}>
-                Recent Activity
-              </Typography>
-              <Stack spacing={1} sx={{ mt: 1 }}>
-                {history.slice(0, 6).map((round) => (
-                  <Stack
-                    key={round.id}
-                    direction="row"
-                    justifyContent="space-between"
-                    spacing={2}
-                  >
-                    <Typography>{participantName(round)}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {round.result?.outcome
-                        ? `${round.result.outcome} ${
-                            round.result.teamName || ""
-                          }`
-                        : round.status}
-                    </Typography>
-                  </Stack>
-                ))}
-                {!history.length && (
-                  <Typography color="text.secondary">
-                    Auction activity will appear here.
-                  </Typography>
-                )}
-              </Stack>
             </CardContent>
           </Card>
+          <AuctionActivityFeed entries={activityEntries} title="Recent Activity" />
         </Stack>
       )}
 
@@ -331,9 +347,10 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
                   remaining={formatAuctionValue(summary?.remainingBudget)}
                   spent={formatAuctionValue(summary?.spentBudget)}
                   roster={team.members || []}
+                  formatValue={formatAuctionValue}
                   labels={[
                     `${summary?.retentions || 0} retained`,
-                    `${summary?.playersPurchased || 0} purchased`,
+                    `${summary?.playersPurchased || 0} players bought`,
                   ]}
                 />
               );
@@ -367,40 +384,40 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
               sx={{ minWidth: { sm: 260 } }}
             />
           </Stack>
-          <HubTable
-            columns={["Time", "Participant", "Team", "Bid"]}
-            rows={filteredBids}
-            renderRow={(bid) => (
-              <TableRow key={bid.id}>
-                <TableCell>{new Date(bid.placedAt).toLocaleString()}</TableCell>
-                <TableCell>{bid.participant}</TableCell>
-                <TableCell>{bid.teamName}</TableCell>
-                <TableCell>{formatAuctionValue(bid.amount)}</TableCell>
-              </TableRow>
-            )}
-            empty="No bids match the selected filters."
+          <BidHistorySummary
+            rounds={filteredRounds}
+            selectedRound={selectedBidRound}
+            onSelectRound={setSelectedBidRound}
+            onClose={() => setSelectedBidRound(null)}
+            formatValue={formatAuctionValue}
           />
         </Stack>
       )}
 
       {section === "Results" && (
-        <HubTable
-          columns={["Participant", "Outcome", "Team", "Final Value"]}
+        <Stack spacing={2}>
+          <LastAuctionResultPanel
+            round={lastResult}
+            label="Festival Auction"
+            formatValue={formatAuctionValue}
+          />
+          <AuctionActivityFeed entries={activityEntries} title="Live Activity" />
+          <HubTable
+          columns={["Participant", "Status", "Winning Team", "Purchase Amount", "Acquisition Type", "Auction Order"]}
           rows={results}
-          renderRow={(round) => (
+          renderRow={(round, index) => (
             <TableRow key={round.id}>
               <TableCell>{participantName(round)}</TableCell>
-              <TableCell>{round.result.outcome}</TableCell>
+              <TableCell>{round.result.outcome === "sold" ? "Sold" : "Unsold"}</TableCell>
               <TableCell>{round.result.teamName || "-"}</TableCell>
-              <TableCell>
-                {round.result.finalAmount
-                  ? formatAuctionValue(round.result.finalAmount)
-                  : "-"}
-              </TableCell>
+              <TableCell>{round.result.finalAmount ? formatAuctionValue(round.result.finalAmount) : "-"}</TableCell>
+              <TableCell>{round.result.outcome === "sold" ? "Auction" : "-"}</TableCell>
+              <TableCell>#{results.length - index}</TableCell>
             </TableRow>
           )}
-          empty="No finalized results are available."
+          empty="No results available yet. Results will appear once participants are sold or marked unsold."
         />
+        </Stack>
       )}
 
       {section === "Statistics" && (
@@ -461,7 +478,7 @@ function HubTable({ columns, rows, renderRow, empty }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map(renderRow)}
+            {rows.map((row, index) => renderRow(row, index))}
             {!rows.length && (
               <TableRow>
                 <TableCell colSpan={columns.length} align="center">

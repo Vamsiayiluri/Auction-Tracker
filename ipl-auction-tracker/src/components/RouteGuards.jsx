@@ -1,5 +1,6 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
+import { AccessDeniedState } from "./ProductState";
 
 export const GuestRoute = ({ children }) => {
   const { user } = useAuth();
@@ -10,6 +11,7 @@ export const GuestRoute = ({ children }) => {
 export const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -23,7 +25,11 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <AccessDeniedState
+        onAction={() => navigate("/dashboard", { replace: true })}
+      />
+    );
   }
 
   return children;

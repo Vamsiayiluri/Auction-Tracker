@@ -132,14 +132,22 @@ export default function SportTournamentControlCenter({
             <Button
               variant="contained"
               startIcon={<LockClockRoundedIcon />}
-              onClick={() => navigate(`/auctions/sports/${tournament.id}`)}
+              onClick={() =>
+                navigate(
+                  ready || ["auction_live", "auction_paused"].includes(tournament.status)
+                    ? `/auctions/sports/${tournament.id}`
+                    : `/sport-tournaments/${tournament.id}/manage`
+                )
+              }
             >
-              Open Live Sport Auction
+              {ready || ["auction_live", "auction_paused"].includes(tournament.status)
+                ? "Open Live Sport Auction"
+                : "Continue Setup"}
             </Button>
           </Stack>
           {readiness?.blockers?.length > 0 && (
             <Stack spacing={0.5}>
-              <Typography variant="subtitle2">Current blockers</Typography>
+              <Typography variant="subtitle2">Current Setup Issues</Typography>
               {readiness.blockers.map((blocker) => (
                 <Typography key={blocker} variant="body2" color="text.secondary">
                   - {blocker}

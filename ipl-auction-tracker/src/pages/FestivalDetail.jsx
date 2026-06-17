@@ -19,7 +19,6 @@ import {
   CardContent,
   Checkbox,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -57,6 +56,12 @@ import {
   FESTIVAL_OPERATION_TABS,
   getStoredSetupStep,
 } from "../utils/festivalWorkspace";
+import {
+  getFestivalAuctionStageFromState,
+  getStageLabel,
+  isSetupStage,
+} from "../utils/auctionStages";
+import { LoadingStateCard } from "../components/ProductState";
 
 const FestivalTeamBuilder = lazy(() => import("../components/FestivalTeamBuilder"));
 const FestivalAuctionSetup = lazy(() => import("../components/FestivalAuctionSetup"));
@@ -121,10 +126,26 @@ export default function FestivalDetail() {
       : "Overview";
   });
   const [adminWorkspaceMode, setAdminWorkspaceMode] = useState("auto");
+  const festivalStage = getFestivalAuctionStageFromState({
+    festival,
+    readiness,
+    auctionStatus,
+  });
+  const setupStage = isSetupStage(festivalStage);
   const configurationView =
     adminWorkspaceMode === "configuration" ||
-    (adminWorkspaceMode === "auto" && auctionStatus === "setup");
+    (adminWorkspaceMode === "auto" && setupStage);
   const operationsView = !configurationView;
+  const visibleOperationTabs = useMemo(
+    () =>
+      setupStage
+        ? FESTIVAL_OPERATION_TABS.filter(
+            (tab) =>
+              !["Auction Preparation", "Bid History", "Results"].includes(tab)
+          )
+        : FESTIVAL_OPERATION_TABS,
+    [setupStage]
+  );
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -219,6 +240,12 @@ export default function FestivalDetail() {
       setActiveTab(requestedSection);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (operationsView && !visibleOperationTabs.includes(activeTab)) {
+      setActiveTab("Overview");
+    }
+  }, [activeTab, operationsView, visibleOperationTabs]);
 
   const enabledSportIds = useMemo(
     () => new Set(festivalSports.map((item) => item.sportId)),
@@ -532,7 +559,7 @@ export default function FestivalDetail() {
       );
       setFestival(response.data.data);
       setNotice(
-        `Roster formation mode changed to ${rosterFormationMode}.`
+        `Team building mode changed to ${rosterFormationMode}.`
       );
       await invalidateFestivalSetup();
     } catch (requestError) {
@@ -547,9 +574,10 @@ export default function FestivalDetail() {
 
   if (loading && !festival) {
     return (
-      <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
-        <CircularProgress size={34} />
-      </Box>
+      <LoadingStateCard
+        title="Loading Festival Setup"
+        message="Preparing Festival details, setup progress, participants, and teams."
+      />
     );
   }
 
@@ -601,19 +629,35 @@ export default function FestivalDetail() {
                 <Chip size="small" label={festival?.status || "setup"} />
                 <Chip
                   size="small"
-                  variant="outlined"
-                  label={`Auction: ${String(auctionStatus).replaceAll("_", " ")}`}
+                  color={setupStage ? "warning" : "default"}
+                  variant={setupStage ? "filled" : "outlined"}
+                  label={getStageLabel(festivalStage)}
                 />
+                {!setupStage && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Auction: ${String(auctionStatus).replaceAll("_", " ")}`}
+                  />
+                )}
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Configure participants, teams, owners, retention, and auction readiness.
+                {setupStage
+                  ? "Complete setup before auction details, live bidding, and results become primary."
+                  : "Review setup, auction details, and Festival operations."}
               </Typography>
             </Box>
             <Button
               variant="contained"
-              onClick={() => navigate(`/festivals/${festivalId}/auction-hub`)}
+              onClick={() =>
+                navigate(
+                  setupStage
+                    ? `/festivals/${festivalId}/manage`
+                    : `/festivals/${festivalId}/auction-hub`
+                )
+              }
             >
-              View Auction Details
+              {setupStage ? "Continue Setup" : "View Auction Details"}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
@@ -623,6 +667,7 @@ export default function FestivalDetail() {
               hub={`/festivals/${festivalId}/auction-hub`}
               arena={`/auctions/festivals/${festivalId}`}
               results={`/festivals/${festivalId}/results`}
+              stage={festivalStage}
             />
           </Box>
         </CardContent>
@@ -664,7 +709,7 @@ export default function FestivalDetail() {
             allowScrollButtonsMobile
             aria-label="Festival setup navigation"
           >
-            {FESTIVAL_OPERATION_TABS.map((tab) => (
+            {visibleOperationTabs.map((tab) => (
               <Tab key={tab} value={tab} label={tab} />
             ))}
           </Tabs>
@@ -683,7 +728,12 @@ export default function FestivalDetail() {
       )}
 
       <Suspense
-        fallback={<Box sx={{ display: "grid", placeItems: "center", py: 8 }}><CircularProgress /></Box>}
+        fallback={
+          <LoadingStateCard
+            title="Loading Setup Section"
+            message="Preparing the selected Festival setup section."
+          />
+        }
       >
 
       {operationsView && activeTab === "Overview" && (
@@ -712,9 +762,9 @@ export default function FestivalDetail() {
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6">Roster Formation Mode</Typography>
+          <Typography variant="h6">Team Building Mode</Typography>
           <Typography color="text.secondary" sx={{ mb: 1 }}>
-            Auction mode forms rosters through owners, retentions, and the Main
+            Auction mode forms teams through owners, retentions, and the Main
             Festival Auction. Manual mode uses assignment and auto-balance
             tools without auction setup.
           </Typography>
@@ -985,7 +1035,7 @@ export default function FestivalDetail() {
           />
         )}
 
-      {operationsView && activeTab === "Auction Preparation" && (
+      {operationsView && !setupStage && activeTab === "Auction Preparation" && (
         <Stack spacing={2}>
           <Card variant="outlined">
             <CardContent>
@@ -1045,11 +1095,11 @@ export default function FestivalDetail() {
         </Stack>
       )}
 
-      {operationsView && activeTab === "Bid History" && (
+      {operationsView && !setupStage && activeTab === "Bid History" && (
         <FestivalBidHistory festivalId={festivalId} />
       )}
 
-      {operationsView && activeTab === "Results" && (
+      {operationsView && !setupStage && activeTab === "Results" && (
         <FestivalHistory
           festivalId={festivalId}
           sections={["Auction Results"]}
@@ -1211,7 +1261,7 @@ export default function FestivalDetail() {
           </TableContainer>
           {!visibleParticipants.length && (
             <Typography color="text.secondary" sx={{ py: 3, textAlign: "center" }}>
-              No festival participants.
+              No Participants Added Yet. Import Employees or Add Participants to continue.
             </Typography>
           )}
         </CardContent>

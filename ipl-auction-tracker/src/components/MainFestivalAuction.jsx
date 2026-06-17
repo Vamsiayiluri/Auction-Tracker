@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Stack,
   TextField,
   Typography,
@@ -30,6 +29,7 @@ import {
 import LiveBidStream from "./FestivalAuctionArena/LiveBidStream";
 import QueueSummary from "./FestivalAuctionArena/QueueSummary";
 import RecentResultsStrip from "./FestivalAuctionArena/RecentResultsStrip";
+import { LoadingStateCard, ProductStateCard } from "./ProductState";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -321,6 +321,20 @@ export default function MainFestivalAuction({
     [history]
   );
   const recentResults = finalizedResults.slice(0, 4);
+  const highestBid = finalizedResults.reduce(
+    (highest, round) =>
+      Math.max(highest, Number(round.result?.finalAmount || 0)),
+    0
+  );
+  const lastOwnPurchase = useMemo(
+    () =>
+      finalizedResults.find(
+        (round) =>
+          round.result?.outcome === "sold" &&
+          round.result?.festivalTeamId === viewerTeamId
+      ),
+    [finalizedResults, viewerTeamId]
+  );
   const soldParticipantIds = useMemo(
     () =>
       new Set(
@@ -401,12 +415,45 @@ export default function MainFestivalAuction({
   const viewResults = () => navigate(`/festivals/${festivalId}/results`);
   const exitArena = () =>
     navigate(`/festivals/${festivalId}/auction-hub`);
+  const returnToFestivalOverview = () =>
+    navigate(`/festivals/${festivalId}/command-center`);
 
   if (loading && !state) {
     return (
-      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
-        <CircularProgress size={32} />
-      </Box>
+      <LoadingStateCard
+        title="Loading Festival Auction"
+        message="Checking auction status, teams, bids, and the current participant."
+      />
+    );
+  }
+
+  if (status === "completed") {
+    return (
+      <ProductStateCard
+        eyebrow="Festival Auction"
+        title="Auction Completed"
+        message="The live auction is closed. Results and team purchases are available in reporting."
+        actionLabel="View Results"
+        onAction={viewResults}
+        secondaryActionLabel="View Auction Details"
+        onSecondaryAction={exitArena}
+      />
+    );
+  }
+
+  if (status === "setup" && !isAdmin) {
+    return (
+      <ProductStateCard
+        eyebrow="Festival Auction"
+        title={isOwner ? "Waiting For Festival Setup" : "Auction Not Started"}
+        message={
+          isOwner
+            ? "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete."
+            : "The Festival auction has not started yet. Check back once the Administrator launches it."
+        }
+        actionLabel="Return To Festival Overview"
+        onAction={returnToFestivalOverview}
+      />
     );
   }
 
@@ -418,6 +465,8 @@ export default function MainFestivalAuction({
         connected={connected}
         roomJoined={roomJoined}
         progress={progress}
+        highestBid={highestBid}
+        formatMoney={formatMoney}
         teamName={ownBudget?.team?.name}
         onExit={exitArena}
         onViewResults={viewResults}
@@ -526,6 +575,7 @@ export default function MainFestivalAuction({
             <MyTeamPanel
               team={ownBudget}
               remainingSlots={remainingSlots}
+              lastPurchase={lastOwnPurchase}
               formatMoney={formatMoney}
             />
           )}
@@ -596,6 +646,7 @@ export default function MainFestivalAuction({
       <RecentResultsStrip
         results={recentResults}
         formatMoney={formatMoney}
+        viewerTeamId={viewerTeamId}
         onViewResults={viewResults}
       />
     </Box>
@@ -826,7 +877,7 @@ function PendingFinalizationControls({
             onClick={() =>
               onRun(
                 `/auction/participants/${current.festivalParticipantId}/sell`,
-                "Participant sold and added to the winning roster.",
+                "Participant sold and added to the winning Team.",
                 true,
                 {},
                 "sell"

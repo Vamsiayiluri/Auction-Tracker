@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -271,8 +270,11 @@ export default function FestivalTeamBuilder({
   if (loading) {
     return (
       <Card id="festival-teams" variant="outlined" sx={{ mb: 3 }}>
-        <CardContent sx={{ display: "grid", placeItems: "center", py: 8 }}>
-          <CircularProgress size={30} />
+        <CardContent sx={{ py: 4 }}>
+          <Typography fontWeight={800}>Loading Festival Teams</Typography>
+          <Typography color="text.secondary">
+            Preparing teams, team members, and assignment status.
+          </Typography>
         </CardContent>
       </Card>
     );
@@ -291,8 +293,8 @@ export default function FestivalTeamBuilder({
             <Typography variant="h6">Festival Teams</Typography>
             <Typography color="text.secondary">
               {manualMode
-                ? "Manual roster formation is active. Assign participants directly or use deterministic auto-balance."
-                : "Auction roster formation is active. Team definitions are managed here; roster membership comes from owners, retentions, and auction sales."}
+                ? "Manual team building is active. Assign participants directly or use deterministic auto-balance."
+                : "Auction team building is active. Team definitions are managed here; team membership comes from owners, retentions, and auction sales."}
             </Typography>
           </Box>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -380,6 +382,11 @@ export default function FestivalTeamBuilder({
             mb: 3,
           }}
         >
+          {!teams.length && (
+            <Alert severity="info">
+              No Teams Created Yet. Create Teams before continuing.
+            </Alert>
+          )}
           {teams.map((team) => (
             <Card key={team.id} variant="outlined">
               <CardContent>
@@ -510,7 +517,7 @@ export default function FestivalTeamBuilder({
                         <TableRow>
                           <TableCell colSpan={manualMode ? 3 : 2} align="center">
                             {normalizedSearch
-                              ? "No roster members match this search."
+                              ? "No team members match this search."
                               : "No participants assigned to this team."}
                           </TableCell>
                         </TableRow>

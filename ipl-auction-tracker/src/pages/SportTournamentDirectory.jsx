@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -24,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
+import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const emptyForm = {
   contextKey: "",
@@ -143,9 +143,10 @@ export default function SportTournamentDirectory() {
 
   if (loading) {
     return (
-      <Stack alignItems="center" sx={{ py: 10 }}>
-        <CircularProgress size={36} />
-      </Stack>
+      <LoadingStateCard
+        title="Loading Sport Tournaments"
+        message="Checking tournaments, Festival Team assignments, and setup options."
+      />
     );
   }
 
@@ -193,7 +194,18 @@ export default function SportTournamentDirectory() {
       )}
 
       {!tournaments.length ? (
-        <Alert severity="info">No Sport Tournaments have been created.</Alert>
+        <ProductStateCard
+          eyebrow="Sport Tournaments"
+          title="No Sport Tournaments Created Yet"
+          message={
+            canCreate
+              ? "Create a Sport Tournament to continue."
+              : "Sport Tournaments will appear here once organizers create them."
+          }
+          actionLabel={canCreate && contexts.length ? "Create Sport Tournament" : undefined}
+          onAction={() => setDialogOpen(true)}
+          minHeight={220}
+        />
       ) : (
         <Box
           sx={{

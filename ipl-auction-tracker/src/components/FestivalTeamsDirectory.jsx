@@ -10,7 +10,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   List,
   ListItem,
   ListItemText,
@@ -20,6 +19,7 @@ import {
 import api from "../utils/api";
 import { socket } from "../webSocket/socket";
 import { shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
+import { LoadingStateCard } from "./ProductState";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -119,20 +119,21 @@ export default function FestivalTeamsDirectory({
       visibleTeams.reduce(
         (result, team) => {
           const summary = summaryByTeamId.get(team.id);
-          result.roster += team.members?.length || 0;
+          result.members += team.members?.length || 0;
           result.spent += Number(summary?.spentBudget || 0);
           return result;
         },
-        { roster: 0, spent: 0 }
+        { members: 0, spent: 0 }
       ),
     [summaryByTeamId, visibleTeams]
   );
 
   if (loading) {
     return (
-      <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
-        <CircularProgress size={30} />
-      </Box>
+      <LoadingStateCard
+        title="Loading Teams"
+        message="Preparing owners, purchases, retentions, and team members."
+      />
     );
   }
 
@@ -149,15 +150,15 @@ export default function FestivalTeamsDirectory({
           </Typography>
           <Typography color="text.secondary">
             {ownerTeamOnly
-              ? "Review your Owner assignment, purse, retentions, purchases, and current roster."
+              ? "Review your Owner assignment, purse, retentions, purchases, and current team members."
               : highlightOwnerTeam
                 ? "Review both Team summaries. Your assigned Team is highlighted."
-                : "Select a Team to review its Owner, purse, retentions, purchases, and roster."}
+                : "Select a Team to review its Owner, purse, retentions, purchases, and team members."}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           <Chip label={`${visibleTeams.length} teams`} color="primary" />
-          <Chip label={`${totals.roster} roster members`} variant="outlined" />
+          <Chip label={`${totals.members} team members`} variant="outlined" />
           <Chip label={`${formatMoney(totals.spent)} spent`} />
         </Stack>
       </Stack>
@@ -228,7 +229,7 @@ export default function FestivalTeamsDirectory({
                         />
                       )}
                       <Typography variant="body2" color="text.secondary">
-                        {memberships.length} roster members
+                        {memberships.length} team members
                       </Typography>
                     </Box>
                   </Stack>
@@ -270,19 +271,19 @@ export default function FestivalTeamsDirectory({
                     value={formatMoney(summary?.remainingBudget)}
                     detail={`Spent ${formatMoney(summary?.spentBudget)}`}
                   />
-                  <RosterCard title={`Retentions (${retentions.length})`}>
+                  <TeamMembersCard title={`Retentions (${retentions.length})`}>
                     <MembershipList memberships={retentions} />
-                  </RosterCard>
-                  <RosterCard
+                  </TeamMembersCard>
+                  <TeamMembersCard
                     title={`Purchased Players (${purchasedPlayers.length})`}
                   >
                     <MembershipList memberships={purchasedPlayers} />
-                  </RosterCard>
+                  </TeamMembersCard>
                 </Box>
                 <Card variant="outlined" sx={{ mt: 2 }}>
                   <CardContent>
                     <Typography variant="h6" sx={{ mb: 1 }}>
-                      Current Roster ({memberships.length})
+                      Current Team Members ({memberships.length})
                     </Typography>
                     <MembershipList memberships={memberships} showSource />
                   </CardContent>
@@ -316,7 +317,7 @@ function TeamMetricCard({ title, value, detail }) {
   );
 }
 
-function RosterCard({ title, children }) {
+function TeamMembersCard({ title, children }) {
   return (
     <Card variant="outlined">
       <CardContent>

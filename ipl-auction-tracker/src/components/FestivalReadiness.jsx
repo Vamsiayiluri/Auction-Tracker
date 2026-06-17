@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   List,
   ListItem,
   ListItemText,
@@ -73,7 +72,7 @@ export default function FestivalReadiness({
           <Box>
             <Typography variant="h6">Festival Setup Check</Typography>
             <Typography color="text.secondary">
-              Server-validated prerequisites for the Main Festival Auction.
+              Setup checks required before the Main Festival Auction can start.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
@@ -92,7 +91,14 @@ export default function FestivalReadiness({
         </Stack>
 
         {error && <Alert severity="error">{error}</Alert>}
-        {loading && !readiness && <CircularProgress size={28} />}
+        {loading && !readiness && (
+          <Box sx={{ py: 3 }}>
+            <Typography fontWeight={800}>Checking Festival Setup</Typography>
+            <Typography color="text.secondary">
+              Validating teams, owners, budgets, retentions, and the auction pool.
+            </Typography>
+          </Box>
+        )}
 
         {readiness && (
           <>
@@ -136,7 +142,7 @@ export default function FestivalReadiness({
                   <Chip
                     size="small"
                     color={team.ready ? "success" : "error"}
-                    label={team.ready ? "Ready" : "Blocked"}
+                    label={team.ready ? "Ready" : "Needs Setup"}
                   />
                 </ListItem>
               ))}
@@ -144,7 +150,7 @@ export default function FestivalReadiness({
 
             {readiness.blockers.length > 0 && (
               <Alert severity="warning">
-                <Typography variant="subtitle2">Exact blockers</Typography>
+                <Typography variant="subtitle2">Setup Issues</Typography>
                 <List dense disablePadding>
                   {readiness.blockers.map((blocker) => (
                     <ListItem key={blocker} disableGutters>

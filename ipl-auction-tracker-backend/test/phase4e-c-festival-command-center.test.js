@@ -18,42 +18,39 @@ test("Phase 4E-C makes the Festival Command Center the operational Festival home
   assert.match(directory, /\/festivals\/\$\{festival\.id\}\/command-center/);
   assert.match(commandCenter, /Festival Overview/);
   assert.match(commandCenter, /Festival: \$\{formatStatus/);
-  assert.match(commandCenter, /Setup: \$\{formatStatus/);
+  assert.match(commandCenter, /getStageLabel\(festivalStage\)/);
 });
 
-test("Phase 4E-C exposes all approved Command Center sections", async () => {
+test("Phase 4E-C keeps the Festival home stage-aware and setup-first", async () => {
   const commandCenter = await frontend(
     "src/pages/FestivalCommandCenter.jsx"
   );
 
   for (const section of [
-    "Quick Actions",
-    "Live Activity",
-    "Blockers",
-    "Festival Auction Status",
+    "Setup Progress",
+    "Setup Issues",
     "Sport Tournament Status",
-    "Competition Setup",
-    "Recent Results",
+    "Continue Festival Setup",
   ]) {
     assert.match(commandCenter, new RegExp(section));
   }
 
   assert.match(commandCenter, /AuctionContextNavigation/);
-  assert.match(commandCenter, /View Auction Details/);
+  assert.match(commandCenter, /stage=\{festivalStage\}/);
   assert.match(commandCenter, /\/festivals\/\$\{festivalId\}\/results/);
+  assert.doesNotMatch(commandCenter, /Competition Setup/);
 });
 
-test("Phase 4E-C provides required quick actions without Competition routes", async () => {
+test("Phase 4E-C keeps setup actions separate from live Auction actions", async () => {
   const commandCenter = await frontend(
     "src/pages/FestivalCommandCenter.jsx"
   );
 
   for (const action of [
-    "Open Live Festival Auction",
-    "Open Live Sport Auction",
-    "Festival Management",
+    "Continue Setup",
+    "Refresh Setup Check",
     "Create Sport Tournament",
-    "View Results",
+    "Launch Festival Auction",
   ]) {
     assert.match(commandCenter, new RegExp(action));
   }

@@ -11,6 +11,7 @@ import {
 export function MyTeamPanel({
   team,
   remainingSlots,
+  lastPurchase,
   formatMoney,
 }) {
   if (!team) return null;
@@ -48,16 +49,29 @@ export function MyTeamPanel({
             label="Retained Participants"
             value={team.retentions}
           />
-          <TeamMetric label="Remaining Slots" value={remainingSlots} />
-          <TeamMetric label="Current Roster" value={team.currentRosterCount} />
+          <TeamMetric label="Players Remaining" value={remainingSlots} />
+          <TeamMetric label="Current Team Size" value={team.currentRosterCount} />
         </Box>
+        {lastPurchase && (
+          <Box sx={{ mt: 2, p: 1.25, border: 1, borderColor: "divider", borderRadius: 1 }}>
+            <Typography variant="overline" color="primary.main">
+              Last Purchase
+            </Typography>
+            <Typography fontWeight={900}>
+              {lastPurchase.participant?.employee?.name || "Participant"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Purchased For: {formatMoney(lastPurchase.result?.finalAmount)} | Auction Order: #{lastPurchase.purchaseOrder || lastPurchase.id}
+            </Typography>
+          </Box>
+        )}
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ display: "block", mt: 1.5 }}
         >
-          Remaining Slots is projected from the current Festival allocation
-          pool and Team count.
+          Players Remaining is projected from the current Festival auction pool
+          and Team count.
         </Typography>
       </CardContent>
     </Card>
@@ -109,7 +123,7 @@ export function TeamPurseComparison({
                       {team.team?.name}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {team.playersPurchased} participants bought
+                      {team.playersPurchased} players bought
                     </Typography>
                   </Box>
                   <Stack alignItems="flex-end" spacing={0.5}>

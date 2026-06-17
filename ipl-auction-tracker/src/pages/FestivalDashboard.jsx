@@ -8,7 +8,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,6 +18,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
+import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const emptyForm = {
   name: "",
@@ -102,9 +102,10 @@ export default function FestivalDashboard() {
 
   if (loading && !festivals.length) {
     return (
-      <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
-        <CircularProgress size={34} />
-      </Box>
+      <LoadingStateCard
+        title="Loading Festivals"
+        message="Preparing Festival setup and management options."
+      />
     );
   }
 
@@ -139,7 +140,14 @@ export default function FestivalDashboard() {
       </Stack>
 
       {!festivals.length ? (
-        <Alert severity="info">No festivals have been created.</Alert>
+        <ProductStateCard
+          eyebrow="Festivals"
+          title="No Festivals Created Yet"
+          message="Create a Festival to begin setup."
+          actionLabel="Create Festival"
+          onAction={() => setDialogOpen(true)}
+          minHeight={220}
+        />
       ) : (
         <Box
           sx={{

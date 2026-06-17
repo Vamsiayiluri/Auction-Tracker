@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Divider,
   FormControl,
   InputLabel,
@@ -15,6 +14,12 @@ import {
   Select,
   Stack,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tabs,
   Typography,
 } from "@mui/material";
@@ -25,12 +30,17 @@ import { socket } from "../webSocket/socket";
 import { mergeAuctionSnapshotState } from "../utils/auctionSynchronization";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
+  AuctionActivityFeed,
+  BidHistorySummary,
+  buildAuctionActivity,
   HubMetric,
   HubMetrics,
   HubProgress,
   HubTeamCard,
+  LastAuctionResultPanel,
 } from "../components/AuctionHubPrimitives";
 import { formatAuctionValue } from "../utils/auctionHub";
+import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const sections = ["Overview", "Teams", "Bid History", "Results", "Team Assignments", "Statistics"];
 
@@ -60,6 +70,7 @@ function SportAuctionHub({ initialSection = null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
+  const [selectedBidRound, setSelectedBidRound] = useState(null);
 
   const requestedSection = initialSection || searchParams.get("section") || "Overview";
   const activeSection = sections.includes(requestedSection) ? requestedSection : "Overview";
@@ -123,17 +134,6 @@ function SportAuctionHub({ initialSection = null }) {
     [history, teamFilter],
   );
 
-  const bids = useMemo(
-    () => rounds
-      .flatMap((round) => (round?.bids || []).map((bid) => ({
-        ...bid,
-        participantName: getParticipantName(round),
-      })))
-      .sort((left, right) => new Date(right?.placedAt || right?.createdAt || right?.timestamp || 0)
-        - new Date(left?.placedAt || left?.createdAt || left?.timestamp || 0)),
-    [rounds],
-  );
-
   const soldRounds = useMemo(
     () => history.filter(isSold),
     [history],
@@ -163,6 +163,15 @@ function SportAuctionHub({ initialSection = null }) {
     (team) => getTeamId(team) === Number(auction?.viewer?.sportTeamId),
   );
   const canManage = Boolean(auction?.viewer?.canManage);
+  const canBid = Boolean(auction?.viewer?.canBid);
+  const auctionStatus = auction?.tournament?.status || tournament?.status;
+  const lastResult = history.find((round) => Boolean(round?.result)) || null;
+  const activityEntries = buildAuctionActivity({
+    history,
+    status: auction?.tournament?.status || tournament?.status,
+    label: "Sport Auction",
+    formatValue: formatAuctionValue,
+  });
 
   const routes = {
     commandCenter: canManage ? `/sport-tournaments/${id}/command-center` : null,
@@ -182,9 +191,31 @@ function SportAuctionHub({ initialSection = null }) {
 
   if (loading) {
     return (
-      <Box sx={{ display: "grid", minHeight: 320, placeItems: "center" }}>
-        <CircularProgress />
-      </Box>
+      <LoadingStateCard
+        title="Loading Sport Auction Details"
+        message="Preparing teams, player purchases, bid summaries, and results."
+      />
+    );
+  }
+
+  if (
+    !canManage &&
+    !["auction_live", "auction_paused", "auction_completed"].includes(
+      auctionStatus
+    )
+  ) {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title={canBid ? "Waiting For Auction Launch" : "Sport Auction Not Started"}
+        message={
+          canBid
+            ? "Your team is assigned, but the Sport auction is not ready yet. Setup, budgets, and the auction pool may still be in progress."
+            : "This Sport auction is not live yet. The Tournament overview shows the current setup status."
+        }
+        actionLabel="Return To Tournament Overview"
+        onAction={() => navigate(`/sport-tournaments/${id}`)}
+      />
     );
   }
 
@@ -212,7 +243,7 @@ function SportAuctionHub({ initialSection = null }) {
                 />
               </Stack>
               <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                Auction status, team rosters, bid history, and results.
+                Auction status, team members, bid history, and results.
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -222,9 +253,15 @@ function SportAuctionHub({ initialSection = null }) {
               <Button
                 variant="contained"
                 endIcon={<OpenInNewIcon />}
-                onClick={() => navigate(routes.arena)}
+                onClick={() =>
+                  navigate(
+                    auctionStatus === "auction_completed"
+                      ? routes.results
+                      : routes.arena
+                  )
+                }
               >
-                Open Live Auction
+                {auctionStatus === "auction_completed" ? "View Results" : "Open Live Auction"}
               </Button>
             </Stack>
           </Stack>
@@ -244,8 +281,8 @@ function SportAuctionHub({ initialSection = null }) {
             <Box sx={{ mt: 1.5 }}>
               <HubMetrics>
                 <HubMetric label="Credits Remaining" value={formatAuctionValue(viewerTeam.remainingCredits)} />
-                <HubMetric label="Players Won" value={viewerTeam.roster?.length ?? viewerTeam.playersWon ?? 0} />
-                <HubMetric label="Remaining Slots" value={viewerTeam.remainingSlots ?? "—"} />
+                <HubMetric label="Players Bought" value={viewerTeam.roster?.length ?? viewerTeam.playersWon ?? 0} />
+                <HubMetric label="Players Remaining" value={viewerTeam.remainingSlots ?? "-"} />
                 <HubMetric
                   label="My Bid Activity"
                   value={history.reduce(
@@ -287,6 +324,11 @@ function SportAuctionHub({ initialSection = null }) {
             <HubMetric label="Players Sold" value={sold} />
             <HubMetric label="Remaining" value={available} />
           </HubMetrics>
+          <LastAuctionResultPanel
+            round={lastResult}
+            label="Sport Auction"
+            formatValue={formatAuctionValue}
+          />
           <HubProgress completed={sold + unsold} total={total} />
           <Card variant="outlined">
             <CardContent>
@@ -297,15 +339,16 @@ function SportAuctionHub({ initialSection = null }) {
                     <Typography fontWeight={700}>{getParticipantName(round)}</Typography>
                     <Typography color="text.secondary">
                       {isSold(round)
-                        ? `${round.result.teamName || "Team"} · ${formatAuctionValue(round.result.finalCredits)}`
+                        ? `${round.result.teamName || "Team"} | ${formatAuctionValue(round.result.finalCredits)}`
                         : round?.result?.outcome || round?.status || "Updated"}
                     </Typography>
                   </Stack>
                   {index < Math.min(history.length, 6) - 1 ? <Divider sx={{ mt: 1.25 }} /> : null}
                 </Box>
-              )) : <Typography color="text.secondary">No auction activity yet.</Typography>}
+              )) : <Typography color="text.secondary">No auction activity yet. Activity will appear once the auction begins.</Typography>}
             </CardContent>
           </Card>
+          <AuctionActivityFeed entries={activityEntries} title="Live Activity" />
         </Stack>
       ) : null}
 
@@ -322,11 +365,12 @@ function SportAuctionHub({ initialSection = null }) {
               )}
               labels={[
                 `Captain: ${team.captain?.name || team.captainName || "Unassigned"}`,
-                `${team.remainingSlots ?? "—"} slots left`,
+                `${team.remainingSlots ?? "-"} players remaining`,
               ]}
               roster={team.roster || team.players || []}
+              formatValue={formatAuctionValue}
             />
-          )) : <Alert severity="info">No sport teams are available yet.</Alert>}
+          )) : <Alert severity="info">No Sport Teams Created Yet. Create teams before continuing.</Alert>}
         </Box>
       ) : null}
 
@@ -335,8 +379,8 @@ function SportAuctionHub({ initialSection = null }) {
           <CardContent>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={2} mb={2}>
               <Box>
-                <Typography variant="h6">Bid Timeline</Typography>
-                <Typography color="text.secondary">Chronological team participation across completed and active rounds.</Typography>
+                <Typography variant="h6">Bid History</Typography>
+                <Typography color="text.secondary">Participant-level summaries keep the main page readable.</Typography>
               </Box>
               <FormControl size="small" sx={{ minWidth: 220 }}>
                 <InputLabel>Team</InputLabel>
@@ -350,22 +394,13 @@ function SportAuctionHub({ initialSection = null }) {
                 </Select>
               </FormControl>
             </Stack>
-            {bids.length ? bids.map((bid, index) => (
-              <Box key={bid.id || `${bid.sportTeamId}-${bid.amount}-${index}`} sx={{ py: 1.2 }}>
-                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={0.5}>
-                  <Box>
-                    <Typography fontWeight={700}>{bid.teamName || "Team"} · {bid.participantName}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {bid.placedAt || bid.createdAt || bid.timestamp
-                        ? new Date(bid.placedAt || bid.createdAt || bid.timestamp).toLocaleString()
-                        : "Time unavailable"}
-                    </Typography>
-                  </Box>
-                  <Typography variant="h6">{formatAuctionValue(bid.amount ?? bid.bidAmount)}</Typography>
-                </Stack>
-                {index < bids.length - 1 ? <Divider sx={{ mt: 1.2 }} /> : null}
-              </Box>
-            )) : <Typography color="text.secondary">No matching bids found.</Typography>}
+            <BidHistorySummary
+              rounds={rounds}
+              selectedRound={selectedBidRound}
+              onSelectRound={setSelectedBidRound}
+              onClose={() => setSelectedBidRound(null)}
+              formatValue={formatAuctionValue}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -377,24 +412,7 @@ function SportAuctionHub({ initialSection = null }) {
             <HubMetric label="Unsold" value={unsoldRounds.length} />
             <HubMetric label="Final Spend" value={formatAuctionValue(totalSpent)} />
           </HubMetrics>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Final Team Assignments</Typography>
-              {history.length ? history.map((round, index) => (
-                <Box key={round?.id || index} sx={{ py: 1.2 }}>
-                  <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={0.5}>
-                    <Typography fontWeight={700}>{getParticipantName(round)}</Typography>
-                    <Typography color={isSold(round) ? "success.main" : "text.secondary"}>
-                      {isSold(round)
-                        ? `${round.result.teamName || "Team"} · ${formatAuctionValue(round.result.finalCredits)}`
-                        : "Unsold"}
-                    </Typography>
-                  </Stack>
-                  {index < history.length - 1 ? <Divider sx={{ mt: 1.2 }} /> : null}
-                </Box>
-              )) : <Typography color="text.secondary">No finalized rounds yet.</Typography>}
-            </CardContent>
-          </Card>
+          <SportResultsTable rounds={history} formatValue={formatAuctionValue} />
         </Stack>
       ) : null}
 
@@ -405,7 +423,7 @@ function SportAuctionHub({ initialSection = null }) {
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" gap={1}>
                   <Typography variant="h6">{team.teamName || team.name}</Typography>
-                  <Chip size="small" label={`${team.remainingSlots ?? "—"} slots left`} />
+                  <Chip size="small" label={`${team.remainingSlots ?? "-"} players remaining`} />
                 </Stack>
                 <Typography color="text.secondary" sx={{ mt: 0.5 }}>
                   {formatAuctionValue(team.remainingCredits)} credits remaining
@@ -413,15 +431,46 @@ function SportAuctionHub({ initialSection = null }) {
                 <Divider sx={{ my: 1.5 }} />
                 {(team.roster || team.players || []).length
                   ? (team.roster || team.players).map((player, index) => (
-                    <Stack key={player.id || index} direction="row" justifyContent="space-between" py={0.65}>
-                      <Typography>{player.name || player.participant?.name || "Player"}</Typography>
-                      <Typography color="text.secondary">{formatAuctionValue(player.finalCredits ?? player.purchasePrice)}</Typography>
-                    </Stack>
+                    <Box
+                      key={player.id || index}
+                      sx={{
+                        py: 0.85,
+                        borderTop: index ? 1 : 0,
+                        borderColor: "divider",
+                      }}
+                    >
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        justifyContent="space-between"
+                        gap={0.5}
+                      >
+                        <Typography fontWeight={700}>
+                          {player.name || player.participant?.name || "Player"}
+                        </Typography>
+                        <Typography color="text.secondary">
+                          Purchase Order: #{player.auctionOrder ?? player.purchaseOrder ?? index + 1}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.5 }}>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Purchased For: ${formatAuctionValue(
+                            player.finalCredits ?? player.purchasePrice ?? 0
+                          )}`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Acquired Through: ${player.acquisitionType || player.source || "Auction"}`}
+                        />
+                      </Stack>
+                    </Box>
                   ))
-                  : <Typography color="text.secondary">No players allocated.</Typography>}
+                  : <Typography color="text.secondary">No players bought yet.</Typography>}
               </CardContent>
             </Card>
-          )) : <Alert severity="info">No allocations are available yet.</Alert>}
+          )) : <Alert severity="info">No team assignments are available yet. Players bought through the auction will appear here.</Alert>}
         </Box>
       ) : null}
 
@@ -453,12 +502,58 @@ function SportAuctionHub({ initialSection = null }) {
                     {index < teams.length - 1 ? <Divider sx={{ mt: 1.25 }} /> : null}
                   </Box>
                 );
-              }) : <Typography color="text.secondary">No team credit data is available.</Typography>}
+              }) : <Typography color="text.secondary">Team spending will appear after budgets are configured and purchases begin.</Typography>}
             </CardContent>
           </Card>
         </Stack>
       ) : null}
     </Stack>
+  );
+}
+
+function SportResultsTable({ rounds, formatValue }) {
+  const resultRounds = rounds.filter((round) => round?.result || round?.status);
+
+  return (
+    <Card variant="outlined">
+      <TableContainer>
+        <Table sx={{ minWidth: 720 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Participant</TableCell>
+              <TableCell>Winning Team</TableCell>
+              <TableCell>Purchase Amount</TableCell>
+              <TableCell>Acquisition Type</TableCell>
+              <TableCell>Purchase Order</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {resultRounds.map((round, index) => (
+              <TableRow key={round?.id || index}>
+                <TableCell>{getParticipantName(round)}</TableCell>
+                <TableCell>{round?.result?.teamName || "-"}</TableCell>
+                <TableCell>
+                  {isSold(round)
+                    ? formatValue(round?.result?.finalCredits ?? round?.finalCredits)
+                    : "-"}
+                </TableCell>
+                <TableCell>{isSold(round) ? "Auction" : "-"}</TableCell>
+                <TableCell>#{resultRounds.length - index}</TableCell>
+                <TableCell>{isSold(round) ? "Sold" : "Unsold"}</TableCell>
+              </TableRow>
+            ))}
+            {!resultRounds.length && (
+              <TableRow>
+                <TableCell colSpan={6} align="center">
+                  No results available yet. Results will appear once players are sold or marked unsold.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Card>
   );
 }
 

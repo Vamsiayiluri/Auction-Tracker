@@ -9,6 +9,7 @@ import {
   ListItemText,
   Typography,
 } from "@mui/material";
+import { LoadingStateCard } from "./ProductState";
 
 const metrics = [
   ["sportsEnabled", "Sports Enabled"],
@@ -19,12 +20,17 @@ const metrics = [
   ["ownersActivated", "Owners Activated"],
   ["retentions", "Retentions"],
   ["auctionPoolSize", "Auction Pool Size"],
-  ["unsoldPlayers", "Unsold Players"],
-  ["auctionStatus", "Auction Status"],
 ];
 
 export default function FestivalOverview({ readiness }) {
-  if (!readiness) return <Alert severity="info">Loading Festival overview.</Alert>;
+  if (!readiness) {
+    return (
+      <LoadingStateCard
+        title="Loading Festival Overview"
+        message="Preparing setup progress, checklist status, and next actions."
+      />
+    );
+  }
 
   return (
     <Box>
@@ -64,7 +70,7 @@ export default function FestivalOverview({ readiness }) {
               </List>
             </Alert>
           ) : (
-            <Alert severity="success">All server readiness checks pass.</Alert>
+            <Alert severity="success">All setup checks pass.</Alert>
           )}
         </CardContent>
       </Card>

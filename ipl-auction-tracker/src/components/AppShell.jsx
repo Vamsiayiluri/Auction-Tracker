@@ -382,6 +382,7 @@ const AppShell = ({ children }) => {
               mt: 1,
               "& .MuiPaper-root": {
                 minWidth: 280,
+                maxWidth: "calc(100vw - 24px)",
                 borderRadius: 3,
                 boxShadow: "0 20px 60px rgba(15, 23, 42, 0.16)",
                 border: "1px solid",
@@ -437,7 +438,7 @@ const AppShell = ({ children }) => {
       </Drawer>
 
       <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 } }}>
-        {!arenaPath && (
+        {!arenaPath && pageTitle === "Dashboard" && (
           <Box sx={{ mb: 4 }}>
             <Typography variant="h4">{pageTitle}</Typography>
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>

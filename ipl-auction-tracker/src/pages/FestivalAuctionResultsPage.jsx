@@ -1,7 +1,8 @@
 import { lazy, Suspense } from "react";
-import { Box, Card, CardContent, CircularProgress, Stack, Typography } from "@mui/material";
+import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import { useParams } from "react-router-dom";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
+import { LoadingStateCard } from "../components/ProductState";
 
 const FestivalHistory = lazy(() => import("../components/FestivalHistory"));
 
@@ -27,9 +28,10 @@ export default function FestivalAuctionResultsPage() {
       </Card>
       <Suspense
         fallback={
-          <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
-            <CircularProgress />
-          </Box>
+          <LoadingStateCard
+            title="Loading Results"
+            message="Preparing completed auction outcomes and team purchases."
+          />
         }
       >
         <FestivalHistory

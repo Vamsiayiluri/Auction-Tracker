@@ -53,8 +53,7 @@ export default function SpectatorProductDashboard({ data }) {
     ...data.festivalStates
       .filter(
         ({ current }) =>
-          !data.activeAuctionStatuses.has(current?.config?.auctionStatus) &&
-          current?.config?.auctionStatus !== "completed"
+          current?.config?.auctionStatus === "ready"
       )
       .map(({ festival, current }) => ({
         id: `festival-upcoming:${festival.id}`,
@@ -80,8 +79,12 @@ export default function SpectatorProductDashboard({ data }) {
     <Stack spacing={5}>
       <DashboardHero
         eyebrow="Spectator Dashboard"
-        title={live.length ? `${live.length} auction(s) live now` : "Follow live auctions and results"}
-        description="Live auctions and recent results appear first."
+        title={live.length ? `${live.length} auction(s) live now` : "No Live Auctions"}
+        description={
+          live.length
+            ? "Live auctions and recent results appear first."
+            : "Check back later when Auctions begin."
+        }
         actionLabel="Watch Auctions"
         onAction={() => navigate("/auctions")}
       />
@@ -105,7 +108,9 @@ export default function SpectatorProductDashboard({ data }) {
             ))}
           </DashboardGrid>
         ) : (
-          <EmptyDashboardState>No Auctions are live right now.</EmptyDashboardState>
+          <EmptyDashboardState>
+            No Live Auctions. Check back later when Auctions begin.
+          </EmptyDashboardState>
         )}
       </DashboardSection>
 
@@ -179,9 +184,7 @@ export default function SpectatorProductDashboard({ data }) {
                 status={formatStatus(festival.status)}
                 statusColor={statusColor(festival.status)}
                 actionLabel="Explore Auctions"
-                onAction={() =>
-                  navigate(`/festivals/${festival.id}/auction-hub`)
-                }
+                onAction={() => navigate("/auctions")}
               />
             ))}
           </DashboardGrid>

@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
-import { Box, CircularProgress } from "@mui/material";
 import { useParams } from "react-router-dom";
+import { LoadingStateCard } from "../components/ProductState";
 
 const MainFestivalAuction = lazy(
   () => import("../components/MainFestivalAuction")
@@ -12,9 +12,10 @@ export default function FestivalLiveAuctionPage() {
   return (
     <Suspense
       fallback={
-        <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <LoadingStateCard
+          title="Loading Festival Auction"
+          message="Preparing the live auction workspace."
+        />
       }
     >
       <MainFestivalAuction festivalId={festivalId} />

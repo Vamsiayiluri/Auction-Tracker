@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -39,6 +38,7 @@ import {
   mergeAuctionSnapshotState,
   shouldApplyAuctionSnapshot,
 } from "../utils/auctionSynchronization";
+import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const credits = (value) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
@@ -306,6 +306,26 @@ export default function SportAuctionArena() {
     () => history.filter(({ result }) => Boolean(result)).slice(0, 4),
     [history]
   );
+  const highestBid = useMemo(
+    () =>
+      history
+        .filter(({ result }) => Boolean(result))
+        .reduce(
+          (highest, round) =>
+            Math.max(highest, Number(round.result?.finalCredits || 0)),
+          0
+        ),
+    [history]
+  );
+  const lastOwnPurchase = useMemo(
+    () =>
+      history.find(
+        (round) =>
+          round.result?.outcome === "sold" &&
+          round.result?.sportTeamId === viewerTeamId
+      ),
+    [history, viewerTeamId]
+  );
   const totalParticipants =
     Number(state?.counts?.sold || 0) +
     Number(state?.counts?.unsold || 0) +
@@ -395,12 +415,45 @@ export default function SportAuctionArena() {
 
   if (loading && !state) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 10 }}>
-        <CircularProgress />
-        <Typography color="text.secondary">
-          Synchronizing Sport Auction...
-        </Typography>
-      </Stack>
+      <LoadingStateCard
+        title="Loading Sport Auction"
+        message="Checking tournament setup, teams, credits, and the current player."
+      />
+    );
+  }
+
+  if (state?.tournament?.status === "auction_completed") {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title="Auction Completed"
+        message="The Sport auction is closed. Results and team purchases are ready to review."
+        actionLabel="View Results"
+        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}
+        secondaryActionLabel="View Auction Details"
+        onSecondaryAction={() =>
+          navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)
+        }
+      />
+    );
+  }
+
+  if (
+    !canManage &&
+    !["auction_live", "auction_paused"].includes(state?.tournament?.status)
+  ) {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title={canBid ? "Waiting For Auction Launch" : "Sport Auction Not Started"}
+        message={
+          canBid
+            ? "Your team is assigned, but this Sport auction is not live yet. The organizer may still be finishing team setup, budget configuration, or pool generation."
+            : "This Sport auction has not started yet. Return to the Tournament overview for the current setup status."
+        }
+        actionLabel="Return To Tournament Overview"
+        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+      />
     );
   }
 
@@ -413,6 +466,8 @@ export default function SportAuctionArena() {
         connected={connected}
         roomJoined={roomJoined}
         progress={progress}
+        highestBid={highestBid}
+        formatCredits={credits}
         teamName={state?.viewer?.sportTeamName}
         onExit={() =>
           navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)
@@ -521,6 +576,7 @@ export default function SportAuctionArena() {
             <CaptainPanel
               team={ownTeam}
               remainingSlots={remainingSlots}
+              lastPurchase={lastOwnPurchase}
               formatCredits={credits}
             />
           )}
@@ -584,6 +640,7 @@ export default function SportAuctionArena() {
       <SportRecentResultsStrip
         results={recentResults}
         formatCredits={credits}
+        viewerTeamId={viewerTeamId}
       />
 
       <Dialog

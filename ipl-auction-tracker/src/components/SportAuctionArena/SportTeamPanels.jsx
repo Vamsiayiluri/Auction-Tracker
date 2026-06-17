@@ -10,7 +10,7 @@ import {
 const wonCount = (team) =>
   (team?.roster || []).filter(({ source }) => source === "auction").length;
 
-export function CaptainPanel({ team, remainingSlots, formatCredits }) {
+export function CaptainPanel({ team, remainingSlots, lastPurchase, formatCredits }) {
   if (!team) return null;
 
   return (
@@ -34,12 +34,25 @@ export function CaptainPanel({ team, remainingSlots, formatCredits }) {
             label="Remaining Credits"
             value={formatCredits(team.remainingCredits)}
           />
-          <Metric label="Players Won" value={wonCount(team)} />
-          <Metric label="Remaining Slots" value={remainingSlots} />
-          <Metric label="Current Roster" value={team.roster?.length || 0} />
+          <Metric label="Players Bought" value={wonCount(team)} />
+          <Metric label="Players Remaining" value={remainingSlots} />
+          <Metric label="Current Team Size" value={team.roster?.length || 0} />
         </Box>
+        {lastPurchase && (
+          <Box sx={{ mt: 2, p: 1.25, border: 1, borderColor: "divider", borderRadius: 1 }}>
+            <Typography variant="overline" color="primary.main">
+              Last Purchase
+            </Typography>
+            <Typography fontWeight={900}>
+              {lastPurchase.participant?.employee?.name || "Participant"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Purchased For: {formatCredits(lastPurchase.result?.finalCredits)} | Auction Order: #{lastPurchase.purchaseOrder || lastPurchase.id}
+            </Typography>
+          </Box>
+        )}
         <Typography variant="caption" color="text.secondary">
-          Remaining slots are projected from the current pool and Team count.
+          Players remaining are projected from the current pool and Team count.
         </Typography>
       </CardContent>
     </Card>

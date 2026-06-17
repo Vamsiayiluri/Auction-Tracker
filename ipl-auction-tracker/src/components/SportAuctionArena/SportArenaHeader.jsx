@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Card,
   CardContent,
@@ -16,10 +17,13 @@ export default function SportArenaHeader({
   connected,
   roomJoined,
   progress,
+  highestBid,
+  formatCredits,
   teamName,
   onExit,
 }) {
   const connectionReady = connected && roomJoined;
+  const completed = status === "auction_completed" || status === "completed";
 
   return (
     <Card variant="outlined" sx={{ mb: 2 }}>
@@ -31,8 +35,13 @@ export default function SportArenaHeader({
         >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800 }}>
-              {tournamentName || "Sport Auction"}
+              {completed ? "Sport Auction Completed" : tournamentName || "Sport Auction"}
             </Typography>
+            {completed && (
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                Participants Processed: {progress.sold + progress.unsold} | Sold: {progress.sold} | Unsold: {progress.unsold} | Highest Bid: {formatCredits ? formatCredits(highestBid) : highestBid || 0}
+              </Typography>
+            )}
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
               <Chip
                 color={

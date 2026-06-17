@@ -39,24 +39,30 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
       >
         {captainStates.length ? (
           <DashboardGrid>
-            {captainStates.map(({ tournament, current }) => (
+            {captainStates.map(({ tournament, current, readiness }) => (
               <ActionCard
                 key={tournament.id}
                 eyebrow="Captain Assignment"
                 title={current?.viewer?.sportTeamName || tournament.name}
-                description={`${tournament.name} | ${tournament.sport?.name || "Sport"}`}
+                description={
+                  data.activeSportStatuses.has(tournament.status)
+                    ? `${tournament.name} | ${tournament.sport?.name || "Sport"}`
+                    : readiness?.blockers?.[0]
+                      ? `Waiting For Setup: ${readiness.blockers[0]}`
+                      : "Waiting For Auction Launch"
+                }
                 status={formatStatus(tournament.status)}
                 statusColor={statusColor(tournament.status)}
                 actionLabel={
                   data.activeSportStatuses.has(tournament.status)
                     ? "Join Auction"
-                    : "View Auction Details"
+                    : "View Tournament Overview"
                 }
                 onAction={() =>
                   navigate(
                     data.activeSportStatuses.has(tournament.status)
                       ? sportArenaRoute(tournament.id)
-                      : `/sport-tournaments/${tournament.id}/auction-hub`
+                      : `/sport-tournaments/${tournament.id}`
                   )
                 }
               />
@@ -100,7 +106,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
 
       <DashboardSection
         title="My Sport Teams"
-        description="Roster and credit context exposed by existing Sport Auction state."
+        description="Team member and credit context exposed by existing Sport Auction state."
       >
         {captainStates.length ? (
           <DashboardGrid>
@@ -126,7 +132,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
                         )} remaining`
                       : "Credit summary becomes available with Auction state."
                   }
-                  secondary={`${team?.roster?.length || 0} roster member(s)`}
+                  secondary={`${team?.roster?.length || 0} team member(s)`}
                   status={formatStatus(tournament.status)}
                   statusColor={statusColor(tournament.status)}
                   actionLabel="View Auction Details"
@@ -144,7 +150,7 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
 
       <DashboardSection
         title="Upcoming Competitions"
-        description="Competition setup after Sport rosters are complete."
+        description="Competition setup after Sport team members are finalized."
       >
         {competitionReady.length ? (
           <DashboardGrid>
@@ -153,9 +159,9 @@ export default function CaptainProductDashboard({ data, embedded = false }) {
                 key={`competition:${tournament.id}`}
                 eyebrow="Competition Setup"
                 title={tournament.name}
-                description="Sport rosters are complete. Competition setup is planned for a later phase."
+                description="Sport team members are finalized. Competition setup is planned for a later phase."
                 status="future phase"
-                actionLabel="Review Final Rosters"
+                actionLabel="Review Results"
                 onAction={() =>
                   navigate(`/sport-tournaments/${tournament.id}/results`)
                 }

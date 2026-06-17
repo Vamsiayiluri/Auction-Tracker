@@ -172,10 +172,10 @@ export default function AdminProductDashboard({ data }) {
         id: `competition-next:${tournament.id}`,
         title: tournament.name,
         description:
-          "Sport rosters are complete. Competition setup is the next product phase.",
+          "Sport team members are finalized. Competition setup is the next product phase.",
         status: "competition pending",
         route: sportManagementRoute(tournament.id),
-        action: "Review Rosters",
+        action: "Review Results",
       })),
   ].slice(0, 8);
 

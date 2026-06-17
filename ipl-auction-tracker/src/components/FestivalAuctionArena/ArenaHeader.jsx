@@ -17,11 +17,14 @@ export default function ArenaHeader({
   connected,
   roomJoined,
   progress,
+  highestBid,
+  formatMoney,
   teamName,
   onExit,
   onViewResults,
 }) {
   const connectionReady = connected && roomJoined;
+  const completed = status === "completed";
 
   return (
     <Card variant="outlined" sx={{ mb: 2 }}>
@@ -33,8 +36,13 @@ export default function ArenaHeader({
         >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800 }}>
-              {festivalName || "Festival Auction"}
+              {completed ? "Festival Auction Completed" : festivalName || "Festival Auction"}
             </Typography>
+            {completed && (
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                Participants Processed: {progress.sold + progress.unsold} | Sold: {progress.sold} | Unsold: {progress.unsold} | Highest Bid: {formatMoney ? formatMoney(highestBid) : highestBid || 0}
+              </Typography>
+            )}
             <Stack
               direction="row"
               spacing={1}
@@ -80,7 +88,7 @@ export default function ArenaHeader({
             alignSelf={{ lg: "center" }}
           >
             <Button variant="outlined" onClick={onViewResults}>
-              View Full Results
+              View Results
             </Button>
             <Button color="inherit" onClick={onExit}>
               Auction Details
