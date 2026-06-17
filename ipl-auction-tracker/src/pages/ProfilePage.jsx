@@ -1,6 +1,8 @@
 import {
+  Alert,
   Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -8,6 +10,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
 
 const roleLabels = {
@@ -27,6 +30,7 @@ const displayValue = (value, fallback = "Not available") => value || fallback;
 
 export default function ProfilePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const displayName = user?.name || "Auction user";
   const role = roleLabels[user?.role] || user?.role || "User";
 
@@ -101,10 +105,17 @@ export default function ProfilePage() {
         </ProfileSection>
 
         <ProfileSection title="Activity Summary">
-          <Typography color="text.secondary">
-            Your dashboard shows active auctions, team assignments, and recent
-            outcomes based on your current role and assignments.
-          </Typography>
+          <Alert severity="info" sx={{ mb: 1 }}>
+            Live assignment data — active auctions, team memberships, and recent
+            outcomes — is loaded fresh from your Dashboard, not cached here.
+          </Alert>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => navigate("/dashboard")}
+          >
+            Go to Dashboard
+          </Button>
         </ProfileSection>
       </Box>
     </Stack>

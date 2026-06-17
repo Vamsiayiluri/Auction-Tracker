@@ -161,7 +161,7 @@ export default function useProductDashboardData(user) {
           value: round.result.finalAmount,
           unit: festival.currencyCode || "INR",
           date: round.result.finalizedAt || round.finalizedAt,
-          route: `/auctions/festivals/${festival.id}`,
+          route: `/festivals/${festival.id}/results`,
         }))
     );
     const sportOutcomes = sportStates.flatMap(({ tournament, history }) =>
@@ -180,7 +180,7 @@ export default function useProductDashboardData(user) {
           value: round.result.finalCredits,
           unit: "credits",
           date: round.result.finalizedAt || round.finalizedAt,
-          route: `/auctions/sports/${tournament.id}`,
+          route: `/sport-tournaments/${tournament.id}/results`,
         }))
     );
 

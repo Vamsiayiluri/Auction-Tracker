@@ -1,4 +1,4 @@
-import { Button, Stack } from "@mui/material";
+import { Box, Button, Chip, Divider, List, ListItem, ListItemText, Stack, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
   ActionCard,
@@ -161,10 +161,10 @@ export default function AdminProductDashboard({ data }) {
       .map(({ tournament }) => ({
         id: `sport-ready:${tournament.id}`,
         title: tournament.name,
-        description: "Sport Auction setup is complete.",
+        description: "Sport Auction setup is complete and ready to launch.",
         status: "ready",
-        route: sportArenaRoute(tournament.id),
-        action: "Open Live Auction",
+        route: `/sport-tournaments/${tournament.id}/auction-hub`,
+        action: "Review & Launch",
       })),
     ...data.sportStates
       .filter(({ tournament }) => tournament.status === "auction_completed")
@@ -189,11 +189,11 @@ export default function AdminProductDashboard({ data }) {
         onAction={() => navigate("/auctions")}
       />
 
-      <DashboardSection
-        title="Action Required"
-        description="Paused auctions, setup issues, and decisions waiting for you."
-      >
-        {attention.length ? (
+      {attention.length > 0 && (
+        <DashboardSection
+          title="Action Required"
+          description="Paused auctions, setup issues, and decisions waiting for you."
+        >
           <DashboardGrid>
             {attention.slice(0, 9).map((item) => (
               <ActionCard
@@ -204,21 +204,17 @@ export default function AdminProductDashboard({ data }) {
               />
             ))}
           </DashboardGrid>
-        ) : (
-          <EmptyDashboardState>
-            No urgent Festival or Sport Auction actions were found.
-          </EmptyDashboardState>
-        )}
-      </DashboardSection>
+        </DashboardSection>
+      )}
 
-      <DashboardSection
-        title="Live Now"
-        description="Festival and Sport Auctions currently live or paused."
-        action={
-          <Button onClick={() => navigate("/auctions")}>View All Auctions</Button>
-        }
-      >
-        {liveAuctions.length ? (
+      {liveAuctions.length > 0 && (
+        <DashboardSection
+          title="Live Now"
+          description="Festival and Sport Auctions currently live or paused."
+          action={
+            <Button onClick={() => navigate("/auctions")}>View All Auctions</Button>
+          }
+        >
           <DashboardGrid>
             {liveAuctions.map((item) => (
               <ActionCard
@@ -232,52 +228,62 @@ export default function AdminProductDashboard({ data }) {
               />
             ))}
           </DashboardGrid>
-        ) : (
-          <EmptyDashboardState>No Auctions are live right now.</EmptyDashboardState>
-        )}
-      </DashboardSection>
+        </DashboardSection>
+      )}
 
       <DashboardSection
-        title="Festival Progress"
-        description="Where each Festival is in setup, auction, and results."
+        title="Festivals"
+        description="Setup progress and current stage for each Festival."
+        action={<Button onClick={() => navigate("/festivals")}>All Festivals</Button>}
       >
         {data.festivalStates.length ? (
-          <DashboardGrid columns={2}>
-            {data.festivalStates.map(({ festival, current, readiness }) => {
-              const sportChildren = data.tournaments.filter(
-                ({ festivalId }) => festivalId === festival.id
-              );
-              const auctionStatus =
-                current?.config?.auctionStatus ||
-                readiness?.counts?.auctionStatus ||
-                "setup";
-              const currentStage =
-                auctionStatus === "completed"
-                  ? sportChildren.length
-                    ? "Sport Tournaments and Sport Auctions"
-                    : "Create Sport Tournaments"
-                  : auctionStatus === "live" || auctionStatus === "paused"
-                    ? "Main Festival Auction"
-                    : readiness?.overallStatus === "READY"
-                      ? "Ready for Main Auction"
-                      : "Festival setup";
-              return (
-                <ActionCard
-                  key={festival.id}
-                  eyebrow="Festival"
-                  title={festival.name}
-                  description={`Current stage: ${currentStage}`}
-                  secondary={`${readiness?.blockers?.length || 0} setup issue(s) | ${sportChildren.length} Sport Tournament(s)`}
-                  status={formatStatus(auctionStatus)}
-                  statusColor={statusColor(auctionStatus)}
-                  actionLabel="View Festival"
-                  onAction={() =>
-                    navigate(`/festivals/${festival.id}/command-center`)
-                  }
-                />
-              );
-            })}
-          </DashboardGrid>
+          <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
+            <List disablePadding>
+              {data.festivalStates.map(({ festival, current, readiness }, index) => {
+                const sportChildren = data.tournaments.filter(
+                  ({ festivalId }) => festivalId === festival.id
+                );
+                const auctionStatus =
+                  current?.config?.auctionStatus ||
+                  readiness?.counts?.auctionStatus ||
+                  "setup";
+                const blockerCount = readiness?.blockers?.length || 0;
+                return (
+                  <Box key={festival.id}>
+                    {index > 0 && <Divider />}
+                    <ListItem
+                      secondaryAction={
+                        <Button
+                          size="small"
+                          onClick={() => navigate(`/festivals/${festival.id}/command-center`)}
+                        >
+                          View
+                        </Button>
+                      }
+                      sx={{ py: 1.5 }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Typography variant="body2" fontWeight={700}>{festival.name}</Typography>
+                            <Chip
+                              size="small"
+                              label={formatStatus(auctionStatus)}
+                              color={statusColor(auctionStatus) || "default"}
+                            />
+                            {blockerCount > 0 && (
+                              <Chip size="small" label={`${blockerCount} issue${blockerCount !== 1 ? "s" : ""}`} color="warning" />
+                            )}
+                          </Stack>
+                        }
+                        secondary={`${sportChildren.length} Sport Tournament${sportChildren.length !== 1 ? "s" : ""}`}
+                      />
+                    </ListItem>
+                  </Box>
+                );
+              })}
+            </List>
+          </Box>
         ) : (
           <EmptyDashboardState>No Festivals have been created.</EmptyDashboardState>
         )}
@@ -328,7 +334,7 @@ export default function AdminProductDashboard({ data }) {
                 secondary={outcome.context}
                 status={outcome.outcome}
                 statusColor={outcome.outcome === "sold" ? "success" : "warning"}
-                actionLabel="View Auction Details"
+                actionLabel="View Results"
                 onAction={() => navigate(outcome.route)}
               />
             ))}

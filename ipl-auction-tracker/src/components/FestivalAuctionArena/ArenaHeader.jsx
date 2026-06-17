@@ -86,6 +86,8 @@ export default function ArenaHeader({
             direction={{ xs: "column", sm: "row" }}
             spacing={1}
             alignSelf={{ lg: "center" }}
+            flexWrap="wrap"
+            useFlexGap
           >
             <Button variant="outlined" onClick={onViewResults}>
               View Results

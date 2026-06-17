@@ -1,23 +1,64 @@
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Divider,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import VisualTimer from "../VisualTimer";
+
+const formatTime = (date) =>
+  date
+    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null;
 
 export default function ParticipantStage({
   current,
   leadingBid,
   timeLeft,
   formatMoney,
+  onRefresh,
+  refreshing = false,
+  lastUpdated = null,
   children,
 }) {
   const employee = current?.participant?.employee;
   const roundStatus = current?.status;
+
+  const refreshButton = (
+    <Tooltip
+      title={
+        lastUpdated
+          ? `Last refreshed at ${formatTime(lastUpdated)}`
+          : "Fetch the latest auction state from the server"
+      }
+    >
+      <span>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={
+            refreshing ? (
+              <CircularProgress size={14} color="inherit" />
+            ) : (
+              <RefreshRoundedIcon />
+            )
+          }
+          onClick={onRefresh}
+          disabled={refreshing}
+          sx={{ minHeight: 36, whiteSpace: "nowrap" }}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Button>
+      </span>
+    </Tooltip>
+  );
 
   return (
     <Card variant="outlined" sx={{ height: "100%" }}>
@@ -29,12 +70,22 @@ export default function ParticipantStage({
         {current ? (
           <Stack spacing={2}>
             <Box>
-              <Typography
-                variant="h3"
-                sx={{ fontWeight: 900, fontSize: { xs: "2rem", md: "3rem" } }}
-              >
-                {employee?.name}
-              </Typography>
+              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+                <Typography
+                  variant="h3"
+                  sx={{ fontWeight: 900, fontSize: { xs: "2rem", md: "3rem" } }}
+                >
+                  {employee?.name}
+                </Typography>
+                <Box sx={{ pt: 0.5, flexShrink: 0 }}>
+                  {refreshButton}
+                  {lastUpdated && (
+                    <Typography variant="caption" color="text.secondary" display="block" textAlign="right" sx={{ mt: 0.25 }}>
+                      Updated {formatTime(lastUpdated)}
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
               <Typography color="text.secondary">
                 {employee?.employeeNumber || "Employee number unavailable"} |{" "}
                 {employee?.department || "Department not set"} |{" "}
@@ -142,6 +193,7 @@ export default function ParticipantStage({
               The next participant will appear here when an Admin starts a
               round.
             </Typography>
+            <Box sx={{ mt: 2 }}>{refreshButton}</Box>
             {children}
           </Box>
         )}

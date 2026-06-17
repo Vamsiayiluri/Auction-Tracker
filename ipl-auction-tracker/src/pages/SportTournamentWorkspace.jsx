@@ -12,7 +12,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Divider,
   FormControl,
   InputLabel,
@@ -28,6 +27,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../utils/api";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
+import {
+  getSportAuctionStageFromState,
+  isReadyStage,
+  isLiveStage,
+  isCompletedStage,
+} from "../utils/auctionStages";
+import { ProductStateCard, LoadingStateCard } from "../components/ProductState";
 
 const sections = [
   "Overview",
@@ -178,12 +184,28 @@ export default function SportTournamentWorkspace() {
   const canManage = Boolean(tournament?.permissions?.canManage);
   const canEditSetup =
     canManage && ["draft", "setup", "ready"].includes(tournament?.status);
+  const sportStage = getSportAuctionStageFromState({
+    tournament,
+    readiness,
+    auction: auctionState,
+  });
+  const hasResults =
+    Number(auctionState?.counts?.sold ?? 0) > 0 ||
+    Number(auctionState?.counts?.unsold ?? 0) > 0;
+  const headerCta = isCompletedStage(sportStage)
+    ? { label: "View Results", route: `/sport-tournaments/${sportTournamentId}/results` }
+    : isLiveStage(sportStage)
+      ? { label: "Open Live Auction", route: `/auctions/sports/${sportTournamentId}` }
+      : isReadyStage(sportStage)
+        ? { label: "Review & Launch", route: `/sport-tournaments/${sportTournamentId}/auction-hub` }
+        : { label: "Check Setup Status", route: `/sport-tournaments/${sportTournamentId}` };
 
   if (loading && !tournament) {
     return (
-      <Stack alignItems="center" sx={{ py: 10 }}>
-        <CircularProgress size={36} />
-      </Stack>
+      <LoadingStateCard
+        title="Loading Sport Tournament Setup"
+        message="Preparing teams, captains, budgets, and pool data."
+      />
     );
   }
   if (!tournament) {
@@ -194,6 +216,52 @@ export default function SportTournamentWorkspace() {
       >
         {error}
       </Alert>
+    );
+  }
+  if (!canManage) {
+    if (isCompletedStage(sportStage)) {
+      return (
+        <ProductStateCard
+          eyebrow="Sport Tournament"
+          title="Auction Completed"
+          message="The Sport auction has concluded. View final team purchases and results."
+          actionLabel="View Results"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}
+          secondaryActionLabel="View Auction Details"
+          onSecondaryAction={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}
+        />
+      );
+    }
+    if (isLiveStage(sportStage)) {
+      return (
+        <ProductStateCard
+          eyebrow="Sport Tournament"
+          title="Auction is Live"
+          message="The Sport auction is currently active. View live bidding in the Auction Details hub."
+          actionLabel="Open Auction Details"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}
+        />
+      );
+    }
+    if (isReadyStage(sportStage)) {
+      return (
+        <ProductStateCard
+          eyebrow="Sport Tournament"
+          title="Auction Ready — Launching Soon"
+          message="The Sport Tournament is configured and ready. The organiser will launch bidding shortly."
+          actionLabel="Return to Tournament Overview"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+        />
+      );
+    }
+    return (
+      <ProductStateCard
+        eyebrow="Sport Tournament"
+        title="Tournament Setup in Progress"
+        message="Team configuration, captain assignments, budgets, and pool setup are managed by the tournament organiser."
+        actionLabel="Return to Tournament Overview"
+        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+      />
     );
   }
 
@@ -327,9 +395,9 @@ export default function SportTournamentWorkspace() {
             </Box>
             <Button
               variant="contained"
-              onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}
+              onClick={() => navigate(headerCta.route)}
             >
-              View Auction Details
+              {headerCta.label}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
@@ -339,6 +407,8 @@ export default function SportTournamentWorkspace() {
               hub={`/sport-tournaments/${sportTournamentId}/auction-hub`}
               arena={`/auctions/sports/${sportTournamentId}`}
               results={`/sport-tournaments/${sportTournamentId}/results`}
+              stage={sportStage}
+              hasResults={hasResults}
             />
           </Box>
         </CardContent>

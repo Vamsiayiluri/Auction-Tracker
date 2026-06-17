@@ -45,6 +45,11 @@ const FestivalAuctionCompatibilityRedirect = () => {
   return <Navigate to={`/auctions/festivals/${festivalId}`} replace />;
 };
 
+const FestivalRootRedirect = () => {
+  const { festivalId } = useParams();
+  return <Navigate to={`/festivals/${festivalId}/command-center`} replace />;
+};
+
 const SportAuctionCompatibilityRedirect = () => {
   const { sportTournamentId } = useParams();
   return <Navigate to={`/auctions/sports/${sportTournamentId}`} replace />;
@@ -155,9 +160,7 @@ export default function AppRouter() {
             path="/festivals/:festivalId"
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
-                <AppShell>
-                  <FestivalDetail />
-                </AppShell>
+                <FestivalRootRedirect />
               </ProtectedRoute>
             }
           />

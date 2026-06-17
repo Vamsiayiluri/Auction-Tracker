@@ -1,10 +1,11 @@
-import { Alert, Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button } from "@mui/material";
 import { useAuth } from "../context/auth-context";
 import AdminProductDashboard from "../components/ProductDashboard/AdminProductDashboard";
 import CaptainProductDashboard from "../components/ProductDashboard/CaptainProductDashboard";
 import OwnerProductDashboard from "../components/ProductDashboard/OwnerProductDashboard";
 import SpectatorProductDashboard from "../components/ProductDashboard/SpectatorProductDashboard";
 import useProductDashboardData from "../components/ProductDashboard/useProductDashboardData";
+import { LoadingStateCard } from "../components/ProductState";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -15,12 +16,10 @@ export default function Dashboard() {
 
   if (data.loading) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 10 }}>
-        <CircularProgress size={36} />
-        <Typography color="text.secondary">
-          Loading your operational dashboard...
-        </Typography>
-      </Stack>
+      <LoadingStateCard
+        title="Loading Dashboard"
+        message="Fetching your Festivals, Sport Tournaments, and recent auction activity."
+      />
     );
   }
 

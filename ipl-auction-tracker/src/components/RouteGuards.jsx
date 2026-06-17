@@ -1,6 +1,6 @@
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
-import { AccessDeniedState } from "./ProductState";
+import { AccessDeniedState, ProductStateCard } from "./ProductState";
 
 export const GuestRoute = ({ children }) => {
   const { user } = useAuth();
@@ -20,9 +20,6 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
   if (user.mustChangePassword && location.pathname !== "/change-password") {
     return <Navigate to="/change-password" replace />;
   }
-  if (!user.mustChangePassword && location.pathname === "/change-password") {
-    return <Navigate to="/dashboard" replace />;
-  }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
@@ -37,6 +34,19 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
 
 export const DefaultRoute = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <ProductStateCard
+      eyebrow="404 Not Found"
+      title="This page does not exist"
+      message="The URL you entered doesn't match any page in AuctionArena. Check the address or return to your dashboard."
+      actionLabel="Go to Dashboard"
+      onAction={() => navigate("/dashboard", { replace: true })}
+    />
+  );
 };

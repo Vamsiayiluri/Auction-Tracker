@@ -12,6 +12,11 @@ import {
   Typography,
 } from "@mui/material";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
+import {
+  getSportAuctionStageFromState,
+  AUCTION_STAGE,
+  isSetupStage,
+} from "../utils/auctionStages";
 import api from "../utils/api";
 
 export default function SportTournamentCommandCenter() {
@@ -55,30 +60,38 @@ export default function SportTournamentCommandCenter() {
 
   const blockers = readiness?.blockers || [];
   const canManage = Boolean(tournament?.permissions?.canManage);
+  const canBid = Boolean(auction?.viewer?.canBid);
+  const stage = getSportAuctionStageFromState({ tournament, readiness, auction });
   const primaryAction = useMemo(() => {
-    if (["auction_live", "auction_paused", "pending_finalization"].includes(auction?.status)) {
+    if (stage === AUCTION_STAGE.COMPLETED) {
+      return {
+        label: "View Results",
+        route: `/sport-tournaments/${sportTournamentId}/results`,
+      };
+    }
+    if (stage === AUCTION_STAGE.LIVE) {
       return {
         label: "Open Live Sport Auction",
         route: `/auctions/sports/${sportTournamentId}`,
       };
     }
-    if (readiness?.ready) {
+    if (stage === AUCTION_STAGE.READY) {
       return {
-        label: "View Auction Details",
+        label: "Review & Launch",
         route: `/sport-tournaments/${sportTournamentId}/auction-hub`,
       };
     }
     if (!canManage) {
       return {
-        label: "View Auction Details",
-        route: `/sport-tournaments/${sportTournamentId}/auction-hub`,
+        label: "Back to Dashboard",
+        route: `/dashboard`,
       };
     }
     return {
-      label: "Resolve Setup",
+      label: "Continue Setup",
       route: `/sport-tournaments/${sportTournamentId}/manage`,
     };
-  }, [auction?.status, canManage, readiness?.ready, sportTournamentId]);
+  }, [stage, canManage, sportTournamentId]);
 
   if (loading) {
     return (
@@ -101,14 +114,18 @@ export default function SportTournamentCommandCenter() {
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                 <Typography variant="h4" fontWeight={800}>{tournament.name}</Typography>
                 <Chip label={String(tournament.status).replaceAll("_", " ")} />
-                <Chip
-                  color={readiness?.ready ? "success" : "warning"}
-                  variant="outlined"
-                  label={readiness?.ready ? "Ready" : `${blockers.length} setup issue(s)`}
-                />
+                {(canManage || readiness?.ready) && (
+                  <Chip
+                    color={readiness?.ready ? "success" : "warning"}
+                    variant="outlined"
+                    label={readiness?.ready ? "Ready" : `${blockers.length} setup issue(s)`}
+                  />
+                )}
               </Stack>
               <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                Tournament status, setup issues, and the next action.
+                {canManage
+                  ? "Tournament status, setup issues, and the next action."
+                  : "Sport auction overview and current status."}
               </Typography>
             </Box>
             <Button variant="contained" onClick={() => navigate(primaryAction.route)}>
@@ -122,6 +139,7 @@ export default function SportTournamentCommandCenter() {
               hub={`/sport-tournaments/${sportTournamentId}/auction-hub`}
               arena={`/auctions/sports/${sportTournamentId}`}
               results={`/sport-tournaments/${sportTournamentId}/results`}
+              stage={stage}
             />
           </Box>
         </CardContent>
@@ -134,9 +152,17 @@ export default function SportTournamentCommandCenter() {
           <CardContent>
             <Typography variant="h6" gutterBottom>Setup Issues</Typography>
             {!canManage ? (
-              <Alert severity="info">
-                Use Auction Details for teams, player assignments, bid history, statistics, and results.
-              </Alert>
+              isSetupStage(stage) ? (
+                <Alert severity="info">
+                  {canBid
+                    ? "Waiting for the tournament organiser to complete setup. You will be notified when the auction is ready."
+                    : "The tournament is currently in setup. Check back once the organiser has configured teams and the auction pool."}
+                </Alert>
+              ) : (
+                <Alert severity="info">
+                  Use Auction Details for teams, player assignments, bid history, statistics, and results.
+                </Alert>
+              )
             ) : blockers.length ? (
               <Stack spacing={1}>
                 {blockers.slice(0, 6).map((blocker, index) => (
@@ -155,20 +181,36 @@ export default function SportTournamentCommandCenter() {
           <CardContent>
             <Typography variant="h6" gutterBottom>Quick Actions</Typography>
             <Stack spacing={1}>
-              {canManage ? (
+              {canManage && stage === AUCTION_STAGE.SETUP && (
+                <>
+                  <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}>
+                    Continue Setup
+                  </Button>
+                  <Button variant="outlined" onClick={load}>
+                    Refresh Setup Check
+                  </Button>
+                </>
+              )}
+              {canManage && stage === AUCTION_STAGE.READY && (
+                <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}>
+                  Review &amp; Launch
+                </Button>
+              )}
+              {canManage && stage === AUCTION_STAGE.LIVE && (
+                <Button variant="contained" onClick={() => navigate(`/auctions/sports/${sportTournamentId}`)}>
+                  Open Live Auction
+                </Button>
+              )}
+              {canManage && stage === AUCTION_STAGE.COMPLETED && (
+                <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}>
+                  View Results
+                </Button>
+              )}
+              {canManage && stage !== AUCTION_STAGE.SETUP && (
                 <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}>
                   Tournament Management
                 </Button>
-              ) : null}
-              <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)}>
-                Auction Details
-              </Button>
-              <Button variant="outlined" onClick={() => navigate(`/auctions/sports/${sportTournamentId}`)}>
-                Open Live Auction
-              </Button>
-              <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}>
-                View Results
-              </Button>
+              )}
             </Stack>
           </CardContent>
         </Card>

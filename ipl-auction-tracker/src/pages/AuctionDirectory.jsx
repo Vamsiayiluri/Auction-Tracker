@@ -224,6 +224,35 @@ export default function AuctionDirectory() {
     );
   }
 
+  const emptyMessage = (() => {
+    if (entries.length) return null;
+    const totalEntries = festivals.length + tournaments.length;
+    if (totalEntries === 0) {
+      return "No Festival or Sport Auctions have been created yet. Ask your administrator to create a Festival or Sport Tournament.";
+    }
+    const allFestivalStages = festivals.map((festival) => {
+      const stageData = festivalStageData[festival.id] || {};
+      return getFestivalAuctionStageFromState({
+        festival,
+        auction: stageData.auction,
+        readiness: stageData.readiness,
+      });
+    });
+    const allSportStages = tournaments.map((t) =>
+      getSportAuctionStage({ status: t.status })
+    );
+    const allInSetup = [...allFestivalStages, ...allSportStages].every(
+      (s) => s === AUCTION_STAGE.SETUP
+    );
+    if (allInSetup) {
+      return "Auctions exist but are still in setup. They will appear here once setup is complete and the auction is ready or live.";
+    }
+    if (selectedType !== "all") {
+      return `No ${selectedType === "festival" ? "Festival" : "Sport"} Auctions match this filter. Try switching to "All Auctions".`;
+    }
+    return "No auctions are currently visible. Check back once an auction is ready or live.";
+  })();
+
   return (
     <Stack spacing={3}>
       <Box>
@@ -258,11 +287,8 @@ export default function AuctionDirectory() {
         </Tabs>
       </Card>
 
-      {!entries.length ? (
-        <Alert severity="info">
-          No auctions match this view yet. Check back after a Festival or Sport
-          Tournament is set up.
-        </Alert>
+      {emptyMessage ? (
+        <Alert severity="info">{emptyMessage}</Alert>
       ) : (
         <Box
           sx={{

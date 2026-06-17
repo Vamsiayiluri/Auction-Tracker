@@ -159,7 +159,7 @@ export default function SpectatorProductDashboard({ data }) {
                 secondary={outcome.context}
                 status={outcome.outcome}
                 statusColor={outcome.outcome === "sold" ? "success" : "warning"}
-                actionLabel="View Auction Details"
+                actionLabel="View Results"
                 onAction={() => navigate(outcome.route)}
               />
             ))}

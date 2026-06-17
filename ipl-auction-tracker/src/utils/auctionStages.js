@@ -121,10 +121,28 @@ export const shouldShowResults = ({ stage, resultCount = 0 } = {}) =>
   stage === AUCTION_STAGE.COMPLETED || Number(resultCount) > 0;
 
 export const shouldShowInAuctionDirectory = (stage) =>
-  stage === AUCTION_STAGE.SETUP ||
   stage === AUCTION_STAGE.READY ||
   stage === AUCTION_STAGE.LIVE ||
   stage === AUCTION_STAGE.COMPLETED;
+
+export const getSportAuctionStageFromState = ({
+  tournament,
+  readiness,
+  auction,
+  status,
+  readinessReady,
+} = {}) =>
+  getSportAuctionStage({
+    status:
+      status ||
+      auction?.tournament?.status ||
+      auction?.status ||
+      tournament?.status,
+    readinessReady:
+      readinessReady !== undefined
+        ? readinessReady
+        : readiness?.ready ?? tournament?.readiness?.ready,
+  });
 
 export const getStageLabel = (stage) => {
   if (stage === AUCTION_STAGE.READY) return "Ready to Launch";

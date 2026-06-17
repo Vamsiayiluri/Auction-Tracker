@@ -4,9 +4,12 @@ import {
   Alert,
   Button,
   CircularProgress,
+  Divider,
   InputAdornment,
+  Link,
   Stack,
   TextField,
+  Typography,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
@@ -15,7 +18,7 @@ import api from "../utils/api";
 
 export default function ChangePassword() {
   const navigate = useNavigate();
-  const { updateUser } = useAuth();
+  const { updateUser, logout } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
@@ -86,6 +89,20 @@ export default function ChangePassword() {
           {busy ? <CircularProgress size={22} color="inherit" /> : "Change password"}
         </Button>
       </Stack>
+      <Divider sx={{ my: 2 }} />
+      <Typography variant="body2" color="text.secondary" textAlign="center">
+        Need to use a different account?{" "}
+        <Link
+          component="button"
+          fontWeight={600}
+          onClick={() => {
+            logout();
+            navigate("/login", { replace: true });
+          }}
+        >
+          Sign Out
+        </Link>
+      </Typography>
     </AuthLayout>
   );
 }

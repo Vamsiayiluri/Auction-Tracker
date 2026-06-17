@@ -39,6 +39,12 @@ import {
   shouldApplyAuctionSnapshot,
 } from "../utils/auctionSynchronization";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import {
+  getSportAuctionStageFromState,
+  isSetupStage,
+  isReadyStage,
+  isCompletedStage,
+} from "../utils/auctionStages";
 
 const credits = (value) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
@@ -69,6 +75,7 @@ export default function SportAuctionArena() {
   const [activeAction, setActiveAction] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [connected, setConnected] = useState(socket.connected);
   const [roomJoined, setRoomJoined] = useState(false);
   const [error, setError] = useState("");
@@ -80,7 +87,7 @@ export default function SportAuctionArena() {
     if (loadInFlight.current) {
       queuedLoad.current = true;
       queuedForceState.current = queuedForceState.current || forceState;
-      return;
+      return false;
     }
     loadInFlight.current = true;
     if (background) setRefreshing(true);
@@ -109,11 +116,13 @@ export default function SportAuctionArena() {
         setClockOffsetMs(getServerClockOffsetMs(nextState.serverTime));
       }
       setError("");
+      return true;
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
           "Unable to synchronize the Sport Auction."
       );
+      return false;
     } finally {
       loadInFlight.current = false;
       setLoading(false);
@@ -126,6 +135,24 @@ export default function SportAuctionArena() {
       }
     }
   }, [sportTournamentId]);
+
+  const manualRefresh = useCallback(async () => {
+    if (refreshing || busy) return;
+    setNotice("");
+    const success = await load({ background: true, forceState: true });
+    if (success) {
+      setLastUpdated(new Date());
+      setNotice("Live auction updated.");
+      if (socket.connected && !roomJoined) {
+        socket.emit("join-sport-auction", { sportTournamentId }, (response) => {
+          setRoomJoined(Boolean(response?.success));
+          if (response?.serverTime) {
+            setClockOffsetMs(getServerClockOffsetMs(response.serverTime));
+          }
+        });
+      }
+    }
+  }, [busy, load, refreshing, roomJoined, sportTournamentId]);
 
   useEffect(() => {
     let active = true;
@@ -284,6 +311,7 @@ export default function SportAuctionArena() {
   const canManage = Boolean(state?.viewer?.canManage);
   const canBid = Boolean(state?.viewer?.canBid);
   const viewerTeamId = state?.viewer?.sportTeamId;
+  const sportStage = getSportAuctionStageFromState({ tournament: state?.tournament, auction: state });
   const ownTeam = state?.teams?.find(
     ({ sportTeamId }) => sportTeamId === viewerTeamId
   );
@@ -422,7 +450,7 @@ export default function SportAuctionArena() {
     );
   }
 
-  if (state?.tournament?.status === "auction_completed") {
+  if (isCompletedStage(sportStage)) {
     return (
       <ProductStateCard
         eyebrow="Sport Auction"
@@ -438,17 +466,44 @@ export default function SportAuctionArena() {
     );
   }
 
-  if (
-    !canManage &&
-    !["auction_live", "auction_paused"].includes(state?.tournament?.status)
-  ) {
+  if (isSetupStage(sportStage) && canManage) {
     return (
       <ProductStateCard
         eyebrow="Sport Auction"
-        title={canBid ? "Waiting For Auction Launch" : "Sport Auction Not Started"}
+        title="Tournament Setup Incomplete"
+        message="Complete the tournament setup before the live auction can begin. Teams, credits, and the player pool must be configured."
+        actionLabel="Continue Tournament Setup"
+        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}
+        secondaryActionLabel="View Tournament Overview"
+        onSecondaryAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+      />
+    );
+  }
+
+  if (isReadyStage(sportStage) && !canManage) {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title={canBid ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
         message={
           canBid
-            ? "Your team is assigned, but this Sport auction is not live yet. The organizer may still be finishing team setup, budget configuration, or pool generation."
+            ? "The auction is fully configured and your team is ready. The tournament organiser will start bidding shortly."
+            : "The Sport auction is configured and ready to launch. Bidding will begin once the organiser opens the first round."
+        }
+        actionLabel="Return To Tournament Overview"
+        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+      />
+    );
+  }
+
+  if (!canManage && isSetupStage(sportStage)) {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title={canBid ? "Waiting For Tournament Setup" : "Sport Auction In Setup"}
+        message={
+          canBid
+            ? "Your team is assigned, but this Sport auction is not ready yet. The organiser may still be finishing team setup, budget configuration, or pool generation."
             : "This Sport auction has not started yet. Return to the Tournament overview for the current setup status."
         }
         actionLabel="Return To Tournament Overview"
@@ -462,7 +517,7 @@ export default function SportAuctionArena() {
       {refreshing && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
       <SportArenaHeader
         tournamentName={state?.tournament?.name}
-        status={status}
+        stage={sportStage}
         connected={connected}
         roomJoined={roomJoined}
         progress={progress}
@@ -502,9 +557,15 @@ export default function SportAuctionArena() {
         </Alert>
       )}
 
+      {isReadyStage(sportStage) && canManage && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          The Sport auction is configured and ready. Select a player below to start the first bidding round.
+        </Alert>
+      )}
+
       {canManage && (
         <OwnerLifecycleControls
-          status={state?.tournament?.status}
+          status={status}
           current={current}
           busy={busy}
           activeAction={activeAction}
@@ -529,6 +590,9 @@ export default function SportAuctionArena() {
           festivalTeamName={tournamentDetails?.festivalTeam?.name}
           timeLeft={timeLeft}
           formatCredits={credits}
+          onRefresh={manualRefresh}
+          refreshing={refreshing}
+          lastUpdated={lastUpdated}
         >
           {canBid && (
             <CaptainBidControl

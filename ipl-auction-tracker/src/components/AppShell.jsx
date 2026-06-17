@@ -390,8 +390,13 @@ const AppShell = ({ children }) => {
               },
             }}
           >
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography fontWeight={800}>{displayName}</Typography>
+            <Box sx={{ px: 2, py: 1.5, overflow: "hidden" }}>
+              <Typography
+                fontWeight={800}
+                sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {displayName}
+              </Typography>
               <Typography variant="body2" color="text.secondary">
                 {roleLabel}
               </Typography>
@@ -409,7 +414,7 @@ const AppShell = ({ children }) => {
                   <Typography variant="body2">{item.label}</Typography>
                   {item.disabled && (
                     <Typography variant="caption" color="text.secondary">
-                      Coming soon
+                      Planned for a future update
                     </Typography>
                   )}
                 </Box>

@@ -40,13 +40,14 @@ export default function AuctionContextNavigation({
       ["Auction Details", hub],
     ],
   };
-  const items = (stageItems[stage] || [
-    ["Overview", commandCenter],
-    ["Setup", management],
-    ["Auction Details", hub],
-    ["Live Auction", arena],
-    ["Results", results],
-  ]).filter((item) => item && Boolean(item[1]));
+  if (stage && !stageItems[stage] && process.env.NODE_ENV !== "production") {
+    console.error(
+      `[AuctionContextNavigation] Unrecognized stage "${stage}". Falling back to SETUP navigation. Expected one of: ${Object.keys(stageItems).join(", ")}.`
+    );
+  }
+  const items = (stageItems[stage] || stageItems[AUCTION_STAGE.SETUP]).filter(
+    (item) => item && Boolean(item[1]),
+  );
 
   return (
     <Stack

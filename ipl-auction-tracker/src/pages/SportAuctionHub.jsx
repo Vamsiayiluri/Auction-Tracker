@@ -41,6 +41,7 @@ import {
 } from "../components/AuctionHubPrimitives";
 import { formatAuctionValue } from "../utils/auctionHub";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import { getSportAuctionStageFromState, isSetupStage, isReadyStage } from "../utils/auctionStages";
 
 const sections = ["Overview", "Teams", "Bid History", "Results", "Team Assignments", "Statistics"];
 
@@ -173,8 +174,15 @@ function SportAuctionHub({ initialSection = null }) {
     formatValue: formatAuctionValue,
   });
 
+  const sportStage = getSportAuctionStageFromState({
+    tournament,
+    auction,
+    status: auctionStatus,
+  });
+  const hasResults = soldRounds.length > 0 || unsoldRounds.length > 0;
+
   const routes = {
-    commandCenter: canManage ? `/sport-tournaments/${id}/command-center` : null,
+    commandCenter: canManage ? `/sport-tournaments/${id}` : null,
     management: canManage ? `/sport-tournaments/${id}/manage` : null,
     hub: `/sport-tournaments/${id}/auction-hub`,
     arena: `/auctions/sports/${id}`,
@@ -198,20 +206,37 @@ function SportAuctionHub({ initialSection = null }) {
     );
   }
 
-  if (
-    !canManage &&
-    !["auction_live", "auction_paused", "auction_completed"].includes(
-      auctionStatus
-    )
-  ) {
+  if (canManage && isSetupStage(sportStage)) {
     return (
       <ProductStateCard
         eyebrow="Sport Auction"
-        title={canBid ? "Waiting For Auction Launch" : "Sport Auction Not Started"}
+        title="Auction Setup Incomplete"
+        message="Complete team assignment, budget configuration, and pool generation before Auction Details or Results become meaningful."
+        actionLabel="Continue Tournament Setup"
+        onAction={() => navigate(`/sport-tournaments/${id}/manage`)}
+        secondaryActionLabel="View Tournament Overview"
+        onSecondaryAction={() => navigate(`/sport-tournaments/${id}`)}
+      />
+    );
+  }
+
+  if (!canManage && (isSetupStage(sportStage) || isReadyStage(sportStage))) {
+    return (
+      <ProductStateCard
+        eyebrow="Sport Auction"
+        title={
+          isReadyStage(sportStage)
+            ? canBid ? "Auction Ready — Waiting to Launch" : "Auction Launching Soon"
+            : canBid ? "Waiting For Tournament Setup" : "Sport Auction In Setup"
+        }
         message={
-          canBid
-            ? "Your team is assigned, but the Sport auction is not ready yet. Setup, budgets, and the auction pool may still be in progress."
-            : "This Sport auction is not live yet. The Tournament overview shows the current setup status."
+          isReadyStage(sportStage)
+            ? canBid
+              ? "The auction is fully configured and your team is ready. The tournament organiser will start bidding shortly."
+              : "The auction is configured and ready to launch. Bidding will begin once the organiser opens the first round."
+            : canBid
+              ? "Your team is assigned, but the Sport auction is not ready yet. Setup, budgets, and the auction pool may still be in progress."
+              : "This Sport auction is not live yet. The Tournament overview shows the current setup status."
         }
         actionLabel="Return To Tournament Overview"
         onAction={() => navigate(`/sport-tournaments/${id}`)}
@@ -266,7 +291,11 @@ function SportAuctionHub({ initialSection = null }) {
             </Stack>
           </Stack>
           <Box sx={{ mt: 2 }}>
-            <AuctionContextNavigation {...routes} />
+            <AuctionContextNavigation
+              {...routes}
+              stage={sportStage}
+              hasResults={hasResults}
+            />
           </Box>
         </CardContent>
       </Card>

@@ -30,6 +30,7 @@ import LiveBidStream from "./FestivalAuctionArena/LiveBidStream";
 import QueueSummary from "./FestivalAuctionArena/QueueSummary";
 import RecentResultsStrip from "./FestivalAuctionArena/RecentResultsStrip";
 import { LoadingStateCard, ProductStateCard } from "./ProductState";
+import { getFestivalAuctionStage, isSetupStage, isReadyStage } from "../utils/auctionStages";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -59,6 +60,8 @@ export default function MainFestivalAuction({
   const [activeAction, setActiveAction] = useState("");
   const [connected, setConnected] = useState(socket.connected);
   const [roomJoined, setRoomJoined] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [expiryConfirmationDelayed, setExpiryConfirmationDelayed] =
     useState(false);
   const actionInFlight = useRef(false);
@@ -97,17 +100,39 @@ export default function MainFestivalAuction({
         setClockOffsetMs(
           getServerClockOffsetMs(currentResponse.data.data?.serverTime)
         );
+        return true;
       } catch (requestError) {
         setError(
           requestError.response?.data?.message ||
             "Unable to load the Main Festival Auction."
         );
+        return false;
       } finally {
         setLoading(false);
       }
     },
     [festivalId]
   );
+
+  const manualRefresh = useCallback(async () => {
+    if (refreshing || actionInFlight.current) return;
+    setRefreshing(true);
+    setNotice("");
+    const success = await loadAuction({ refreshHistory: true, forceState: true });
+    if (success) {
+      setLastUpdated(new Date());
+      setNotice("Live auction updated.");
+      if (socket.connected && !roomJoined) {
+        socket.emit("join-festival-auction", { festivalId }, (response) => {
+          setRoomJoined(Boolean(response?.success));
+          if (response?.serverTime) {
+            setClockOffsetMs(getServerClockOffsetMs(response.serverTime));
+          }
+        });
+      }
+    }
+    setRefreshing(false);
+  }, [festivalId, loadAuction, refreshing, roomJoined]);
 
   useEffect(() => {
     let active = true;
@@ -416,7 +441,13 @@ export default function MainFestivalAuction({
   const exitArena = () =>
     navigate(`/festivals/${festivalId}/auction-hub`);
   const returnToFestivalOverview = () =>
-    navigate(`/festivals/${festivalId}/command-center`);
+    isAdmin
+      ? navigate(`/festivals/${festivalId}/command-center`)
+      : navigate(`/festivals/${festivalId}/auction-hub`);
+
+  const festivalStage = getFestivalAuctionStage({ auctionStatus: status });
+  const isSetup = isSetupStage(festivalStage);
+  const isReady = isReadyStage(festivalStage);
 
   if (loading && !state) {
     return (
@@ -441,7 +472,20 @@ export default function MainFestivalAuction({
     );
   }
 
-  if (status === "setup" && !isAdmin) {
+  if (isSetup) {
+    if (isAdmin) {
+      return (
+        <ProductStateCard
+          eyebrow="Festival Auction"
+          title="Auction Setup Incomplete"
+          message="Complete the Festival setup before the live auction can begin. Teams, budgets, and the participant pool must be configured."
+          actionLabel="Continue Festival Setup"
+          onAction={() => navigate(`/festivals/${festivalId}/manage`)}
+          secondaryActionLabel="View Festival Overview"
+          onSecondaryAction={returnToFestivalOverview}
+        />
+      );
+    }
     return (
       <ProductStateCard
         eyebrow="Festival Auction"
@@ -450,6 +494,22 @@ export default function MainFestivalAuction({
           isOwner
             ? "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete."
             : "The Festival auction has not started yet. Check back once the Administrator launches it."
+        }
+        actionLabel="Return To Festival Overview"
+        onAction={returnToFestivalOverview}
+      />
+    );
+  }
+
+  if (isReady && !isAdmin) {
+    return (
+      <ProductStateCard
+        eyebrow="Festival Auction"
+        title={isOwner ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
+        message={
+          isOwner
+            ? "The Festival auction is configured and ready. The administrator will begin bidding shortly. Prepare your team strategy."
+            : "The Festival auction is configured and ready to launch. Bidding will begin once the administrator starts the first round."
         }
         actionLabel="Return To Festival Overview"
         onAction={returnToFestivalOverview}
@@ -471,6 +531,12 @@ export default function MainFestivalAuction({
         onExit={exitArena}
         onViewResults={viewResults}
       />
+
+      {isReady && isAdmin && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          The Festival Auction is configured and ready. Select a participant below to start the first bidding round.
+        </Alert>
+      )}
 
       {error && (
         <Alert
@@ -525,6 +591,9 @@ export default function MainFestivalAuction({
           leadingBid={leadingBid}
           timeLeft={timeLeft}
           formatMoney={formatMoney}
+          onRefresh={manualRefresh}
+          refreshing={refreshing}
+          lastUpdated={lastUpdated}
         >
           {isOwner && (
             <OwnerBidControls

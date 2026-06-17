@@ -42,6 +42,11 @@ import {
 } from "../utils/auctionSynchronization";
 import { socket } from "../webSocket/socket";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import {
+  getFestivalAuctionStage,
+  isSetupStage,
+  isCompletedStage,
+} from "../utils/auctionStages";
 
 const sections = ["Overview", "Teams", "Bid History", "Results", "Statistics"];
 
@@ -166,6 +171,11 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     setSearchParams(value === "Overview" ? {} : { section: value });
   };
   const auctionStatus = state?.config?.auctionStatus || "setup";
+  const festivalStage = getFestivalAuctionStage({
+    auctionStatus,
+    festivalStatus: festival?.status,
+  });
+  const hasResults = results.length > 0;
 
   if (loading && !state) {
     return (
@@ -176,18 +186,31 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     );
   }
 
-  if (auctionStatus === "setup" && !state?.viewer?.isAdmin) {
+  if (isSetupStage(festivalStage)) {
+    if (state?.viewer?.isAdmin) {
+      return (
+        <ProductStateCard
+          eyebrow="Festival Auction"
+          title="Auction Setup Incomplete"
+          message="Teams, budgets, and the participant pool must be configured before Auction Details becomes meaningful. Complete Festival setup first."
+          actionLabel="Continue Festival Setup"
+          onAction={() => navigate(`/festivals/${festivalId}/manage`)}
+          secondaryActionLabel="View Festival Overview"
+          onSecondaryAction={() => navigate(`/festivals/${festivalId}/command-center`)}
+        />
+      );
+    }
     return (
       <ProductStateCard
         eyebrow="Festival Auction"
-        title={state?.viewer?.isOwner ? "Waiting For Festival Setup" : "Auction Not Started Yet"}
+        title={state?.viewer?.isOwner ? "Waiting For Festival Setup" : "Festival Auction in Setup"}
         message={
           state?.viewer?.isOwner
             ? "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete."
-            : "The Festival is still being prepared. Auction details, bid history, and results will appear after launch."
+            : "The Festival is being prepared by the Administrator. Auction details, bid history, and results will appear once the auction launches."
         }
-        actionLabel="View Festival Overview"
-        onAction={() => navigate(`/festivals/${festivalId}/command-center`)}
+        actionLabel="Browse Auctions"
+        onAction={() => navigate("/auctions")}
       />
     );
   }
@@ -230,13 +253,13 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
               variant="contained"
               onClick={() =>
                 navigate(
-                  auctionStatus === "completed"
+                  isCompletedStage(festivalStage)
                     ? `/festivals/${festivalId}/results`
                     : `/auctions/festivals/${festivalId}`
                 )
               }
             >
-              {auctionStatus === "completed" ? "View Results" : "Open Live Auction"}
+              {isCompletedStage(festivalStage) ? "View Results" : "Open Live Auction"}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.5, pt: 1.5, borderTop: 1, borderColor: "divider" }}>
@@ -252,6 +275,8 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
               hub={`/festivals/${festivalId}/auction-hub`}
               arena={`/auctions/festivals/${festivalId}`}
               results={`/festivals/${festivalId}/results`}
+              stage={festivalStage}
+              hasResults={hasResults}
             />
           </Box>
         </CardContent>

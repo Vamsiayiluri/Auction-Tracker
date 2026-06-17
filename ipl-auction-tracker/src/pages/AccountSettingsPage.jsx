@@ -1,39 +1,61 @@
 import {
-  Alert,
   Box,
+  Button,
   Card,
+  CardActionArea,
   CardContent,
   Chip,
   Stack,
   Typography,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 
 const sections = [
   {
     title: "Preferences",
     description: "Personal defaults for how you use AuctionArena.",
+    planned: true,
   },
   {
     title: "Notifications",
     description: "Email and in-app notification preferences.",
+    planned: true,
   },
   {
     title: "Display Options",
     description: "Theme, density, and accessibility display preferences.",
+    planned: true,
   },
   {
     title: "Account Security",
     description: "Password, sessions, and account protection options.",
+    planned: false,
+    actions: [
+      {
+        label: "Change Password",
+        description: "Update your account password.",
+        route: "/change-password",
+      },
+    ],
   },
 ];
 
 export default function AccountSettingsPage() {
+  const navigate = useNavigate();
+
   return (
     <Stack spacing={3}>
-      <Alert severity="info">
-        Account settings are prepared for future preferences. No account,
-        password, notification, or security changes are available in this phase.
-      </Alert>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Box>
+          <Typography variant="h5" fontWeight={800}>Account Settings</Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Manage password and review upcoming account options.
+          </Typography>
+        </Box>
+        <Button variant="outlined" onClick={() => navigate("/dashboard")}>
+          Back to Dashboard
+        </Button>
+      </Stack>
 
       <Box
         sx={{
@@ -45,7 +67,7 @@ export default function AccountSettingsPage() {
         {sections.map((section) => (
           <Card key={section.title} variant="outlined" sx={{ borderRadius: 3 }}>
             <CardContent>
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
+              <Stack direction="row" justifyContent="space-between" spacing={2} sx={{ mb: section.actions?.length ? 2 : 0 }}>
                 <Box>
                   <Typography variant="h6" fontWeight={900}>
                     {section.title}
@@ -54,8 +76,18 @@ export default function AccountSettingsPage() {
                     {section.description}
                   </Typography>
                 </Box>
-                <Chip label="Coming Soon" size="small" />
+                {section.planned && <Chip label="Planned" size="small" />}
               </Stack>
+              {section.actions?.map((action) => (
+                <CardActionArea
+                  key={action.label}
+                  onClick={() => navigate(action.route)}
+                  sx={{ borderRadius: 2, p: 1.5, mt: 1 }}
+                >
+                  <Typography variant="body2" fontWeight={700}>{action.label}</Typography>
+                  <Typography variant="caption" color="text.secondary">{action.description}</Typography>
+                </CardActionArea>
+              ))}
             </CardContent>
           </Card>
         ))}

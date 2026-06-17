@@ -152,7 +152,7 @@ export default function FestivalViewerOverview({ festivalId, ownerView = false }
             {ownerTeam && (
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
                 <Chip label={`Remaining: ${formatMoney(ownerTeam.remainingBudget)}`} />
-                <Chip label={`Roster: ${ownerTeam.currentRosterCount}`} />
+                <Chip label={`Team Members: ${ownerTeam.currentRosterCount}`} />
                 <Chip label={`Purchased: ${ownerTeam.playersPurchased}`} />
                 <Chip label={`Retentions: ${ownerTeam.retentions}`} />
               </Stack>

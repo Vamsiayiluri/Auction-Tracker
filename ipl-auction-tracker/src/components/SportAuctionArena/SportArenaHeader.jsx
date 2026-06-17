@@ -7,13 +7,29 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import {
+  isLiveStage,
+  isReadyStage,
+  isCompletedStage,
+  AUCTION_STAGE,
+} from "../../utils/auctionStages";
 
-const labelStatus = (status) =>
-  String(status || "setup").replaceAll("_", " ");
+const stageLabel = (stage) => {
+  if (stage === AUCTION_STAGE.LIVE) return "Auction Live";
+  if (stage === AUCTION_STAGE.READY) return "Ready to Launch";
+  if (stage === AUCTION_STAGE.COMPLETED) return "Auction Completed";
+  return "Auction Setup";
+};
+
+const stageChipColor = (stage) => {
+  if (isLiveStage(stage)) return "success";
+  if (isReadyStage(stage)) return "warning";
+  return "default";
+};
 
 export default function SportArenaHeader({
   tournamentName,
-  status,
+  stage,
   connected,
   roomJoined,
   progress,
@@ -23,7 +39,7 @@ export default function SportArenaHeader({
   onExit,
 }) {
   const connectionReady = connected && roomJoined;
-  const completed = status === "auction_completed" || status === "completed";
+  const completed = isCompletedStage(stage);
 
   return (
     <Card variant="outlined" sx={{ mb: 2 }}>
@@ -44,15 +60,8 @@ export default function SportArenaHeader({
             )}
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
               <Chip
-                color={
-                  status === "auction_live"
-                    ? "success"
-                    : status === "pending_finalization" ||
-                        status === "auction_paused"
-                      ? "warning"
-                      : "default"
-                }
-                label={labelStatus(status)}
+                color={stageChipColor(stage)}
+                label={stageLabel(stage)}
               />
               <Chip
                 color={connectionReady ? "success" : "warning"}
@@ -75,9 +84,18 @@ export default function SportArenaHeader({
               />
             </Stack>
           </Box>
-          <Button color="inherit" onClick={onExit} sx={{ alignSelf: { lg: "center" } }}>
-            Auction Details
-          </Button>
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            alignSelf={{ lg: "center" }}
+            flexWrap="wrap"
+            useFlexGap
+          >
+            <Button color="inherit" onClick={onExit} sx={{ alignSelf: { lg: "center" } }}>
+              Auction Details
+            </Button>
+          </Stack>
         </Stack>
       </CardContent>
     </Card>

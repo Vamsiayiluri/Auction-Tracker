@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   LinearProgress,
   Stack,
   Typography,
@@ -19,6 +18,7 @@ import {
   DashboardSection,
   EmptyDashboardState,
 } from "../components/ProductDashboard/DashboardPrimitives";
+import { LoadingStateCard } from "../components/ProductState";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   formatStatus,
@@ -179,12 +179,10 @@ export default function FestivalCommandCenter() {
 
   if (data.loading) {
     return (
-      <Stack alignItems="center" spacing={2} sx={{ py: 10 }}>
-        <CircularProgress size={36} />
-        <Typography color="text.secondary">
-          Loading Festival operations...
-        </Typography>
-      </Stack>
+      <LoadingStateCard
+        title="Loading Festival Operations"
+        message="Preparing Festival setup, Sport Tournaments, and auction status."
+      />
     );
   }
 

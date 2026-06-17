@@ -12,7 +12,6 @@ import {
   formatValue,
   formatStatus,
   participantName,
-  sportArenaRoute,
   sportManagementRoute,
   statusColor,
 } from "./dashboardHelpers";
@@ -39,8 +38,8 @@ export default function OwnerProductDashboard({ data }) {
     ? {
         title: `Join ${primaryFestival.festival.name}`,
         description: `${participantName(primaryFestival.current.current)} is currently active in the Main Festival Auction.`,
-        label: "View My Auction Details",
-        route: `/festivals/${primaryFestival.festival.id}/auction-hub`,
+        label: "Join Festival Auction",
+        route: `/auctions/festivals/${primaryFestival.festival.id}`,
       }
     : ownerFestivalStates.some(
         ({ current }) => current?.config?.auctionStatus === "setup"
@@ -49,12 +48,12 @@ export default function OwnerProductDashboard({ data }) {
           title: "Waiting For Festival Setup",
           description:
             "The Festival Administrator is still preparing the Festival. You will be able to participate once setup is complete.",
-          label: "View Festival Overview",
+          label: "View Auction Details",
           route: `/festivals/${
             ownerFestivalStates.find(
               ({ current }) => current?.config?.auctionStatus === "setup"
             )?.festival.id
-          }/command-center`,
+          }/auction-hub`,
         }
     : primarySport
       ? {
@@ -89,11 +88,11 @@ export default function OwnerProductDashboard({ data }) {
       status: tournament.status,
       route:
         tournament.status === "ready"
-          ? sportArenaRoute(tournament.id)
+          ? `/sport-tournaments/${tournament.id}/auction-hub`
           : sportManagementRoute(tournament.id),
       action:
         tournament.status === "ready"
-          ? "Open Live Auction"
+          ? "Review & Launch"
           : tournament.status === "auction_completed"
             ? "Review Results"
             : "Continue Setup",
@@ -146,17 +145,9 @@ export default function OwnerProductDashboard({ data }) {
                   statusColor={statusColor(
                     festivalState?.current?.config?.auctionStatus
                   )}
-                  actionLabel={
-                    festivalState?.current?.config?.auctionStatus === "setup"
-                      ? "View Festival Overview"
-                      : "View Auction Details"
-                  }
+                  actionLabel="View Auction Details"
                   onAction={() =>
-                    navigate(
-                      festivalState?.current?.config?.auctionStatus === "setup"
-                        ? `/festivals/${context.festivalId}/command-center`
-                        : `/festivals/${context.festivalId}/auction-hub`
-                    )
+                    navigate(`/festivals/${context.festivalId}/auction-hub`)
                   }
                 />
               );

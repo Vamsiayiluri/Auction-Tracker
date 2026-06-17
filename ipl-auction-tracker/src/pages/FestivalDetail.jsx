@@ -57,9 +57,12 @@ import {
   getStoredSetupStep,
 } from "../utils/festivalWorkspace";
 import {
+  AUCTION_STAGE,
   getFestivalAuctionStageFromState,
   getStageLabel,
   isSetupStage,
+  isLiveStage,
+  isCompletedStage,
 } from "../utils/auctionStages";
 import { LoadingStateCard } from "../components/ProductState";
 
@@ -672,6 +675,17 @@ export default function FestivalDetail() {
           </Box>
         </CardContent>
       </Card>
+
+      {isLiveStage(festivalStage) && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Festival configuration is locked while the auction is active. Structural changes are disabled — use Auction Details to monitor bidding.
+        </Alert>
+      )}
+      {isCompletedStage(festivalStage) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This Festival auction is complete. Setup sections are read-only. Review results and team compositions in Auction Details.
+        </Alert>
+      )}
 
       <Card variant="outlined" sx={{ mb: 2 }}>
         <Tabs
