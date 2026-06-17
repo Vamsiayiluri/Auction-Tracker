@@ -124,13 +124,22 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     [history]
   );
   const lastResult = results[0] || null;
-  const sold = results.filter(({ result }) => result.outcome === "sold");
-  const unsold = results.filter(({ result }) => result.outcome === "unsold");
+  const sold = useMemo(
+    () => results.filter(({ result }) => result.outcome === "sold"),
+    [results]
+  );
+  const unsold = useMemo(
+    () => results.filter(({ result }) => result.outcome === "unsold"),
+    [results]
+  );
   const remaining = (state?.pool?.length || 0) + (state?.unsold?.length || 0);
   const total = sold.length + unsold.length + remaining + (state?.current ? 1 : 0);
   const viewerTeamId = state?.viewer?.festivalTeamId;
-  const viewerTeam = state?.teamSummaries?.find(
-    ({ festivalTeamId }) => festivalTeamId === viewerTeamId
+  const viewerTeam = useMemo(
+    () => state?.teamSummaries?.find(
+      ({ festivalTeamId }) => festivalTeamId === viewerTeamId
+    ),
+    [state?.teamSummaries, viewerTeamId]
   );
   const bids = useMemo(
     () =>
@@ -148,24 +157,37 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
         ),
     [history]
   );
-  const saleValues = sold.map(({ result }) => Number(result.finalAmount || 0));
-  const totalSpent = saleValues.reduce((sum, value) => sum + value, 0);
-  const filteredRounds = history.filter((round) => {
-    const matchesTeam =
-      teamFilter === "all" ||
-      String(round.result?.festivalTeamId) === teamFilter ||
-      (round.bids || []).some((bid) => String(bid.festivalTeamId) === teamFilter);
-    const matchesParticipant = participantName(round)
-      .toLowerCase()
-      .includes(participantFilter.trim().toLowerCase());
-    return matchesTeam && matchesParticipant;
-  });
-  const activityEntries = buildAuctionActivity({
-    history,
-    status: state?.config?.auctionStatus,
-    label: "Festival Auction",
-    formatValue: formatAuctionValue,
-  });
+  const saleValues = useMemo(
+    () => sold.map(({ result }) => Number(result.finalAmount || 0)),
+    [sold]
+  );
+  const totalSpent = useMemo(
+    () => saleValues.reduce((sum, value) => sum + value, 0),
+    [saleValues]
+  );
+  const filteredRounds = useMemo(
+    () => history.filter((round) => {
+      const matchesTeam =
+        teamFilter === "all" ||
+        String(round.result?.festivalTeamId) === teamFilter ||
+        (round.bids || []).some((bid) => String(bid.festivalTeamId) === teamFilter);
+      const matchesParticipant = participantName(round)
+        .toLowerCase()
+        .includes(participantFilter.trim().toLowerCase());
+      return matchesTeam && matchesParticipant;
+    }),
+    [history, teamFilter, participantFilter]
+  );
+  const activityEntries = useMemo(
+    () => buildAuctionActivity({
+      history,
+      status: state?.config?.auctionStatus,
+      label: "Festival Auction",
+      formatValue: formatAuctionValue,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [history, state?.config?.auctionStatus]
+  );
   const changeSection = (_, value) => {
     setSection(value);
     setSearchParams(value === "Overview" ? {} : { section: value });

@@ -77,42 +77,31 @@ export default function SportTournamentWorkspace() {
     incrementPercentage: 20,
     reauctionEnabled: true,
   });
+  // Tracks which lazy sections have been fetched at least once this session
+  const loadedSections = useRef(new Set());
+  const [tabLoading, setTabLoading] = useState(false);
 
-  const loadWorkspace = useCallback(async () => {
+  // ─── Core load (tournament + readiness + auction) ────────────────────────
+  // Eligibility, budgets, and pool are deferred to first tab visit (see below).
+  const loadCore = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [
-        tournamentResponse,
-        eligibilityResponse,
-        readinessResponse,
-        budgetResponse,
-        poolResponse,
-        auctionResponse,
-      ] =
+      const [tournamentResponse, readinessResponse, auctionResponse] =
         await Promise.all([
           api.get(`/v2/sport-tournaments/${sportTournamentId}`),
-          api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`),
           api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
-          api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`),
-          api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`),
           api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`),
         ]);
       const nextTournament = tournamentResponse.data.data;
       setTournament(nextTournament);
-      setEligibility(eligibilityResponse.data.data);
       setReadiness(readinessResponse.data.data);
-      setBudgets(budgetResponse.data.data);
-      setPool(poolResponse.data.data);
       setAuctionState(auctionResponse.data.data);
       if (auctionResponse.data.data?.config) {
         setAuctionConfig({
-          timerDurationSeconds:
-            auctionResponse.data.data.config.timerDurationSeconds,
-          incrementPercentage:
-            auctionResponse.data.data.config.incrementPercentage,
-          reauctionEnabled:
-            auctionResponse.data.data.config.reauctionEnabled,
+          timerDurationSeconds: auctionResponse.data.data.config.timerDurationSeconds,
+          incrementPercentage: auctionResponse.data.data.config.incrementPercentage,
+          reauctionEnabled: auctionResponse.data.data.config.reauctionEnabled,
         });
       }
       setSettings({
@@ -130,18 +119,6 @@ export default function SportTournamentWorkspace() {
           ])
         )
       );
-      setBudgetEdits(
-        Object.fromEntries(
-          (budgetResponse.data.data?.teams || []).map((team) => [
-            team.sportTeamId,
-            {
-              allocatedCredits: team.allocatedCredits,
-              adjustmentCredits: team.adjustmentCredits,
-              status: team.status === "missing" ? "active" : team.status,
-            },
-          ])
-        )
-      );
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -153,17 +130,114 @@ export default function SportTournamentWorkspace() {
   }, [sportTournamentId]);
 
   useEffect(() => {
-    loadWorkspace();
-  }, [loadWorkspace]);
+    loadCore();
+  }, [loadCore]);
 
-  const mutate = async (action, successMessage) => {
+  // ─── Targeted refresh helpers (called individually after mutations) ───────
+  const refreshTournament = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}`);
+    const nextTournament = response.data.data;
+    setTournament(nextTournament);
+    setSettings({
+      name: nextTournament.name,
+      code: nextTournament.code,
+      division: nextTournament.division,
+      participantGenderRule: nextTournament.participantGenderRule,
+      teamCount: nextTournament.teamCount,
+    });
+    setTeamEdits(
+      Object.fromEntries(
+        (nextTournament.teams || []).map((team) => [
+          team.id,
+          { name: team.name, code: team.code },
+        ])
+      )
+    );
+  }, [sportTournamentId]);
+
+  const refreshReadiness = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`);
+    setReadiness(response.data.data);
+  }, [sportTournamentId]);
+
+  const refreshEligibility = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`);
+    setEligibility(response.data.data);
+  }, [sportTournamentId]);
+
+  const refreshBudgets = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`);
+    const data = response.data.data;
+    setBudgets(data);
+    setBudgetEdits(
+      Object.fromEntries(
+        (data?.teams || []).map((team) => [
+          team.sportTeamId,
+          {
+            allocatedCredits: team.allocatedCredits,
+            adjustmentCredits: team.adjustmentCredits,
+            status: team.status === "missing" ? "active" : team.status,
+          },
+        ])
+      )
+    );
+  }, [sportTournamentId]);
+
+  const refreshPool = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`);
+    setPool(response.data.data);
+  }, [sportTournamentId]);
+
+  const refreshAuction = useCallback(async () => {
+    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`);
+    const data = response.data.data;
+    setAuctionState(data);
+    if (data?.config) {
+      setAuctionConfig({
+        timerDurationSeconds: data.config.timerDurationSeconds,
+        incrementPercentage: data.config.incrementPercentage,
+        reauctionEnabled: data.config.reauctionEnabled,
+      });
+    }
+  }, [sportTournamentId]);
+
+  // ─── Deferred tab loading ─────────────────────────────────────────────────
+  // Eligibility, Budgets, and Pool data are fetched on first visit to each tab.
+  // Subsequent visits skip the fetch — mutations keep the data fresh via
+  // the targeted refresh helpers above.
+  useEffect(() => {
+    const needsEligibility = ["Captains", "Eligibility", "Pool"].includes(activeSection);
+    const needsBudgets = activeSection === "Budgets";
+    const needsPool = activeSection === "Pool";
+
+    const tasks = [];
+    if (needsEligibility && !loadedSections.current.has("eligibility")) {
+      tasks.push({ key: "eligibility", fn: refreshEligibility });
+    }
+    if (needsBudgets && !loadedSections.current.has("budgets")) {
+      tasks.push({ key: "budgets", fn: refreshBudgets });
+    }
+    if (needsPool && !loadedSections.current.has("pool")) {
+      tasks.push({ key: "pool", fn: refreshPool });
+    }
+    if (tasks.length === 0) return;
+
+    setTabLoading(true);
+    Promise.all(tasks.map(({ fn }) => fn()))
+      .then(() => tasks.forEach(({ key }) => loadedSections.current.add(key)))
+      .catch(() => {/* errors surfaced through individual state setters */})
+      .finally(() => setTabLoading(false));
+  }, [activeSection, refreshEligibility, refreshBudgets, refreshPool]);
+
+  // Each mutation passes a targeted `refresh` instead of reloading all 6 endpoints.
+  const mutate = async (action, refresh, successMessage) => {
     if (mutationInFlight.current) return;
     mutationInFlight.current = true;
     setSaving(true);
     setError("");
     try {
       await action();
-      await loadWorkspace();
+      await refresh();
       setNotice(successMessage);
     } catch (requestError) {
       setError(
@@ -212,7 +286,7 @@ export default function SportTournamentWorkspace() {
     return (
       <Alert
         severity="error"
-        action={<Button onClick={loadWorkspace}>Retry</Button>}
+        action={<Button onClick={loadCore}>Retry</Button>}
       >
         {error}
       </Alert>
@@ -265,6 +339,8 @@ export default function SportTournamentWorkspace() {
     );
   }
 
+  // Settings: name/code/division/gender/teamCount → tournament shape changes,
+  // readiness blockers may change (e.g. teamCount mismatch).
   const saveSettings = () =>
     mutate(
       () =>
@@ -272,9 +348,11 @@ export default function SportTournamentWorkspace() {
           ...settings,
           teamCount: Number(settings.teamCount),
         }),
+      () => Promise.all([refreshTournament(), refreshReadiness()]),
       "Tournament settings updated."
     );
 
+  // Team rename: only tournament.teams changes.
   const saveTeam = (teamId) =>
     mutate(
       () =>
@@ -282,9 +360,12 @@ export default function SportTournamentWorkspace() {
           `/v2/sport-tournaments/${sportTournamentId}/teams/${teamId}`,
           teamEdits[teamId]
         ),
+      () => refreshTournament(),
       "Sport Team updated."
     );
 
+  // Captain assign/remove: tournament.teams (captain field) + eligibility
+  // (assignedCaptain flags) + readiness (captains-assigned count).
   const assignCaptain = (teamId, participant) =>
     mutate(
       () =>
@@ -296,9 +377,16 @@ export default function SportTournamentWorkspace() {
           : api.delete(
               `/v2/sport-tournaments/${sportTournamentId}/teams/${teamId}/captain`
             ),
+      () => Promise.all([
+        refreshTournament(),
+        // Only refresh eligibility if it has been loaded for this session
+        loadedSections.current.has("eligibility") ? refreshEligibility() : Promise.resolve(),
+        refreshReadiness(),
+      ]),
       participant ? "Captain assigned." : "Captain removed."
     );
 
+  // Budget distribution: budgets change, readiness may unblock.
   const distributeBudgets = () =>
     mutate(
       () =>
@@ -306,9 +394,11 @@ export default function SportTournamentWorkspace() {
           `/v2/sport-tournaments/${sportTournamentId}/budgets/equal-distribution`,
           { totalCredits: Number(totalCredits) }
         ),
+      () => Promise.all([refreshBudgets(), refreshReadiness()]),
       "Team credits distributed equally."
     );
 
+  // Manual budget overrides: same as distribution.
   const saveBudgets = () =>
     mutate(
       () =>
@@ -322,18 +412,26 @@ export default function SportTournamentWorkspace() {
             })
           ),
         }),
+      () => Promise.all([refreshBudgets(), refreshReadiness()]),
       "Team budgets updated."
     );
 
+  // Pool generation: pool snapshot changes, readiness may unblock.
+  // Also mark pool as loaded so subsequent tab visits don't re-fetch.
   const generatePool = () =>
     mutate(
       () =>
         api.post(
           `/v2/sport-tournaments/${sportTournamentId}/pool/generate`
         ),
+      async () => {
+        await Promise.all([refreshPool(), refreshReadiness()]);
+        loadedSections.current.add("pool");
+      },
       pool?.generated ? "Auction Pool regenerated." : "Auction Pool generated."
     );
 
+  // Auction config: only auction/current changes.
   const saveAuctionConfig = () =>
     mutate(
       () =>
@@ -345,6 +443,7 @@ export default function SportTournamentWorkspace() {
             reauctionEnabled: auctionConfig.reauctionEnabled,
           }
         ),
+      () => refreshAuction(),
       "Sport Auction configuration updated."
     );
 
@@ -353,7 +452,7 @@ export default function SportTournamentWorkspace() {
       {error && (
         <Alert
           severity="error"
-          action={<Button onClick={loadWorkspace}>Retry</Button>}
+          action={<Button onClick={loadCore}>Retry</Button>}
         >
           {error}
         </Alert>
@@ -579,7 +678,9 @@ export default function SportTournamentWorkspace() {
         </Stack>
       )}
 
-      {activeSection === "Budgets" && (
+      {activeSection === "Budgets" && (tabLoading && !budgets ? (
+        <LoadingStateCard title="Loading Budgets" message="Fetching team credit allocations." />
+      ) : (
         <Stack spacing={3}>
           {!canManage && (
             <Alert severity="info">
@@ -714,9 +815,11 @@ export default function SportTournamentWorkspace() {
             Save Manual Overrides
           </Button>
         </Stack>
-      )}
+      ))}
 
-      {activeSection === "Eligibility" && (
+      {activeSection === "Eligibility" && (tabLoading && !eligibility ? (
+        <LoadingStateCard title="Loading Eligibility" message="Checking Festival Team membership, Sport registrations, and gender rules." />
+      ) : (
         <Stack spacing={3}>
           <Alert severity="info">
             Eligibility is derived from Festival Team membership, active
@@ -774,9 +877,11 @@ export default function SportTournamentWorkspace() {
             </Stack>
           </Box>
         </Stack>
-      )}
+      ))}
 
-      {activeSection === "Pool" && (
+      {activeSection === "Pool" && (tabLoading && !pool ? (
+        <LoadingStateCard title="Loading Pool" message="Fetching pool snapshot and eligibility data." />
+      ) : (
         <Stack spacing={3}>
           {!canManage && (
             <Alert severity="info">
@@ -888,7 +993,7 @@ export default function SportTournamentWorkspace() {
             </Stack>
           </Box>
         </Stack>
-      )}
+      ))}
 
       {activeSection === "Readiness" && (
         <Stack spacing={2}>

@@ -113,7 +113,7 @@ function SportAuctionHub({ initialSection = null }) {
       socket.emit("leave-sport-auction", { sportTournamentId: Number(id) });
       socket.off("auction-state", refresh);
     };
-  }, [id, loadHub]);
+  }, [id]); // loadHub intentionally excluded: this effect only manages socket room membership
 
   const teams = useMemo(() => {
     const source = auction?.teams || tournament?.teams || [];
@@ -143,36 +143,65 @@ function SportAuctionHub({ initialSection = null }) {
     () => history.filter((round) => String(round?.result?.outcome || round?.status).toUpperCase() === "UNSOLD"),
     [history],
   );
-  const totalSpent = soldRounds.reduce(
-    (total, round) => total + Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0),
-    0,
+  const totalSpent = useMemo(
+    () => soldRounds.reduce(
+      (total, round) => total + Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0),
+      0,
+    ),
+    [soldRounds],
   );
-  const highestSale = soldRounds.reduce(
-    (highest, round) => Math.max(highest, Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0)),
-    0,
+  const highestSale = useMemo(
+    () => soldRounds.reduce(
+      (highest, round) => Math.max(highest, Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0)),
+      0,
+    ),
+    [soldRounds],
   );
-  const lowestSale = soldRounds.length
-    ? Math.min(...soldRounds.map((round) => Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0)))
-    : 0;
+  const lowestSale = useMemo(
+    () => soldRounds.length
+      ? Math.min(...soldRounds.map((round) => Number(round?.result?.finalCredits ?? round?.finalCredits ?? 0)))
+      : 0,
+    [soldRounds],
+  );
   const available = (auction?.pool || []).filter(
     ({ state: poolState, isCurrent }) => poolState === "available" && !isCurrent,
   ).length;
   const sold = Number(auction?.counts?.sold ?? soldRounds.length);
   const unsold = Number(auction?.counts?.unsold ?? unsoldRounds.length);
   const total = sold + unsold + available;
-  const viewerTeam = teams.find(
-    (team) => getTeamId(team) === Number(auction?.viewer?.sportTeamId),
+  const viewerTeam = useMemo(
+    () => teams.find((team) => getTeamId(team) === Number(auction?.viewer?.sportTeamId)),
+    [teams, auction?.viewer?.sportTeamId],
   );
   const canManage = Boolean(auction?.viewer?.canManage);
   const canBid = Boolean(auction?.viewer?.canBid);
   const auctionStatus = auction?.tournament?.status || tournament?.status;
-  const lastResult = history.find((round) => Boolean(round?.result)) || null;
-  const activityEntries = buildAuctionActivity({
-    history,
-    status: auction?.tournament?.status || tournament?.status,
-    label: "Sport Auction",
-    formatValue: formatAuctionValue,
-  });
+  const lastResult = useMemo(
+    () => history.find((round) => Boolean(round?.result)) || null,
+    [history],
+  );
+  const activityEntries = useMemo(
+    () => buildAuctionActivity({
+      history,
+      status: auction?.tournament?.status || tournament?.status,
+      label: "Sport Auction",
+      formatValue: formatAuctionValue,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [history, auction?.tournament?.status, tournament?.status],
+  );
+  // Pre-compute viewer bid count to avoid inline reduce in JSX during live socket updates
+  const myBidCount = useMemo(
+    () => viewerTeam
+      ? history.reduce(
+          (count, round) => count + (round?.bids || []).filter(
+            (bid) => Number(bid?.sportTeamId) === getTeamId(viewerTeam),
+          ).length,
+          0,
+        )
+      : 0,
+    [history, viewerTeam],
+  );
 
   const sportStage = getSportAuctionStageFromState({
     tournament,
@@ -312,15 +341,7 @@ function SportAuctionHub({ initialSection = null }) {
                 <HubMetric label="Credits Remaining" value={formatAuctionValue(viewerTeam.remainingCredits)} />
                 <HubMetric label="Players Bought" value={viewerTeam.roster?.length ?? viewerTeam.playersWon ?? 0} />
                 <HubMetric label="Players Remaining" value={viewerTeam.remainingSlots ?? "-"} />
-                <HubMetric
-                  label="My Bid Activity"
-                  value={history.reduce(
-                    (count, round) => count + (round?.bids || []).filter(
-                      (bid) => Number(bid?.sportTeamId) === getTeamId(viewerTeam),
-                    ).length,
-                    0,
-                  )}
-                />
+                <HubMetric label="My Bid Activity" value={myBidCount} />
               </HubMetrics>
             </Box>
           </CardContent>
