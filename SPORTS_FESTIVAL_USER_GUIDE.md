@@ -278,9 +278,6 @@ PLANNED: Sport Teams, captains, sport retentions
               |
               v
 PLANNED: Sport allocation auctions
-              |
-              v
-PLANNED: Competitions, schedules, matches, results
 ```
 
 ## Roster Formation Modes

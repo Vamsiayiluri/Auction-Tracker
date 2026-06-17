@@ -4,7 +4,7 @@
 
 Use incremental replacement inside the current modular monolith. Establish
 canonical identity, festival scope, and assignment-based authorization before
-adding second-level auctions or competitions. Avoid extending legacy
+adding second-level auctions. Avoid extending legacy
 `Players`, `Teams.ownerId`, and one-sport `Tournaments` into the new domain;
 that would deepen the migration cost.
 
@@ -36,7 +36,6 @@ festival team and no second financial transfer occurs.
 - Separate main financial purse accounting from sport allocation credits.
 - Couple owner assignment activation to mandatory main retention.
 - Introduce sport roster and internal sport team layers.
-- Add competition format, entry, stage, schedule, match, and scoring modules.
 - Add domain services for transactional cross-table operations.
 - Add audit logs, pagination, summary endpoints, and production observability.
 
@@ -320,107 +319,7 @@ Risks:
 - Cross-scope credit or allocation leakage.
 - Owner authorization must be derived for every socket bid.
 
-## Phase 7: Competition Formats and Entries
-
-**Complexity:** Large
-
-Objectives:
-
-- Add reusable formats, competitions, stages, entries, and qualification rules.
-- Configure initial sports without hardcoded controller branches.
-- Support top-eight singles advancement into doubles entries.
-
-Dependencies:
-
-- Sport rosters and teams.
-
-Database impact:
-
-- CompetitionFormats, Competitions, CompetitionStages, CompetitionEntries,
-  CompetitionEntryMembers, and QualificationRules.
-
-API impact:
-
-- Format catalog, competition setup, entry generation, advancement.
-
-UI impact:
-
-- Competition builder.
-- Entry review and seeding.
-- Ranking/qualification workflow.
-
-Risks:
-
-- Over-generalized format engine.
-- Under-specified doubles pairing policy.
-
-## Phase 8: Scheduling and Match Operations
-
-**Complexity:** Very Large
-
-Objectives:
-
-- Add venues, availability, fixtures, conflict detection, matches, and personal
-  schedules.
-- Support manual scheduling first and fixture generation second.
-
-Dependencies:
-
-- Competition entries and stages.
-
-Database impact:
-
-- Venue, schedule, match, participant, and conflict-supporting indexes.
-
-API impact:
-
-- Schedule, conflict, fixture generation, and match lifecycle endpoints.
-
-UI impact:
-
-- Calendar/board scheduler.
-- Match console.
-- Employee personal schedule.
-
-Risks:
-
-- Cross-sport employee conflicts.
-- Venue capacity and rescheduling cascades.
-- Timezone correctness.
-
-## Phase 9: Scoring, Results, and Standings
-
-**Complexity:** Very Large
-
-Objectives:
-
-- Add scoring policies for all initial sports.
-- Submit, approve, and correct results.
-- Calculate standings, rankings, and advancement.
-
-Dependencies:
-
-- Matches and competition formats.
-
-Database impact:
-
-- ScoreRecords, MatchResultDetails, Standings, and result audit history.
-
-API impact:
-
-- Score, result approval/correction, standings, and advancement endpoints.
-
-UI impact:
-
-- Sport-specific result forms.
-- Live results, standings, brackets, and rankings.
-
-Risks:
-
-- Sport scoring complexity, tie-break rules, and correction auditability.
-- JSON score details require strict versioned validation.
-
-## Phase 10: Legacy Retirement and Production Scale
+## Phase 7: Legacy Retirement and Production Scale
 
 **Complexity:** Large
 
@@ -466,15 +365,11 @@ Employee identity
   -> generic main auction
   -> sport teams/credits/retentions/captains
   -> sport allocation auctions
-  -> competition formats/entries
-  -> scheduling/matches
-  -> scoring/results
   -> legacy retirement and distributed operations
 ```
 
 Sport auctions must not precede canonical employee identity, festival roster,
-sport credits, locked retentions, captains, and eligibility. Scheduling must
-not precede stable competition entries.
+sport credits, locked retentions, captains, and eligibility.
 
 ## 6. Backward Compatibility Plan
 
@@ -513,8 +408,6 @@ Required end-to-end scenarios:
 7. Sport retention/auction cannot allocate an outside employee.
 8. One employee can join Demons Cricket Team A and Demons Volleyball Team B.
 9. Captain must belong to the relevant sport team through retention.
-10. Employee schedule detects cross-sport overlap.
-11. Result correction preserves audit history and recalculates standings.
 
 ## 8. Highest-Risk Areas
 
@@ -525,9 +418,7 @@ Required end-to-end scenarios:
 4. Generic auction cutover and real-time concurrency.
 5. Keeping sport credits distinct from financial purse accounting.
 6. Cross-sport scheduling conflicts for the same employee.
-7. Format/scoring generalization without embedding sport-specific conditionals
-   throughout the application.
-8. Legacy compatibility becoming permanent dual architecture.
+7. Legacy compatibility becoming permanent dual architecture.
 
 ## 9. Long-Term Scalability Assessment
 
@@ -540,18 +431,18 @@ deadlines solve restart recovery but not multi-instance coordination. Before
 horizontal scaling, add a shared Socket.IO adapter, durable deadline jobs,
 distributed locks, and an outbox/event mechanism.
 
-Scheduling, standings, reporting, and notifications can later use asynchronous
-workers and read projections without changing core employee, allocation,
-competition, or match identities. Microservices are therefore optional future
-deployment boundaries, not a prerequisite for this redesign.
+Reporting and notifications can later use asynchronous workers and read
+projections without changing core employee or allocation identities.
+Microservices are therefore optional future deployment boundaries, not a
+prerequisite for this redesign.
 
 ## 10. Recommended First Implementation Phase
 
 Begin with Phase 0 followed immediately by Phase 1: canonical Employee identity
 and assignment-based authorization. Every later requirement depends on knowing
 who the employee is and what festival/team scope they may operate. Building
-sport auctions or competitions on the current global `team_owner` and
-duplicate-player model would create avoidable rework and security risk.
+sport auctions on the current global `team_owner` and duplicate-player model
+would create avoidable rework and security risk.
 
 Owner assignments may be modeled as pending in Phase 1, but must not become the
 v2 authorization source until Phase 3 can atomically enforce mandatory owner
@@ -628,8 +519,7 @@ Phase 2 Employee Registration & Sports Selection completed on 2026-06-09:
 
 Phase 2 was redesigned to introduce canonical Employees, Employee-based
 FestivalParticipants, Employee Number imports, and optional User login links.
-Main Auction, owner assignment, retentions, sport auctions, and the competition
-engine remain pending and unchanged.
+Main Auction, owner assignment, retentions, and sport auctions remain pending and unchanged.
 
 Remaining Phase 2 risks are provisional legacy Employee reconciliation,
 synchronous CSV processing, and the temporary compatibility `userId` column on
@@ -755,3 +645,10 @@ Remaining risks:
 - Main Auction completion and unsold retry rules remain unchanged.
 - Sport Team, captain, sport retention, and allocation-credit foundations are
   still required before Sport Auctions.
+
+---
+
+## Future Enhancements (Out of Scope)
+
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.

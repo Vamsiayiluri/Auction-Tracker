@@ -1125,69 +1125,10 @@ Dashboard
 +----------------------------------------------------------------------------------+
 ```
 
-## 16. Competition Engine Placement
+## 16. Future Enhancements (Out of Scope)
 
-### Festival Hierarchy
-
-```text
-Festival Command Center
-|
-|-- Festival Management
-|-- Festival Auction Arena
-|-- Sport Tournaments
-|   |
-|   |-- Sport Tournament Management
-|   |-- Sport Auction Arena
-|   `-- Competition Center
-|
-`-- Festival-wide Competition Overview
-```
-
-### Competition Directory
-
-```text
-+----------------------------------------------------------------------------------+
-| COMPETITIONS                                                                    |
-| Festival: [ Corporate Sports Festival 2026 v ]                                  |
-| [ My Competitions ] [ Live ] [ Upcoming ] [ Completed ]                         |
-+----------------------------------------------------------------------------------+
-| +----------------------------+ +----------------------------+                    |
-| | Cricket Men League         | | Chess Individual           |                    |
-| | Fixtures published         | | Entries pending            |                    |
-| | Next match: 18 Aug         | | [ Complete Setup ]         |                    |
-| | [ Open Competition ]       | |                            |                    |
-| +----------------------------+ +----------------------------+                    |
-+----------------------------------------------------------------------------------+
-```
-
-### Competition Center
-
-```text
-+----------------------------------------------------------------------------------+
-| CRICKET MEN LEAGUE                                                              |
-| Status: Published | Teams: 3 | Matches: 6                  [ Manage Competition ]|
-+----------------------------------------------------------------------------------+
-| NEXT MATCH                                                                      |
-| Team A vs Team C | 18 Aug | 10:00 | Ground 1              [ Open Match ]       |
-+----------------------------------------------------------------------------------+
-| STANDINGS SNAPSHOT                     | FIXTURE STATUS                          |
-| 1 Team A  6 pts                        | Completed 2 / 6                        |
-| 2 Team C  3 pts                        | Upcoming 4                             |
-| 3 Team B  0 pts                        | Conflicts 0                            |
-| [ View Standings ]                     | [ View Fixtures ]                      |
-+----------------------------------------------------------------------------------+
-| RECENT RESULTS                                                                  |
-+----------------------------------------------------------------------------------+
-```
-
-### Placement Rules
-
-- Competition appears only after Sport roster prerequisites are satisfied.
-- Auction completion presents `Create/Open Competition` as a next action.
-- Competition never appears inside an Auction Arena.
-- Match Center opens from fixtures or Live Now, not from Auction controls.
-- Festival Command Center may summarize competitions but does not embed full
-  fixture management.
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
 ## 17. Role-Based Experience Flow
 
@@ -1199,8 +1140,7 @@ Login
 -> Needs Attention
    |-- Festival setup blocker -> Festival Management
    |-- Pending Auction action -> Auction Arena
-   |-- Sport readiness blocker -> Sport Tournament Management
-   `-- Future result approval -> Competition / Match Center
+   `-- Sport readiness blocker -> Sport Tournament Management
 ```
 
 ### Festival Team Owner
@@ -1211,8 +1151,7 @@ Login
 -> My Festival Team
    |-- Main Auction live -> Festival Auction Arena
    |-- Sport setup task -> Sport Tournament Management
-   |-- Sport Auction live -> Sport Auction Arena
-   `-- Competition ready -> Competition Center
+   `-- Sport Auction live -> Sport Auction Arena
 ```
 
 ### Sport Captain
@@ -1222,9 +1161,7 @@ Login
 -> Captain-aware Dashboard
 -> My Sport Team
    |-- Sport Auction live -> Sport Auction Arena
-   |-- Final roster -> Team View
-   |-- Future fixture -> Match Detail
-   `-- Competition status -> Competition Center
+   `-- Final roster -> Team View
 ```
 
 ### Spectator
@@ -1234,9 +1171,7 @@ Login
 -> Spectator Dashboard
    |-- Festival Auction live -> Festival Auction Arena
    |-- Sport Auction live -> Sport Auction Arena
-   |-- Future match live -> Match Center
-   |-- Upcoming fixtures -> Competition Center
-   `-- Results and standings -> Results View
+   `-- Results -> Results View
 ```
 
 ### Multi-Capability User

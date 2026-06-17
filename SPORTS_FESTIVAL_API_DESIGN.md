@@ -48,8 +48,6 @@ Server policies:
 - `canManageFestival(festivalId)`
 - `canManageFestivalTeam(festivalTeamId)`
 - `canBid(auctionEventId, bidderAccountId)`
-- `canManageCompetition(competitionId)`
-- `canSubmitResult(matchId)`
 
 ## 3. Festival APIs
 
@@ -630,118 +628,12 @@ An employee may be assigned to teams in different sports simultaneously. The
 API rejects duplicate active internal-team membership only within the same
 festival sport by default.
 
-## 13. Competition and Format APIs
+## 13. Future Enhancements (Out of Scope)
 
-### Formats
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
-- `GET /api/v2/competition-formats`
-- `POST /api/v2/competition-formats` - platform admin
-
-### Create Competition
-
-`POST /api/v2/festivals/:festivalId/sports/:festivalSportId/competitions`
-
-Auth: festival admin.
-
-```json
-{
-  "name": "Badminton Singles Ranking",
-  "competitionFormatId": "ranking_individual",
-  "scoringPolicyCode": "badminton_sets",
-  "config": {
-    "advancingCount": 8
-  }
-}
-```
-
-### Entries
-
-- `POST /api/v2/competitions/:competitionId/entries`
-- `POST /api/v2/competitions/:competitionId/entries:generate`
-- `GET /api/v2/competitions/:competitionId/entries`
-
-Entry generation validates employee registration and roster rules.
-
-### Stages and Fixtures
-
-- `POST /api/v2/competitions/:competitionId/stages`
-- `POST /api/v2/competitions/:competitionId/fixtures:generate`
-- `GET /api/v2/competitions/:competitionId/standings`
-- `POST /api/v2/competitions/:competitionId/advance`
-
-`advance` evaluates stored qualification rules and creates target entries or
-next-stage seeds idempotently.
-
-## 14. Scheduling APIs
-
-- `POST /api/v2/festivals/:festivalId/venues`
-- `POST /api/v2/festivals/:festivalId/schedule-windows`
-- `GET /api/v2/festivals/:festivalId/schedule`
-- `GET /api/v2/festivals/:festivalId/schedule/conflicts`
-- `GET /api/v2/me/schedule?festivalId=:festivalId`
-
-### Schedule Match
-
-`PATCH /api/v2/matches/:matchId/schedule`
-
-Auth: festival admin.
-
-```json
-{
-  "venueId": "court_1",
-  "scheduledStartAt": "2027-02-03T04:30:00Z",
-  "scheduledEndAt": "2027-02-03T05:15:00Z"
-}
-```
-
-Conflict response:
-
-```json
-{
-  "success": false,
-  "code": "SCHEDULE_CONFLICT",
-  "message": "The proposed time has conflicts",
-  "errors": [
-    {
-      "type": "employee_overlap",
-      "employeeId": "employee_a",
-      "matchId": "match_existing"
-    }
-  ]
-}
-```
-
-## 15. Match and Result APIs
-
-- `GET /api/v2/matches/:matchId`
-- `POST /api/v2/matches/:matchId/start`
-- `POST /api/v2/matches/:matchId/score-records`
-- `PUT /api/v2/matches/:matchId/result`
-- `POST /api/v2/matches/:matchId/result/approve`
-- `POST /api/v2/matches/:matchId/result/corrections`
-
-Result example:
-
-```json
-{
-  "winnerEntryId": "entry_1",
-  "resultType": "normal",
-  "summary": "Team A won 2-1",
-  "scoringPolicyCode": "volleyball_sets",
-  "scoringPolicyVersion": 1,
-  "details": {
-    "sets": [
-      {"number":1,"entry1":25,"entry2":20},
-      {"number":2,"entry1":21,"entry2":25},
-      {"number":3,"entry1":15,"entry2":12}
-    ]
-  }
-}
-```
-
-The server validates details against the competition's scoring policy.
-
-## 16. UI-to-API Flow
+## 14. UI-to-API Flow
 
 ### Admin
 
@@ -750,9 +642,6 @@ The server validates details against the competition's scoring policy.
 - Main auction console uses auction event/lot REST plus auction Socket.IO room.
 - Sport setup uses sport roster, sport team, budget, retention, and sport
   allocation-credit auction endpoints.
-- Competition builder uses formats, entries, stages, and fixture generation.
-- Schedule board uses schedule and conflict endpoints.
-- Results console uses match score/result approval endpoints.
 
 ### Owner
 
@@ -766,8 +655,7 @@ The server validates details against the competition's scoring policy.
 
 - Registration uses `/registrations/me`.
 - Personal allocations and schedule use `/me` endpoints.
-- Published teams, fixtures, standings, and results use festival visibility
-  endpoints.
+- Published teams and results use festival visibility endpoints.
 
 ## 17. Legacy API Compatibility
 
@@ -908,8 +796,7 @@ rejected with an instruction to export the worksheet as CSV.
 Auth: admin. Returns `text/csv`.
 
 All sport-registration writes require festival status `draft` or
-`registration_open`. Phase 2 adds no owner, retention, budget, auction, or
-competition API.
+`registration_open`. Phase 2 adds no owner, retention, budget, or auction API.
 
 ## 21. Employee Identity and Import Redesign
 

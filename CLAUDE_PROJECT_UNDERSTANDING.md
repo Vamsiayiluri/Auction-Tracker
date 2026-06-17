@@ -27,7 +27,6 @@ Employees
 -> Sport Teams and Captains
 -> Sport Auction (credit-based player allocation)
 -> Final Sport Team Rosters
--> [Future] Competition Engine
 ```
 
 ---
@@ -271,7 +270,7 @@ Priority hierarchy:
 1. Captain Assignments with active Sport Auction
 2. What Needs Attention
 3. My Sport Team (credits, roster)
-4. Future Fixtures (placeholder)
+4. What Is Next
 
 ### Spectator Dashboard
 
@@ -426,8 +425,7 @@ Same architectural pattern as Festival Auction Arena with:
     `/profile` and `/settings` (placeholders). Account mutations, notifications,
     and activity logs are not implemented.
 
-12. **Competition Setup sections** — removed from Phase 4E surfaces, but prior
-    screens may still reference it. Phase 5 has not started.
+12. **Competition Setup sections** — previously referenced in some Phase 4E surfaces; competition management is intentionally out of scope and any remaining references should be removed.
 
 ### Permanent Known Gaps (pre-production constraints, not Phase 4E focus)
 
@@ -442,11 +440,7 @@ Same architectural pattern as Festival Auction Arena with:
 
 ---
 
-## Remaining Work Before Phase 5
-
-Phase 5 is the Competition Engine (fixtures, schedules, matches, standings,
-results, playoffs). The following must be completed in Phase 4E before Phase 5
-starts.
+## Remaining Work
 
 ### Outstanding Phase 4E-J Work (Setup-First Experience)
 
@@ -485,12 +479,12 @@ Phases 4E-H1 through 4E-H5 define:
 
 These are architecture documents, not yet implemented.
 
-### Technical Debt to Resolve Before Phase 5
+### Technical Debt to Resolve
 
 1. **Fix lint errors** in `SportAuctionHub.jsx` (pre-existing, low risk but
    clean build requires this).
-2. **Frontend bundle size** — investigate code splitting before Phase 5 adds
-   more routes and components.
+2. **Frontend bundle size** — investigate code splitting to keep route chunks
+   manageable.
 3. **Verify mobile at 320 px, 768 px, desktop** for all arenas, management
    workspaces, and dashboards.
 4. **Confirm `festival-auctions` redirect** to `/auctions?type=festival` is
@@ -502,7 +496,7 @@ These are architecture documents, not yet implemented.
 7. **Confirm Arena recovery** after disconnect/reconnect during live rounds for
    both Festival and Sport arenas.
 
-### Phase 4E Architecture Decisions Still Needed
+### Architecture Decisions Still Needed
 
 - **Results hierarchy**: Decide whether Auction Details and dedicated Results
   remain separate post-completion, and which is primary.
@@ -515,23 +509,12 @@ These are architecture documents, not yet implemented.
   setup must precede Main Festival Auction launch or follows after Festival
   rosters exist.
 
-### When Phase 5 May Begin
+---
 
-Phase 5 (Competition Engine) should start only after:
+## Future Enhancements (Out of Scope)
 
-1. Stage-aware navigation is consistent across Festival and Sport Tournament
-   surfaces.
-2. Management, Arena, Hub, and Results boundaries are stable and consistently
-   labeled.
-3. Dashboard cards route to stage-correct destinations.
-4. Owner, Captain, and Spectator waiting states are implemented.
-5. Direct-URL fallback states protect all hidden future-stage routes.
-6. No duplicate live components mount simultaneously on any route.
-7. Known lint errors and bundle size concerns are addressed.
-
-Phase 5 will add Competition Center, Fixtures, Match Center, Standings,
-Playoffs, and Finals. Adding these before Phase 4E architecture is stable
-would deepen existing navigation complexity and workspace overload.
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
 ---
 

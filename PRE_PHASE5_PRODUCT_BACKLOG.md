@@ -1,11 +1,11 @@
-# PRE_PHASE5_PRODUCT_BACKLOG.md
+# PRODUCT_BACKLOG.md
 
 Scope: UX, navigation, dashboard, auction visibility, results visibility,
 notifications, profile management, mobile responsiveness, accessibility, and
 terminology consistency.
 
-Excludes: Competition Engine, Phase 5, backend schema changes, socket
-authentication, timer infrastructure, bidding rule changes.
+Excludes: Competition Engine, fixtures, matches, standings, playoffs, backend
+schema changes, socket authentication, timer infrastructure, bidding rule changes.
 
 ---
 

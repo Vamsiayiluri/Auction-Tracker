@@ -1182,29 +1182,17 @@ Mitigation:
 
 ## 19. Final Recommendation
 
-Complete Phase 4E before starting the Phase 5 Competition Engine.
-
-The Competition Engine will add fixtures, schedules, matches, standings,
-stages, and results. Adding those features before separating live Auctions
-from management would increase workspace density and deepen the current
-navigation problem.
-
-Phase 4E establishes the product-level structure needed for future competition
-work:
+Complete Phase 4E to establish stable product-level structure:
 
 ```text
 Management Workspace
 -> Auction Arena
--> Competition Center
--> Match Center
 ```
 
 This creates clear ownership boundaries:
 
 - Workspaces configure.
 - Arenas execute Auctions.
-- Competition pages organize stages and standings.
-- Match pages handle live or completed matches.
 
 The redesign can be completed without changing auction business rules,
 database models, timer semantics, bidding authorization, or Socket.IO

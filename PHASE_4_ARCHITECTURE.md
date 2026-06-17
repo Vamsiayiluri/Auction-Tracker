@@ -5,16 +5,9 @@
 Phase 4 introduces the Sport Tournament Architecture and Sport Auction
 Foundation beneath completed Festival Team rosters.
 
-This phase does not implement:
+This phase does not implement cross-Festival or legacy Tournament integration.
 
-- Competition formats or a competition engine
-- Fixtures, matches, venues, schedules, or score entry
-- Points tables, standings, rankings, or progression
-- Semi-finals, finals, or tournament brackets
-- Cross-Festival or legacy Tournament integration
-
-In this document, "results" means Sport Auction sold/unsold allocation results,
-not match or competition results.
+In this document, "results" means Sport Auction sold/unsold allocation results.
 
 ## 1. Business Flow
 
@@ -1110,11 +1103,6 @@ Legacy `Tournament` means the original auction product. `SportTournament`
 belongs to the Festival domain. API, model, and UI names must stay explicit to
 avoid accidental cross-domain queries.
 
-### Competition Scope Leakage
-
-Do not add format, fixture, match, score, standings, stage, round, semi-final,
-or final columns to `SportTournaments` during this phase. Those belong to the
-future Competition Engine.
 
 ## 17. Recommended Implementation Order
 
@@ -1173,5 +1161,3 @@ future Competition Engine.
       timer recovery, and finalization atomicity.
     - Run migrations, backend tests, frontend lint, and production build.
 
-Competition Engine work starts only after the Sport Tournament, Team, Captain,
-budget, eligibility, and Sport Auction foundations are complete and stable.

@@ -5,8 +5,7 @@
 This document defines the target architecture for evolving AuctionArena from an
 auction-only application into a Corporate Sports Festival Management Platform.
 The existing auction behavior remains valuable, but becomes one allocation
-module within a larger festival, sports, competition, scheduling, and results
-system.
+module within a larger festival and sports system.
 
 The recommended approach is an incremental modular monolith. It preserves the
 current React, Express, Socket.IO, Sequelize, and MySQL stack while introducing
@@ -58,10 +57,9 @@ when they have no Festival Team membership, auction result, or auction round.
 6. Festival roster allocation and sport roster allocation are distinct levels.
 7. The main auction uses financial purse accounts; sport auctions use
    non-financial allocation credits and roster constraints.
-8. Team, auction, schedule, and result records are festival-scoped.
+8. Team and auction records are festival-scoped.
 9. Sport behavior is configuration-driven where practical.
-10. Competition formats are modeled independently from sports.
-11. Historical records are immutable or snapshot-based where auditability
+10. Historical records are immutable or snapshot-based where auditability
     matters.
 12. Authorization is enforced server-side for HTTP and Socket.IO.
 13. Schema evolution uses explicit migrations and compatibility views or
@@ -91,8 +89,7 @@ when they have no Festival Team membership, auction result, or auction round.
   assignments.
 - `Teams.ownerId` must be replaced by effective-dated ownership assignments.
 - `Players` must stop representing duplicated tournament-specific people.
-- `Tournaments` must split conceptually into festivals, allocation auctions, and
-  sport competitions.
+- `Tournaments` must split conceptually into festivals and allocation auctions.
 - `TournamentTeams` must evolve into festival-team participation and main purse
   accounts.
 - `Players.teamId` must evolve into explicit festival roster membership.
@@ -118,7 +115,7 @@ when they have no Festival Team membership, auction result, or auction round.
 
 ### 3.4 What Should Be Generalized
 
-- Tournament becomes `Festival` plus `Competition`.
+- Tournament becomes `Festival` plus allocation auctions.
 - Player becomes `Employee` plus scoped registration/membership records.
 - Tournament team becomes `FestivalTeam`.
 - Purse becomes a financial `BudgetAccount`; sport auction capacity becomes a
@@ -126,7 +123,7 @@ when they have no Festival Team membership, auction result, or auction round.
 - Auction round becomes `AuctionLot`.
 - Sold player becomes an `Allocation` or roster membership.
 - Bidder identity becomes an authorized assignment to a bidder account.
-- Sport rules become `Sport` metadata and `CompetitionFormat` configuration.
+- Sport rules become `Sport` metadata and configurable allocation rules.
 
 ## 4. Bounded Contexts
 
@@ -169,7 +166,7 @@ Responsibilities:
 
 - Employee registration for a festival.
 - Yes/no sport selections.
-- Eligibility validation for sport auctions, sport teams, and competitions.
+- Eligibility validation for sport auctions and sport teams.
 
 No skill, ranking, rating, or role field belongs in registration.
 
@@ -192,25 +189,7 @@ Responsibilities:
 - Captain assignments.
 - Internal sport teams such as Demons Cricket Team A.
 
-### 4.7 Competition Management
-
-Responsibilities:
-
-- Competition definition and format.
-- Entries for employees, pairs, or teams.
-- Stages, pools, rounds, brackets, and standings.
-- Advancement rules such as top eight singles players forming doubles teams.
-
-### 4.8 Scheduling and Results
-
-Responsibilities:
-
-- Venues and playable time slots.
-- Fixtures/matches.
-- Participants, officials, scores, results, and standings.
-- Conflict detection for employees participating in multiple sports.
-
-### 4.9 Auction Operations
+### 4.7 Auction Operations
 
 Responsibilities:
 
@@ -248,37 +227,23 @@ SportTeam 1 ------- * SportTeamMembership * --------- 1 Employee
 SportTeam 1 ------- * CaptainAssignment * ----------- 1 Employee
 SportTeam 1 ------- 1 AllocationCreditAccount
 
-FestivalSport 1 -- * Competition * ------------------ 1 CompetitionFormat
-Competition 1 ---- * CompetitionEntry
-Competition 1 ---- * CompetitionStage 1 ---- * Match
-Match 1 ---------- * MatchParticipant
-Match 1 ---------- * ScoreRecord
 ```
 
-## 6. Tournament and Competition Hierarchy
+## 6. Festival and Auction Hierarchy
 
 The term `Tournament` is currently overloaded. The target hierarchy is:
 
 ```text
 Festival
   FestivalSport
-    Competition
-      CompetitionStage
-        Match
 ```
 
 Definitions:
 
-- `Festival`: the corporate event, for example "Corporate Sports Festival
-  2027".
+- `Festival`: the corporate event, for example "Corporate Sports Festival 2027".
 - `FestivalSport`: one enabled sport and its festival-specific configuration.
-- `Competition`: a contest within a festival sport, such as Chess Individual,
-  Badminton Singles Ranking, Badminton Doubles, or Cricket League.
-- `CompetitionStage`: ranking, pool, round-robin, knockout, semifinal, final,
-  or another configured stage.
-- `Match`: one scheduled contest between entries.
 
-Auctions are parallel allocation workflows:
+Auctions are allocation workflows:
 
 ```text
 Festival
@@ -290,7 +255,6 @@ Festival + FestivalTeam + FestivalSport
     uses allocation credits to place eligible Employee -> SportTeam
 ```
 
-An auction is not a competition and should not reuse competition status fields.
 
 ## 7. Employee Sports Registration
 
@@ -754,8 +718,7 @@ My Festivals
   -> Review registration
   -> View Festival Team allocation
   -> View Sport roster/team allocation
-  -> View personal schedule
-  -> View festival fixtures, standings, and results
+  -> View Sport roster/team allocation results
 ```
 
 ## 18. Workflow Diagrams

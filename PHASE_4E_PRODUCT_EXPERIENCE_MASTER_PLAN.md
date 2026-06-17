@@ -16,7 +16,6 @@ This document is the master product-experience source of truth for:
 - Festival Auction Arena redesign
 - Sport Tournament Workspace redesign
 - Sport Auction Arena redesign
-- Future Competition Engine integration
 
 ## 1. Product Vision
 
@@ -53,23 +52,9 @@ Festival Team Roster
 -> Final Sport Team Rosters
 ```
 
-The planned competition journey is:
-
-```text
-Final Sport Rosters
--> Competition Definition
--> Entries
--> Fixtures and Scheduling
--> Matches
--> Results
--> Standings and Progression
--> Playoffs and Finals
-```
-
 The product therefore no longer behaves primarily as a Tournament Management
 Tool. Its actual value is coordinating employee identity, Festival setup,
-roster allocation, live Auctions, Sport Team formation, and future
-competitions.
+roster allocation, live Auctions, and Sport Team formation.
 
 ### Tournament Management Tool Versus Sports Festival Auction Platform
 
@@ -81,7 +66,7 @@ competitions.
 | Organizes navigation by CRUD pages | Organizes navigation by operational journeys |
 | Treats Auction as one management function | Treats Auction as a first-class live experience |
 | Uses role labels as primary navigation inputs | Uses roles plus scoped assignments and capabilities |
-| Ends after a player sale | Continues through Sport Teams and competitions |
+| Ends after a player sale | Continues through Sport Teams and allocation |
 | Centers the administrator | Supports Admins, Owners, Captains, participants, and spectators |
 
 ### Target Vision
@@ -89,15 +74,14 @@ competitions.
 AuctionArena should become:
 
 > A corporate Sports Festival operations platform that guides every user from
-> employee registration through roster allocation, live Auctions, Sport Team
-> formation, competitions, matches, and results.
+> employee registration through roster allocation, live Auctions, and Sport Team
+> formation.
 
-The target product should have four clearly separated experience types:
+The target product should have three clearly separated experience types:
 
 1. **Command Centers** for role-specific next actions.
 2. **Management Workspaces** for setup, correction, readiness, and reporting.
-3. **Live Arenas** for time-sensitive Auctions and future live Match operation.
-4. **Competition Centers** for fixtures, matches, standings, and progression.
+3. **Live Arenas** for time-sensitive Auctions.
 
 The product should feel like one connected workflow rather than a collection
 of incrementally added pages.
@@ -122,14 +106,13 @@ of incrementally added pages.
 - Users must know which navigation item contains their actual work.
 - Active, paused, blocked, and pending-finalization Auctions are not presented
   as urgent work.
-- Setup blockers and upcoming competition work have no command-center model.
+- Setup blockers have no command-center model.
 - Legacy data receives disproportionate prominence.
 
 #### Scalability Concern
 
-Adding fixtures, matches, schedules, and standings to the current dashboard
-would create an unfocused statistics wall. The dashboard needs a task and
-capability model before Phase 5.
+The dashboard needs a task and capability model as Festival and Sport
+Tournament summaries grow.
 
 ### Navigation
 
@@ -203,7 +186,7 @@ The Admin Festival page combines:
 - Operations tabs reproduce management functions already represented by the
   setup workflow.
 - Admin corrections, live execution, and historical analysis are mixed.
-- The page is difficult to extend safely with Sport or Competition content.
+- The page is difficult to extend safely with additional Sport content.
 - Large sections increase loading, layout, and mobile complexity.
 
 ### Festival Auction
@@ -266,8 +249,6 @@ Live Auction execution already has a separate route.
 - Creation, setup, live discovery, and completed viewing share one directory.
 - Read-only users can enter a workspace dominated by disabled management
   controls.
-- Future Competition Engine features would overload this workspace if added as
-  more peer tabs.
 
 ### Sport Auction
 
@@ -308,8 +289,6 @@ Sport Auction has the strongest current live architecture:
 
 ### Scalability Concerns
 
-- New Phase 5 tabs would deepen workspace overload.
-- Current dashboards cannot absorb fixtures, matches, and standings coherently.
 - Frontend fan-out will grow as more Festival and Sport summaries are added.
 - Process-local timers and Socket.IO coordination remain operational scaling
   constraints, although they are outside the UX redesign itself.
@@ -345,9 +324,6 @@ Employee Directory
 -> Resolve Sport Readiness
 -> Run Sport Auction
 -> Review Sport Team Rosters
--> Future: Build Competitions
--> Future: Schedule Matches
--> Future: Record Results and Standings
 ```
 
 #### Ideal Journey
@@ -358,7 +334,6 @@ The Admin should begin from a command center that shows:
 - Blocking setup tasks.
 - Auctions requiring action.
 - Sport Tournaments ready for setup or launch.
-- Future competition setup and match-operation tasks.
 
 The Admin should not need to remember which page owns each lifecycle action.
 
@@ -378,7 +353,6 @@ Receive Festival Team assignment
 -> Configure credit budgets and pool
 -> Launch and manage Sport Auction
 -> Review Sport Team rosters
--> Future: Review fixtures, schedules, and results
 ```
 
 #### Ideal Experience
@@ -390,7 +364,6 @@ The Owner should see one assignment-aware landing page with:
 - Remaining purse and roster.
 - Managed Sport Tournaments.
 - Sport Auctions awaiting launch or finalization.
-- Future fixtures and Team results.
 
 The Owner should not be treated as a generic global role with unrelated legacy
 Auction navigation.
@@ -408,8 +381,6 @@ Employee registered for Festival and Sport
 -> Joins active Sport Auction
 -> Places server-calculated bids
 -> Reviews final Team roster
--> Future: Reviews fixtures
--> Future: Leads Team into matches and results
 ```
 
 #### Ideal Experience
@@ -421,7 +392,6 @@ active Captain assignments and expose:
 - Active Sport Auctions.
 - Remaining Team credits.
 - Team roster.
-- Future fixtures and results.
 
 The Captain should never have to infer that a generic `team_owner` or
 `spectator` navigation item contains Captain actions.
@@ -435,8 +405,6 @@ Log in
 -> Discover live Festival or Sport Auction
 -> Watch current participant, timer, bids, Team balances, and outcome
 -> Review completed Auction results
--> Future: Discover live or upcoming matches
--> Follow fixtures, standings, playoffs, and finals
 ```
 
 #### Ideal Experience
@@ -447,8 +415,7 @@ product:
 - Live now.
 - Upcoming.
 - Recently completed.
-- Results and standings.
-- Clear Festival, Sport, and Competition context.
+- Results.
 
 ## 4. Navigation Philosophy
 
@@ -476,7 +443,6 @@ Navigation should optimize for workflows and capabilities:
 - Separate management from live execution.
 - Derive navigation from global role plus active assignments.
 - Do not create a new top-level item for every future feature.
-- Keep Competition and Match experiences distinct from Auction experiences.
 - Make live and urgent actions visible from every relevant landing page.
 - Use contextual navigation inside a Festival or Sport Tournament rather than
   expanding the global navigation indefinitely.
@@ -488,7 +454,6 @@ Dashboard
 Festivals
 Auctions
 Sport Tournaments
-Competitions
 Employees
 ```
 
@@ -498,8 +463,6 @@ Visibility is capability-based:
 - `Festivals`: Admin management or authorized personal Festival views.
 - `Auctions`: all authenticated users, personalized by capability.
 - `Sport Tournaments`: managers, Owners, Captains, and authorized viewers.
-- `Competitions`: introduced in Phase 5 for managers, participants, and
-  spectators.
 
 Legacy Auction navigation should be consolidated under `Auctions` during the
 transition rather than remain a permanent peer product.
@@ -533,12 +496,10 @@ It should answer:
    - Pending Auction finalization.
    - Paused Auction.
    - Readiness blockers.
-   - Upcoming match requiring action.
 
 2. **Live Now**
    - Festival Auctions.
    - Sport Auctions.
-   - Future live matches.
 
 3. **My Assignments**
    - Owned Festival Teams.
@@ -548,12 +509,10 @@ It should answer:
 4. **Upcoming**
    - Ready Auctions.
    - Registration deadlines.
-   - Fixtures and schedule.
 
 5. **Recent Outcomes**
    - Purchases.
    - Completed Auctions.
-   - Future match results and standings changes.
 
 ### Dashboard Standards
 
@@ -724,8 +683,7 @@ Queue Controls
 ### Purpose
 
 Sport Tournament Management owns Sport Team configuration, Captain
-assignment, eligibility, credit preparation, readiness, and future
-Competition setup.
+assignment, eligibility, credit preparation, and readiness.
 
 It does not own live Sport Auction execution.
 
@@ -746,19 +704,6 @@ Sport Tournament Management
 |-- Audit
 `-- Settings
 ```
-
-When Phase 5 begins, competition setup should be a distinct contextual area:
-
-```text
-Sport Tournament
-|-- Team Allocation
-|   `-- existing management sections
-`-- Competition
-    `-- Competition Center
-```
-
-Competition tabs should not simply be appended to the current Auction setup
-tabs.
 
 ### What Remains
 
@@ -827,8 +772,6 @@ It should not be embedded in Sport Tournament Management.
 - General readiness blockers.
 - Tournament settings.
 - Full audit log.
-- Competition setup.
-- Fixture and match content.
 
 ### Desktop Wireframe
 
@@ -851,113 +794,10 @@ It should not be embedded in Sport Tournament Management.
 +--------------------------------------------------------------------+
 ```
 
-## 10. Future Competition Engine Architecture
+## 10. Future Enhancements (Out of Scope)
 
-### Core Principle
-
-Auction is allocation. Competition is play.
-
-They may share Festival, Employee, Sport Team, and authorization context, but
-they must not share page ownership or lifecycle controls.
-
-### Recommended Product Boundary
-
-```text
-Sport Tournament Management
--> Sport Auction Arena
--> Competition Center
--> Match Center
-```
-
-### Competition Center
-
-Purpose:
-
-- Configure competition formats.
-- Generate or approve entries.
-- Build stages.
-- Generate fixtures.
-- Manage schedule and venues.
-- Review standings and progression.
-
-Recommended sections:
-
-```text
-Competition Overview
-Entries
-Format and Rules
-Stages
-Fixtures
-Schedule
-Standings
-Playoffs
-Results
-Audit
-Settings
-```
-
-### Fixtures
-
-Fixtures should have a dedicated planning view:
-
-- Competition and stage filter.
-- Scheduled and unscheduled matches.
-- Venue and time assignments.
-- Conflict warnings.
-- Publish state.
-
-Fixtures should not appear inside Auction pages.
-
-### Matches
-
-Future Match Center responsibilities:
-
-- Match identity and participants.
-- Venue and schedule.
-- Live status.
-- Score entry.
-- Officials.
-- Result finalization.
-- Correction and approval history.
-
-The Match Center should use a focused live layout when scoring is active,
-similar in philosophy to an Auction Arena but with match-specific controls.
-
-### Standings
-
-Standings should be a read-focused Competition view:
-
-- Rank.
-- Played.
-- Won/lost/drawn.
-- Points.
-- Tie-break metrics.
-- Qualification status.
-
-Standings must be derived from approved results, not edited as primary data.
-
-### Playoffs And Finals
-
-Playoffs should be represented as stages, not special hardcoded pages.
-
-The UI may provide bracket views for:
-
-- Quarterfinals.
-- Semifinals.
-- Finals.
-
-Progression must remain format-driven so new sports do not require navigation
-redesign.
-
-### Separation Rules
-
-- Auction results create rosters, not match standings.
-- Competition entries derive from eligible final rosters.
-- Match results do not modify Auction history.
-- Competition status does not reuse Auction status.
-- Auction audit and Competition audit remain separately understandable.
-- Phase 5 should add contextual Competition navigation, not more Auction
-  workspace tabs.
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
 ## 11. Role-Based Experience Strategy
 
@@ -973,8 +813,6 @@ Action-oriented platform command center.
 - Open or resume live Auctions.
 - Finalize pending rounds.
 - Review Sport Tournament readiness.
-- Future: publish fixtures and approve results.
-
 #### Navigation Priorities
 
 ```text
@@ -982,7 +820,6 @@ Dashboard
 Festivals
 Auctions
 Sport Tournaments
-Competitions
 Employees
 ```
 
@@ -991,13 +828,6 @@ Employees
 - Live and paused Auctions appear first.
 - Pending finalization is treated as urgent.
 - Ready but not launched Auctions appear as next actions.
-
-#### Competition Discovery
-
-- Competitions needing setup.
-- Unscheduled fixtures.
-- Results awaiting approval.
-- Current live matches.
 
 ### Festival Team Owner
 
@@ -1011,7 +841,6 @@ Owned Festival Team command center.
 - Review purse and Festival roster.
 - Create/manage Sport Tournaments.
 - Launch/manage Sport Auctions.
-- Future: review fixtures and Team results.
 
 #### Navigation Priorities
 
@@ -1020,16 +849,11 @@ Dashboard
 My Auctions
 My Festival Team
 Sport Tournaments
-Competitions
 ```
 
 #### Auction Discovery
 
 Show only relevant assigned or manageable Auctions by default.
-
-#### Competition Discovery
-
-Show competitions containing the Owner's Festival Team or Sport Teams.
 
 ### Sport Captain
 
@@ -1041,7 +865,6 @@ My Sport Team command center.
 
 - Join active Sport Auction.
 - Review credits and roster.
-- Future: review next fixture and match details.
 
 #### Navigation Priorities
 
@@ -1049,8 +872,6 @@ My Sport Team command center.
 Dashboard
 My Auctions
 My Sport Teams
-Schedule
-Competitions
 ```
 
 Navigation should be assignment-aware even when the global User role is
@@ -1059,10 +880,6 @@ Navigation should be assignment-aware even when the global User role is
 #### Auction Discovery
 
 Active Captain assignments should directly expose the relevant Arena.
-
-#### Competition Discovery
-
-Show competitions, fixtures, and results for the Captain's Sport Teams.
 
 ### Spectator
 
@@ -1074,25 +891,18 @@ Live Festival experience.
 
 - Watch live Auction.
 - Review Auction results.
-- Future: watch or follow matches.
-- Review fixtures and standings.
 
 #### Navigation Priorities
 
 ```text
 Dashboard
 Watch Live
-Competitions
 Results
 ```
 
 #### Auction Discovery
 
 Use one live directory with Festival, Sport, and legacy type labels.
-
-#### Competition Discovery
-
-Show current matches, upcoming fixtures, standings, playoffs, and finals.
 
 ## 12. Mobile And Tablet Strategy
 
@@ -1149,13 +959,6 @@ Queues and recent results appear below.
 - Use cards for summaries and tables only for dense comparison.
 - Keep Control Center actions above management navigation.
 
-### Future Competition Mobile
-
-- Personal schedule and next fixture should take priority.
-- Standings should use compact responsive tables or ranked cards.
-- Match scoring requires its own focused mobile workflow.
-- Brackets may use horizontal pan, but the whole page must not become a
-  horizontally scrolling canvas.
 
 ## 13. Route Strategy
 
@@ -1211,11 +1014,6 @@ Sport:
 /sport-tournaments
 /sport-tournaments/:sportTournamentId/manage
 
-/competitions
-/competitions/:competitionId
-/matches/:matchId
-/schedule
-
 /employees
 ```
 
@@ -1243,8 +1041,6 @@ Personalized directory query modes may be used:
 ```text
 /auctions?view=mine
 /auctions?view=live
-/competitions?view=mine
-/schedule?view=mine
 ```
 
 ### Redirect Strategy
@@ -1304,12 +1100,11 @@ should precede implementation.
 - Detect active Captain assignments.
 - Show assigned Sport Team, credits, and roster.
 - Provide direct Sport Auction entry.
-- Prepare for personal fixtures and match information.
 
 ### Spectator Dashboard Goals
 
 - Prioritize Live Now.
-- Show upcoming Auctions and future matches.
+- Show upcoming Auctions.
 - Show recently completed results.
 - Avoid management terminology and disabled controls.
 
@@ -1410,8 +1205,7 @@ Reusable with refactoring:
 - Budget and Pool cards.
 - `SportAuctionArena` live sections.
 
-`SportAuctionArena` should be decomposed before substantial Competition Engine
-work so Auction-specific state does not leak into future competition pages.
+`SportAuctionArena` should be decomposed to keep Auction-specific state from leaking into future enhancements.
 
 ### Dashboard Widgets
 
@@ -1456,7 +1250,7 @@ Potential shared patterns:
 - Responsive data table
 
 Do not create one generic mega-workspace component. Reuse structural patterns
-while preserving Festival, Sport, and Competition domain language.
+while preserving Festival and Sport domain language.
 
 ### Refactoring Opportunities
 
@@ -1473,9 +1267,7 @@ while preserving Festival, Sport, and Competition domain language.
 
 1. Auction must never be mixed with configuration screens.
 2. Auction must never be hidden inside deeply nested tabs.
-3. Competition management must remain separate from Auction management.
-4. Live Match operation must remain separate from Competition configuration.
-5. Historical reporting must not dominate live execution.
+3. Historical reporting must not dominate live execution.
 
 ### Discoverability
 
@@ -1522,7 +1314,7 @@ while preserving Festival, Sport, and Competition domain language.
 29. `Festival Team` and `Sport Team` must never be used interchangeably.
 30. `Purse` means Festival financial budget.
 31. `Credits` means Sport allocation units.
-32. `Auction Results` and future `Match Results` must remain distinct.
+32. `Auction Results` must be clearly labeled and not confused with other result types.
 33. `Auction Settings` must not be labeled simply `Auction` inside management.
 
 ### Scalability
@@ -1592,29 +1384,11 @@ Mitigation:
 - Dashboard aggregation can create severe API fan-out.
 - Large Festivals will stress unpaginated lists.
 - Socket and timer infrastructure is still single-process.
-- Competition scheduling and standings will add expensive derived queries.
-
 Mitigation:
 
 - Plan summary endpoints/read models.
 - Add pagination and indexed filters.
 - Keep live coordination hardening on the production roadmap.
-- Use asynchronous projections for future standings and reporting.
-
-### Competition Engine Integration Risks
-
-- Adding Competition tabs to existing workspaces would recreate current
-  overload.
-- Tournament terminology may collide with Sport Tournament and Competition.
-- Auction outcomes could be incorrectly treated as competition results.
-- Sport-specific scoring could leak into generic navigation.
-
-Mitigation:
-
-- Establish Competition Center and Match Center boundaries first.
-- Use explicit terminology.
-- Keep allocation and play lifecycles separate.
-- Make formats configuration-driven.
 
 ## 19. Recommended Product Structure
 
@@ -1664,26 +1438,10 @@ AuctionArena
 |       |-- Rosters and Results
 |       `-- Audit and Settings
 |
-|-- Competitions
-|   |-- Competition Directory
-|   |-- Competition Center
-|   |   |-- Entries
-|   |   |-- Formats and Stages
-|   |   |-- Fixtures and Schedule
-|   |   |-- Standings and Progression
-|   |   `-- Results and Audit
-|   |
-|   `-- Match Center
-|       |-- Live Match
-|       |-- Score Entry
-|       |-- Result Approval
-|       `-- Match History
-|
 `-- Personal Views
     |-- My Festival Team
     |-- My Sport Teams
     |-- My Auctions
-    |-- My Schedule
     `-- My Results
 ```
 
@@ -1693,10 +1451,8 @@ AuctionArena
 - Festivals own primary event and roster management.
 - Auctions become a first-class live product.
 - Sport Tournaments own Team allocation preparation.
-- Competitions own play, scheduling, progression, and results.
 - Personal views derive from assignments without creating new global roles.
-- The hierarchy can absorb new sports and formats without adding top-level
-  navigation for each one.
+- The hierarchy can absorb new sports without adding top-level navigation for each one.
 
 ## 20. Implementation Roadmap
 
@@ -1705,7 +1461,7 @@ This roadmap is planning only.
 ### Phase 4E-A: Product Structure
 
 - Approve terminology and product hierarchy.
-- Confirm Management, Arena, Competition, and Match boundaries.
+- Confirm Management and Arena boundaries.
 - Define capability-aware navigation requirements.
 - Define legacy-domain transition policy.
 
@@ -1742,7 +1498,7 @@ This roadmap is planning only.
 - Clarify Team allocation management.
 - Rename Auction configuration to Auction Settings.
 - Separate live execution.
-- Prepare contextual entry to Competition Center.
+- Finalize Sport Tournament management workspace structure.
 
 ### Phase 4E-G: Sport Auction Arena
 
@@ -1756,38 +1512,12 @@ This roadmap is planning only.
 - Add Owner and Captain assignment-aware landing content.
 - Create unified Auction discovery.
 - Create spectator Live Now experience.
-- Prepare personal schedule and competition discovery.
-
-### Phase 5-A: Competition Foundation
-
-- Define Competition Center architecture.
-- Add format, entry, stage, and progression concepts.
-- Keep Auction boundaries unchanged.
-
-### Phase 5-B: Fixtures And Scheduling
-
-- Add fixture planning and conflict-aware scheduling experience.
-- Add personal schedule views.
-
-### Phase 5-C: Match Center
-
-- Add focused match operation and scoring experiences.
-- Separate live scoring from competition configuration.
-
-### Phase 5-D: Results And Standings
-
-- Add result approval, standings, brackets, playoffs, and finals.
-- Add spectator and participant result experiences.
 
 ## Final Recommendation
 
 Complete the Phase 4E product-structure, navigation, Dashboard, Workspace, and
-Arena redesign before implementing the Phase 5 Competition Engine.
-
-Phase 5 will introduce more lifecycle stages, operational roles, live
-experiences, and reporting surfaces. Building it on the current incremental
-navigation and workspace architecture would multiply existing discoverability,
-layout, and role-confusion problems.
+Arena redesign to establish a stable and scalable user experience for the
+corporate Sports Festival platform.
 
 The required product sequence is:
 
@@ -1797,10 +1527,15 @@ Clarify Product Structure
 -> Redesign Dashboard
 -> Separate Management and Live Arenas
 -> Stabilize Role Experiences
--> Add Competition Center
--> Add Match Center
 ```
 
 This order preserves the implemented Festival and Sport Auction business rules
-while creating a scalable user experience for the full corporate Sports
-Festival platform.
+while creating room for future product growth without overloading existing
+navigation and workspace structure.
+
+---
+
+## Future Enhancements (Out of Scope)
+
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.

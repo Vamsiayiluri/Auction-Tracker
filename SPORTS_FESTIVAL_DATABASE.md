@@ -72,7 +72,7 @@ Constraints:
 | `code` | required, unique |
 | `startDate`, `endDate` | required |
 | `registrationOpensAt`, `registrationClosesAt` | nullable |
-| `status` | `draft | registration_open | registration_closed | allocation | competition | completed | archived` |
+| `status` | `draft | registration_open | registration_closed | allocation | completed | archived` |
 | `createdByUserId` | FK Users |
 | `timezone` | required |
 | `currencyCode` | optional/display metadata |
@@ -106,7 +106,7 @@ Joins enabled sports to a festival.
 | `id` | PK |
 | `festivalId` | FK Festivals |
 | `sportId` | FK Sports |
-| `status` | `draft | registration_open | allocation | competition | completed` |
+| `status` | `draft | registration_open | allocation | completed` |
 | `configJson` | roster sizes, format defaults, labels |
 
 Constraints:
@@ -484,147 +484,10 @@ Constraints:
 - for auction-built sport teams, captain membership must originate from a
   confirmed sport retention before auction activation
 
-### 2.9 Competition Formats and Entries
+### Future Enhancements (Out of Scope)
 
-#### `CompetitionFormats` (new)
-
-- `id`
-- `code`
-- `name`
-- `entrantType`
-- `formatType`
-- `configSchemaVersion`
-- `defaultConfigJson`
-- `isActive`
-
-#### `Competitions` (new)
-
-- `festivalSportId`
-- `competitionFormatId`
-- `name`
-- `entrantType`
-- `status`
-- `configJson`
-- `scoringPolicyCode`
-- `scoringPolicyVersion`
-
-#### `CompetitionStages` (new)
-
-- `competitionId`
-- `sequenceNumber`
-- `name`
-- `stageType`
-- `configJson`
-- `status`
-
-#### `CompetitionEntries` (new)
-
-Represents an individual, pair, or sport team.
-
-- `competitionId`
-- `entryType`
-- `employeeId` nullable
-- `sportTeamId` nullable
-- `displayName`
-- `seed`
-- `status`
-
-#### `CompetitionEntryMembers` (new)
-
-- `competitionEntryId`
-- `employeeId`
-- `memberRole`
-
-Use this for pairs and teams. Individual entries may use `employeeId` directly
-or one member row; select one convention and keep it consistent.
-
-#### `QualificationRules` (new)
-
-- source competition/stage
-- target competition
-- rule type such as `top_n`
-- rank/count
-- pairing strategy
-- config JSON
-
-### 2.10 Scheduling, Matches, and Scores
-
-#### `Venues` (new)
-
-- festival
-- name
-- location
-- timezone
-- status
-
-#### `VenueSportCapabilities` (new)
-
-- venue
-- sport
-- concurrent court/field capacity
-
-#### `ScheduleWindows` (new)
-
-- festival or venue
-- startsAt
-- endsAt
-- availability type
-
-#### `Matches` (new)
-
-- `competitionId`
-- `competitionStageId`
-- `venueId`
-- `roundNumber`/`poolCode`
-- scheduled and actual timestamps
-- `status`: `draft | scheduled | live | completed | cancelled | walkover`
-- `winnerEntryId`
-- `resultType`
-- `resultSummary`
-
-#### `MatchParticipants` (new)
-
-- `matchId`
-- `competitionEntryId`
-- `sideNumber`
-- `seed`
-- `resultPosition`
-
-Constraints:
-
-- unique `(matchId, competitionEntryId)`
-- unique `(matchId, sideNumber)` where side numbers are exclusive
-
-#### `ScoreRecords` (new)
-
-- `matchId`
-- `segmentType`
-- `segmentNumber`
-- `competitionEntryId`
-- `scoreValue`
-- `secondaryValue`
-- `status`
-
-#### `MatchResultDetails` (new)
-
-- `matchId`
-- `scoringPolicyCode`
-- `scoringPolicyVersion`
-- `detailsJson`
-- `submittedByUserId`
-- `approvedByUserId`
-- submission/approval timestamps
-
-#### `Standings` (new)
-
-Materialized/projection table:
-
-- competition/stage/entry
-- played, won, lost, drawn
-- points
-- score/for/against metrics
-- rank
-- tieBreakJson
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
 ## 3. Relationship Diagram
 
@@ -654,12 +517,6 @@ FestivalTeams + FestivalSports -> SportTeams
 SportTeams 1 ---- * SportTeamMemberships * ------- 1 Employees
 SportTeams/rosters 1 -- * CaptainAssignments * --- 1 Employees
 
-FestivalSports 1 - * Competitions * -------------- 1 CompetitionFormats
-Competitions 1 ---- * CompetitionStages
-Competitions 1 ---- * CompetitionEntries
-CompetitionStages 1 * Matches
-Matches 1 --------- * MatchParticipants
-Matches 1 --------- * ScoreRecords
 ```
 
 ## 4. Critical Constraints and Invariants
@@ -679,10 +536,6 @@ Matches 1 --------- * ScoreRecords
 8. Bids are immutable and scoped to one auction lot and value type.
 9. Only server-derived active assignments may select bidder accounts.
 10. Sport auction activation requires locked retentions and required captains.
-11. Competition entries reference existing employees or sport teams.
-12. Matches cannot contain entries from another competition.
-13. Completed results are amended through versioned correction/audit operations,
-    not silent overwrite.
 
 ## 5. Backward Compatibility Mapping
 
@@ -742,11 +595,10 @@ Matches 1 --------- * ScoreRecords
 - Optionally dual-write for a short, measured compatibility window; avoid
   indefinite dual-write.
 
-### Stage 5: Sport Rosters and Competitions
+### Stage 5: Sport Rosters and Auctions
 
 - Add sport teams, allocation credit accounts, sport retentions, captains,
-  sport allocation auctions, competition formats, entries, schedules, matches,
-  and results.
+  and sport allocation auctions.
 - No legacy equivalent needs backfill except current sport metadata.
 
 ### Stage 6: Cutover and Deprecation
@@ -786,16 +638,13 @@ High-value indexes include:
 - Allocation credit accounts by auction/sport team and credit transactions by
   account/time.
 - Sport memberships by sport/team/employee/status.
-- Matches by competition/stage/status, venue/time, and scheduled time.
-- Entry members by employee for personal schedule conflict queries.
 
 MySQL overlap constraints generally require transactional checks and locking;
 indexes must support those checks.
 
 ## 9. Deletion and History Policy
 
-- Prefer archive/status changes for festivals, teams, employees, competitions,
-  auctions, and matches.
+- Prefer archive/status changes for festivals, teams, employees, and auctions.
 - Restrict deletion when financial, bid, allocation, or result history exists.
 - Allow cascade only for unstarted draft configuration children.
 - Use `SET NULL` only for optional actor references where historical facts must

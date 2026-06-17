@@ -27,7 +27,7 @@ import { createFestivalAudit } from "../utils/festivalAudit.js";
 
 dotenv.config();
 
-const ACCESS_TOKEN_EXPIRES_IN = "1h";
+const ACCESS_TOKEN_EXPIRES_IN = "7d";
 
 const auditPasswordResetCompleted = async (userId, transaction) => {
   const employee = await Employee.findOne({

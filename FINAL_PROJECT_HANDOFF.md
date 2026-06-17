@@ -979,27 +979,10 @@ The approved long-term direction is allocation-credit auctions for sport
 teams, not a second financial purchase. The Employee was already financially
 acquired in the Main Festival Auction.
 
-## Competition Engine
+## Future Enhancements (Out of Scope)
 
-Not implemented:
-
-- Competition format definitions.
-- Individual and team entries.
-- Stages and rounds.
-- Scheduling.
-- Venues.
-- Matches.
-- Scoring.
-- Results.
-- Standings and progression.
-
-Required format support includes:
-
-- Chess individual elimination.
-- Badminton, Carrom, and Table Tennis singles ranking followed by top-eight
-  doubles and round robin.
-- Cricket, Volleyball, and Throwball team round robin.
-- Future formats without schema redesign.
+Competition management, fixtures, standings, playoffs, and match operations
+were evaluated but are intentionally excluded from the current product scope.
 
 ## Operational and Product Work
 

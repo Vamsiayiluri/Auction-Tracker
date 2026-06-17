@@ -1332,7 +1332,6 @@ npm run build
 - Owner Assignment
 - Retentions or budgets
 - Sport Auctions
-- Competition Engine
 
 ## Sports Festival Phase 2 Redesign - Employee Identity
 
