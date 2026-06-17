@@ -106,16 +106,74 @@ export default function AuctionDirectory() {
   const loadAuctions = useCallback(async () => {
     setLoading(true);
     setErrors([]);
-    const [festivalResult, tournamentResult] = await Promise.allSettled([
-      api.get("/v2/festivals"),
-      api.get("/v2/sport-tournaments"),
-    ]);
+
+    // ── H-06 optimisation ────────────────────────────────────────────────────
+    // Previously: await both lists → then fetch festival stages (second wave).
+    // Now: kick off both list requests simultaneously AND chain the festival
+    // stage fetches directly off the festival list promise so they begin as
+    // soon as festivals arrive — without waiting for the tournament list.
+    //
+    // Sport tournament stage is derived purely from `tournament.status` in the
+    // list response, so tournaments need no extra per-entity fetches at all.
+    //
+    // Timeline (before):  [festivals ──┐  [stages ────────]
+    //                     [tournaments─┘]
+    //
+    // Timeline (after):   [festivals ──┬──[stages ────────]
+    //                     [tournaments─┘]
+    //                     ↑ all three complete in one Promise.allSettled wave
+    const festivalListPromise = api.get("/v2/festivals");
+    const tournamentListPromise = api.get("/v2/sport-tournaments");
+
+    // Chain stage fetches immediately off the festival list — they start as
+    // soon as the list resolves, potentially overlapping with the tournament
+    // list response time.
+    const festivalStagePromise = festivalListPromise
+      .then(async (result) => {
+        const nextFestivals = result.data.data || [];
+        if (!nextFestivals.length) return {};
+        const stageResults = await Promise.allSettled(
+          nextFestivals.map(async (festival) => {
+            const [currentResult, readinessResult] = await Promise.allSettled([
+              api.get(`/v2/festivals/${festival.id}/auction/current`),
+              user?.role === "admin"
+                ? api.get(`/v2/festivals/${festival.id}/auction/readiness`)
+                : Promise.resolve({ data: { data: null } }),
+            ]);
+            return {
+              festivalId: festival.id,
+              auction:
+                currentResult.status === "fulfilled"
+                  ? currentResult.value.data.data
+                  : null,
+              readiness:
+                readinessResult.status === "fulfilled"
+                  ? readinessResult.value.data.data
+                  : null,
+            };
+          }),
+        );
+        return Object.fromEntries(
+          stageResults
+            .filter(({ status }) => status === "fulfilled")
+            .map(({ value }) => [value.festivalId, value]),
+        );
+      })
+      .catch(() => ({}));
+
+    // Await all three chains together. festivalListPromise appearing in both
+    // festivalStagePromise's chain and here is safe — JS promises are
+    // idempotent and always return the same settled value on re-await.
+    const [festivalResult, tournamentResult, nextStageData] =
+      await Promise.allSettled([
+        festivalListPromise,
+        tournamentListPromise,
+        festivalStagePromise,
+      ]);
 
     const nextErrors = [];
-    let nextFestivals = [];
     if (festivalResult.status === "fulfilled") {
-      nextFestivals = festivalResult.value.data.data || [];
-      setFestivals(nextFestivals);
+      setFestivals(festivalResult.value.data.data || []);
     } else {
       nextErrors.push("Festival Auctions could not be loaded.");
     }
@@ -124,39 +182,9 @@ export default function AuctionDirectory() {
     } else {
       nextErrors.push("Sport Auctions could not be loaded.");
     }
-
-    if (nextFestivals.length) {
-      const stageResults = await Promise.allSettled(
-        nextFestivals.map(async (festival) => {
-          const [currentResult, readinessResult] = await Promise.allSettled([
-            api.get(`/v2/festivals/${festival.id}/auction/current`),
-            user?.role === "admin"
-              ? api.get(`/v2/festivals/${festival.id}/auction/readiness`)
-              : Promise.resolve({ data: { data: null } }),
-          ]);
-          return {
-            festivalId: festival.id,
-            auction:
-              currentResult.status === "fulfilled"
-                ? currentResult.value.data.data
-                : null,
-            readiness:
-              readinessResult.status === "fulfilled"
-                ? readinessResult.value.data.data
-                : null,
-          };
-        }),
-      );
-      setFestivalStageData(
-        Object.fromEntries(
-          stageResults
-            .filter(({ status }) => status === "fulfilled")
-            .map(({ value }) => [value.festivalId, value]),
-        ),
-      );
-    } else {
-      setFestivalStageData({});
-    }
+    setFestivalStageData(
+      nextStageData.status === "fulfilled" ? nextStageData.value : {},
+    );
 
     setErrors(nextErrors);
     setLoading(false);

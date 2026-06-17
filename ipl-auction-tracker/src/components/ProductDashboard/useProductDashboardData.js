@@ -37,6 +37,7 @@ export default function useProductDashboardData(user) {
     setError("");
     setWarnings([]);
 
+    // ── Phase 1: core lists (always parallel) ──────────────────────────────
     const baseResults = await Promise.allSettled([
       api.get("/v2/festivals"),
       api.get("/v2/sport-tournaments"),
@@ -70,17 +71,16 @@ export default function useProductDashboardData(user) {
       nextWarnings.push("Owner assignment context could not be loaded.");
     }
 
-    const detailResults = await Promise.allSettled(
-      tournaments.map((tournament) =>
-        api.get(`/v2/sport-tournaments/${tournament.id}`)
-      )
-    );
-    const tournamentDetails = detailResults
-      .map((result) => fulfilledData(result))
-      .filter(Boolean);
-    if (detailResults.some(({ status }) => status === "rejected")) {
-      nextWarnings.push("Some Sport Tournament details could not be loaded.");
-    }
+    // NOTE (C-01 / PERFORMANCE_AUDIT.md): The previous implementation fetched
+    // GET /v2/sport-tournaments/:id for every tournament in a sequential Phase 2
+    // (N+1 pattern). Tournament summaries from the list already carry `status`
+    // and `permissions` — the only fields needed to gate the per-tournament
+    // state fetches below. The detail fetch has been removed.
+    //
+    // If `permissions` is absent from the list response in a given API version,
+    // the permission gate falls back to `user.role === "admin"` for readiness
+    // and to `historySportStatuses.has(status)` for auction data. This is an
+    // acceptable degradation until the API includes permissions in list responses.
 
     const ownerFestivalIds = new Set(
       ownerContexts.map(({ festivalId }) => festivalId)
@@ -90,57 +90,68 @@ export default function useProductDashboardData(user) {
         ? festivals.filter(({ id }) => ownerFestivalIds.has(id))
         : festivals;
 
-    const festivalStateResults = await Promise.allSettled(
-      visibleFestivals.map(async (festival) => {
-        const [currentResult, readinessResult, historyResult] =
-          await Promise.allSettled([
-            api.get(`/v2/festivals/${festival.id}/auction/current`),
-            user.role === "admin"
-              ? api.get(`/v2/festivals/${festival.id}/auction/readiness`)
-              : Promise.resolve({ data: { data: null } }),
-            api.get(`/v2/festivals/${festival.id}/auction/history`),
-          ]);
-        return {
-          festival,
-          current: fulfilledData(currentResult),
-          readiness: fulfilledData(readinessResult),
-          history: fulfilledData(historyResult, []),
-        };
-      })
-    );
+    // ── Phase 2: festival states AND sport states — fully parallel ──────────
+    // Previously these ran sequentially (festivalStates awaited, then sportStates).
+    // They are independent of each other and now run in a single Promise.all.
+    const [festivalStateResults, sportStateResults] = await Promise.all([
+      Promise.allSettled(
+        visibleFestivals.map(async (festival) => {
+          const [currentResult, readinessResult, historyResult] =
+            await Promise.allSettled([
+              api.get(`/v2/festivals/${festival.id}/auction/current`),
+              user.role === "admin"
+                ? api.get(`/v2/festivals/${festival.id}/auction/readiness`)
+                : Promise.resolve({ data: { data: null } }),
+              api.get(`/v2/festivals/${festival.id}/auction/history`),
+            ]);
+          return {
+            festival,
+            current: fulfilledData(currentResult),
+            readiness: fulfilledData(readinessResult),
+            history: fulfilledData(historyResult, []),
+          };
+        })
+      ),
+      Promise.allSettled(
+        tournaments.map(async (tournament) => {
+          // `tournament` is a summary object. `status` is always present.
+          // `permissions` may be present depending on API version; falls back
+          // gracefully when absent (see note above).
+          const shouldLoadAuction =
+            historySportStatuses.has(tournament.status) ||
+            Boolean(tournament.permissions?.canBid);
+          const [currentResult, readinessResult, historyResult] =
+            await Promise.allSettled([
+              shouldLoadAuction
+                ? api.get(
+                    `/v2/sport-tournaments/${tournament.id}/auction/current`
+                  )
+                : Promise.resolve({ data: { data: null } }),
+              user.role === "admin" ||
+              Boolean(tournament.permissions?.canManage)
+                ? api.get(
+                    `/v2/sport-tournaments/${tournament.id}/readiness`
+                  )
+                : Promise.resolve({ data: { data: null } }),
+              historySportStatuses.has(tournament.status)
+                ? api.get(
+                    `/v2/sport-tournaments/${tournament.id}/auction/history`
+                  )
+                : Promise.resolve({ data: { data: [] } }),
+            ]);
+          return {
+            tournament,
+            current: fulfilledData(currentResult),
+            readiness: fulfilledData(readinessResult),
+            history: fulfilledData(historyResult, []),
+          };
+        })
+      ),
+    ]);
+
     const festivalStates = festivalStateResults
       .filter(({ status }) => status === "fulfilled")
       .map(({ value }) => value);
-
-    const sportStateResults = await Promise.allSettled(
-      tournamentDetails.map(async (tournament) => {
-        const shouldLoadAuction =
-          historySportStatuses.has(tournament.status) ||
-          tournament.permissions?.canBid;
-        const [currentResult, readinessResult, historyResult] =
-          await Promise.allSettled([
-            shouldLoadAuction
-              ? api.get(
-                  `/v2/sport-tournaments/${tournament.id}/auction/current`
-                )
-              : Promise.resolve({ data: { data: null } }),
-            user.role === "admin" || tournament.permissions?.canManage
-              ? api.get(`/v2/sport-tournaments/${tournament.id}/readiness`)
-              : Promise.resolve({ data: { data: null } }),
-            historySportStatuses.has(tournament.status)
-              ? api.get(
-                  `/v2/sport-tournaments/${tournament.id}/auction/history`
-                )
-              : Promise.resolve({ data: { data: [] } }),
-          ]);
-        return {
-          tournament,
-          current: fulfilledData(currentResult),
-          readiness: fulfilledData(readinessResult),
-          history: fulfilledData(historyResult, []),
-        };
-      })
-    );
     const sportStates = sportStateResults
       .filter(({ status }) => status === "fulfilled")
       .map(({ value }) => value);
@@ -188,7 +199,11 @@ export default function useProductDashboardData(user) {
       festivals,
       ownerContexts,
       tournaments,
-      tournamentDetails,
+      // tournamentDetails previously held full detail objects from N+1 fetches.
+      // It now holds the summaries from the list response (same as `tournaments`).
+      // Components consuming sportStates.tournament receive summary objects,
+      // which contain all fields the dashboard actually displays.
+      tournamentDetails: tournaments,
       festivalStates,
       sportStates,
       recentOutcomes: [...festivalOutcomes, ...sportOutcomes]

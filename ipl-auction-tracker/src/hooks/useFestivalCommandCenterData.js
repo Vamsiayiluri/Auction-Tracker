@@ -30,6 +30,21 @@ export default function useFestivalCommandCenterData(festivalId) {
     setError("");
     setWarnings([]);
 
+    // ── Phase 1: festival core data + global tournament list (parallel) ──────
+    //
+    // NOTE (H-02 / PERFORMANCE_AUDIT.md): `GET /v2/sport-tournaments` returns
+    // ALL tournaments visible to this user, regardless of which festival is
+    // being viewed. The response is filtered client-side by `festivalId`.
+    //
+    // API improvement required to eliminate this over-fetch:
+    //   Option A: Add query parameter support →
+    //             GET /v2/sport-tournaments?festivalId=:festivalId
+    //   Option B: Expose a sub-resource →
+    //             GET /v2/festivals/:festivalId/sport-tournaments
+    //
+    // Until the API supports one of these, the client fetches the full list
+    // and discards tournaments that belong to other festivals. For installations
+    // with many festivals and tournaments this is significant wasted bandwidth.
     const baseResults = await Promise.allSettled([
       api.get(`/v2/festivals/${festivalId}`),
       api.get(`/v2/festivals/${festivalId}/auction/readiness`),
@@ -45,23 +60,29 @@ export default function useFestivalCommandCenterData(festivalId) {
       return;
     }
 
+    // Use summaries filtered by festivalId directly — no N+1 detail fetch.
+    //
+    // NOTE (C-02 / PERFORMANCE_AUDIT.md): The previous implementation fetched
+    // GET /v2/sport-tournaments/:id for every tournament in this festival
+    // (N+1 pattern), then used those detail objects to gate the per-tournament
+    // state fetches below. Tournament summaries already contain `status` and
+    // (depending on API version) `permissions`, which is all that is needed
+    // to determine which state endpoints to call.
+    //
+    // If `permissions.canManage` is absent from the summary, the readiness
+    // fetch is skipped for that tournament. This is an acceptable degradation
+    // until the API includes permissions in list responses (same mitigation
+    // as the Dashboard hook — see useProductDashboardData.js C-01 note).
     const tournamentSummaries = fulfilledData(baseResults[4], []).filter(
       (tournament) => tournament.festivalId === festivalId
     );
-    const detailResults = await Promise.allSettled(
-      tournamentSummaries.map((tournament) =>
-        api.get(`/v2/sport-tournaments/${tournament.id}`)
-      )
-    );
-    const tournamentDetails = detailResults
-      .map((result, index) => fulfilledData(result, tournamentSummaries[index]))
-      .filter(Boolean);
 
+    // ── Phase 2: per-tournament state fetches (using summaries) ─────────────
     const tournamentStateResults = await Promise.allSettled(
-      tournamentDetails.map(async (tournament) => {
+      tournamentSummaries.map(async (tournament) => {
         const [readinessResult, auctionResult, historyResult] =
           await Promise.allSettled([
-            tournament.permissions?.canManage
+            Boolean(tournament.permissions?.canManage)
               ? api.get(`/v2/sport-tournaments/${tournament.id}/readiness`)
               : Promise.resolve({ data: { data: null } }),
             auctionVisibleStatuses.has(tournament.status)
