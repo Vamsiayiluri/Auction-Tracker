@@ -30,7 +30,7 @@ import LiveBidStream from "./FestivalAuctionArena/LiveBidStream";
 import QueueSummary from "./FestivalAuctionArena/QueueSummary";
 import RecentResultsStrip from "./FestivalAuctionArena/RecentResultsStrip";
 import { LoadingStateCard, ProductStateCard } from "./ProductState";
-import { getFestivalAuctionStage, isSetupStage, isReadyStage } from "../utils/auctionStages";
+import { getFestivalAuctionStageFromState, isSetupStage, isReadyStage } from "../utils/auctionStages";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -57,6 +57,8 @@ export default function MainFestivalAuction({
   const [notice, setNotice] = useState("");
   const [selectedUnsoldIds, setSelectedUnsoldIds] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState(null);
+  const [readinessLoaded, setReadinessLoaded] = useState(false);
   const [activeAction, setActiveAction] = useState("");
   const [connected, setConnected] = useState(socket.connected);
   const [roomJoined, setRoomJoined] = useState(false);
@@ -142,6 +144,28 @@ export default function MainFestivalAuction({
         if (active) setFestival(response.data.data);
       })
       .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [festivalId]);
+
+  // Fetch readiness once on mount so the stage function can correctly identify
+  // READY pre-launch state (readiness = READY, auctionStatus = "setup").
+  // Failure is non-fatal — readinessLoaded is set either way so the arena
+  // never stays in the loading state due to a failed readiness call.
+  useEffect(() => {
+    let active = true;
+    api
+      .get(`/v2/festivals/${festivalId}/auction/readiness`)
+      .then((response) => {
+        if (active) {
+          setReadiness(response.data.data);
+          setReadinessLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (active) setReadinessLoaded(true);
+      });
     return () => {
       active = false;
     };
@@ -445,11 +469,23 @@ export default function MainFestivalAuction({
       ? navigate(`/festivals/${festivalId}/command-center`)
       : navigate(`/festivals/${festivalId}/auction-hub`);
 
-  const festivalStage = getFestivalAuctionStage({ auctionStatus: status });
+  // Derive stage from all three sources so a READY pre-launch festival
+  // (readiness = READY, auctionStatus = "setup") is not mistaken for SETUP.
+  const festivalStage = getFestivalAuctionStageFromState({
+    festival,
+    auction: state,
+    readiness,
+  });
   const isSetup = isSetupStage(festivalStage);
   const isReady = isReadyStage(festivalStage);
 
-  if (loading && !state) {
+  // Keep the loading card visible until both the auction state AND readiness
+  // have resolved for pre-launch festivals. This prevents a brief flash of
+  // "Auction Setup Incomplete" before readiness data arrives.
+  // For already-live/completed auctions the stage is deterministic from
+  // auctionStatus alone, so we do not wait for readiness in that case.
+  const preLaunch = status === "setup";
+  if ((loading && !state) || (preLaunch && !readinessLoaded)) {
     return (
       <LoadingStateCard
         title="Loading Festival Auction"
@@ -534,7 +570,9 @@ export default function MainFestivalAuction({
 
       {isReady && isAdmin && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          The Festival Auction is configured and ready. Select a participant below to start the first bidding round.
+          {preLaunch
+            ? "The Festival Auction is configured and ready to launch. Click \"Start Auction\" in the Auction Controls above to begin."
+            : "The Festival Auction is configured and ready. Select a participant below to start the first bidding round."}
         </Alert>
       )}
 

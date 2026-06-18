@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   Alert,
   Box,
@@ -27,6 +27,8 @@ export default function FestivalSetupWizard({
   onRefresh,
 }) {
   const storageKey = `festival-setup-step-v2:${festivalId}`;
+  // Prevent double-clicks from firing concurrent step changes.
+  const steppingRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem(storageKey, FESTIVAL_SETUP_STEPS[activeStep]);
@@ -34,9 +36,27 @@ export default function FestivalSetupWizard({
 
   const completed = getSetupCompletion(readiness);
 
+  // Navigate between steps WITHOUT triggering a data refresh.
+  //
+  // Previously openStep called onRefresh() on every navigation. That caused
+  // two concurrent loadRegistrationData calls every time Next/Back was clicked:
+  //   1. The call inside invalidateFestivalSetup (with stale/old step captured)
+  //   2. The call from useEffect([loadRegistrationData]) after activeStep changed
+  //
+  // The useEffect-triggered load already handles refreshing step-specific data.
+  // onRefresh is reserved for the explicit "Refresh Progress" button below, which
+  // the user clicks after making changes that should update server-side readiness.
   const openStep = (index) => {
+    if (steppingRef.current) return;
+    steppingRef.current = true;
+    // Release the guard after a short debounce so rapid double-clicks are dropped
+    // but normal Back→Next sequences are not affected.
+    setTimeout(() => { steppingRef.current = false; }, 400);
+
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] openStep | festivalId=${festivalId} | from=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) → to=${index} (${FESTIVAL_SETUP_STEPS[index]})`
+    );
     onStepChange(index);
-    onRefresh?.();
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 

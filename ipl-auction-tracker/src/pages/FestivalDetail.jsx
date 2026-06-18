@@ -50,10 +50,12 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "../utils/api";
 import FestivalSetupWizard from "../components/FestivalSetupWizard";
 import FestivalConfigurationStatus from "../components/FestivalConfigurationStatus";
+import FestivalControlCenter from "../components/FestivalControlCenter";
 import FestivalDetailsConfiguration from "../components/FestivalDetailsConfiguration";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   FESTIVAL_OPERATION_TABS,
+  FESTIVAL_SETUP_STEPS,
   getStoredSetupStep,
 } from "../utils/festivalWorkspace";
 import {
@@ -61,6 +63,7 @@ import {
   getFestivalAuctionStageFromState,
   getStageLabel,
   isSetupStage,
+  isReadyStage,
   isLiveStage,
   isCompletedStage,
 } from "../utils/auctionStages";
@@ -103,6 +106,9 @@ export default function FestivalDetail() {
   const [busy, setBusy] = useState(false);
   const importInFlight = useRef(false);
   const actionInFlight = useRef(false);
+  // Guards against concurrent invalidateFestivalSetup calls (double-click Next,
+  // rapid mutations, or step-change + mutation racing each other).
+  const refreshInFlight = useRef(false);
   const [activeAction, setActiveAction] = useState("");
   const [rosterRevision, setRosterRevision] = useState(0);
   const [readiness, setReadiness] = useState(null);
@@ -155,8 +161,26 @@ export default function FestivalDetail() {
     setError("");
     try {
       const festivalResponse = await api.get(`/v2/festivals/${festivalId}`);
-      setFestival(festivalResponse.data.data);
-    } catch {
+      const nextFestival = festivalResponse.data.data;
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] loadWorkspace | festivalId=${festivalId} | name=${nextFestival?.name} | status=${nextFestival?.status} | lockState=${JSON.stringify(nextFestival?.lockState)}`
+      );
+      // BUGFIX: Guard against API returning null data. If the API response
+      // contains {data:{data:null}} (malformed or intermittent backend issue),
+      // calling setFestival(null) while loading=true would show a blank
+      // LoadingStateCard instead of the wizard. Keep the previous festival value
+      // so the user sees their existing data while we log the anomaly.
+      if (nextFestival) {
+        setFestival(nextFestival);
+      } else {
+        console.warn(
+          `[FESTIVAL_SETUP_DEBUG] loadWorkspace | festivalId=${festivalId} | API returned null festival — retaining previous value`
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[FESTIVAL_SETUP_DEBUG] loadWorkspace | festivalId=${festivalId} | error: ${err.message}`
+      );
       setError("Unable to load the festival workspace.");
     } finally {
       setLoading(false);
@@ -171,6 +195,9 @@ export default function FestivalDetail() {
     const needsParticipants =
       (configurationView && [1, 2, 3].includes(activeStep)) ||
       (operationsView && activeTab === "Participants");
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] loadRegistrationData | festivalId=${festivalId} | step=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) | needsCatalog=${needsCatalog} | needsSports=${needsSports} | needsParticipants=${needsParticipants}`
+    );
     const [catalogResponse, sportsResponse, participantResponse] =
       await Promise.all([
         needsCatalog ? api.get("/sports") : null,
@@ -182,7 +209,11 @@ export default function FestivalDetail() {
     if (catalogResponse) setCatalogSports(catalogResponse.data || []);
     if (sportsResponse) setFestivalSports(sportsResponse.data.data || []);
     if (participantResponse) {
-      setParticipants(participantResponse.data.data || []);
+      const nextParticipants = participantResponse.data.data || [];
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] loadRegistrationData | festivalId=${festivalId} | step=${activeStep} | participantCount=${nextParticipants.length}`
+      );
+      setParticipants(nextParticipants);
     }
   }, [
     activeStep,
@@ -193,28 +224,63 @@ export default function FestivalDetail() {
   ]);
 
   const refreshReadiness = useCallback(async () => {
+    // No try/catch here — callers (useEffect and invalidateFestivalSetup) handle
+    // rejections. We re-throw so callers get the real error.
     const response = await api.get(
       `/v2/festivals/${festivalId}/auction/readiness`
     );
     const nextReadiness = response.data.data;
-    setReadiness(nextReadiness);
-    setAuctionStatus(nextReadiness.counts?.auctionStatus || "setup");
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] refreshReadiness | festivalId=${festivalId} | overallStatus=${nextReadiness?.overallStatus} | auctionStatus=${nextReadiness?.counts?.auctionStatus}`
+    );
+    setReadiness(nextReadiness ?? null);
+    // BUGFIX: nextReadiness could be null if the API returns {data:{data:null}}.
+    // Previously `nextReadiness.counts?.auctionStatus` threw TypeError on null
+    // because optional chaining applies to what FOLLOWS the ?., not the object
+    // before it. Fixed by guarding the root object first.
+    setAuctionStatus(nextReadiness?.counts?.auctionStatus || "setup");
     return nextReadiness;
   }, [festivalId]);
 
   const invalidateFestivalSetup = useCallback(async () => {
-    setRosterRevision((current) => current + 1);
-    const results = await Promise.allSettled([
-      loadWorkspace(),
-      loadRegistrationData(),
-      refreshReadiness(),
-    ]);
-    if (results.some(({ status }) => status === "rejected")) {
-      setError(
-        "Setup was saved, but the latest Festival status could not be refreshed. Use Refresh Progress to retry."
+    // Guard: if a refresh is already in flight (e.g. double-click on a mutation
+    // button, or a step navigation firing onRefresh concurrently), skip this call.
+    // The in-flight refresh will update the state when it completes.
+    if (refreshInFlight.current) {
+      console.warn(
+        `[FESTIVAL_SETUP_DEBUG] invalidateFestivalSetup | festivalId=${festivalId} | SKIPPED (refresh already in flight)`
       );
+      return;
     }
-  }, [loadRegistrationData, loadWorkspace, refreshReadiness]);
+    refreshInFlight.current = true;
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] invalidateFestivalSetup | festivalId=${festivalId} | step=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) | participantCount=${participants.length} | starting refresh`
+    );
+    setRosterRevision((current) => current + 1);
+    try {
+      const results = await Promise.allSettled([
+        loadWorkspace(),
+        loadRegistrationData(),
+        refreshReadiness(),
+      ]);
+      const statuses = results.map((r) => r.status);
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] invalidateFestivalSetup | festivalId=${festivalId} | results: loadWorkspace=${statuses[0]} | loadRegistrationData=${statuses[1]} | refreshReadiness=${statuses[2]}`
+      );
+      if (results.some(({ status }) => status === "rejected")) {
+        const firstRejection = results.find(({ status }) => status === "rejected");
+        console.error(
+          `[FESTIVAL_SETUP_DEBUG] invalidateFestivalSetup | festivalId=${festivalId} | rejection reason:`,
+          firstRejection?.reason
+        );
+        setError(
+          "Setup was saved, but the latest Festival status could not be refreshed. Use Refresh Progress to retry."
+        );
+      }
+    } finally {
+      refreshInFlight.current = false;
+    }
+  }, [activeStep, festivalId, loadRegistrationData, loadWorkspace, participants.length, refreshReadiness]);
 
   useEffect(() => {
     loadWorkspace();
@@ -231,6 +297,12 @@ export default function FestivalDetail() {
       setError("Unable to load the active Festival section.");
     });
   }, [loadRegistrationData]);
+
+  useEffect(() => {
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] step changed | festivalId=${festivalId} | activeStep=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) | configurationView=${configurationView} | operationsView=${operationsView}`
+    );
+  }, [activeStep, configurationView, festivalId, operationsView]);
 
   useEffect(() => {
     localStorage.setItem(`festival-workspace-tab:${festivalId}`, activeTab);
@@ -315,12 +387,17 @@ export default function FestivalDetail() {
 
   const addSelectedParticipants = async () => {
     if (!selectedEmployees.length || !beginAction("add-participants")) return;
+    const payload = { employeeIds: selectedEmployees.map(({ id }) => id) };
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] addSelectedParticipants | festivalId=${festivalId} | step=${activeStep} | count=${payload.employeeIds.length} | ids=${payload.employeeIds.slice(0, 5).join(",")}`
+    );
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/bulk`,
-        {
-          employeeIds: selectedEmployees.map(({ id }) => id),
-        }
+        payload
+      );
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] addSelectedParticipants | festivalId=${festivalId} | response: added=${response.data.added} reactivated=${response.data.reactivated} ignored=${response.data.duplicatesIgnored}`
       );
       setSelectedEmployees([]);
       setEmployeeSearch("");
@@ -330,6 +407,10 @@ export default function FestivalDetail() {
       );
       await invalidateFestivalSetup();
     } catch (requestError) {
+      console.error(
+        `[FESTIVAL_SETUP_DEBUG] addSelectedParticipants | festivalId=${festivalId} | error: ${requestError.message}`,
+        requestError.response?.data
+      );
       setError(
         requestError.response?.data?.message || "Unable to add participants."
       );
@@ -340,15 +421,25 @@ export default function FestivalDetail() {
 
   const addAllEmployees = async () => {
     if (!beginAction("add-all-employees")) return;
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] addAllEmployees | festivalId=${festivalId} | step=${activeStep}`
+    );
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/add-all`
+      );
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] addAllEmployees | festivalId=${festivalId} | response: added=${response.data.added} reactivated=${response.data.reactivated} ignored=${response.data.duplicatesIgnored}`
       );
       setNotice(
         `Added ${response.data.added}; reactivated ${response.data.reactivated}; ignored ${response.data.duplicatesIgnored}.`
       );
       await invalidateFestivalSetup();
     } catch (requestError) {
+      console.error(
+        `[FESTIVAL_SETUP_DEBUG] addAllEmployees | festivalId=${festivalId} | error: ${requestError.message}`,
+        requestError.response?.data
+      );
       setError(
         requestError.response?.data?.message ||
           "Unable to add all employees to the festival."
@@ -365,6 +456,9 @@ export default function FestivalDetail() {
     ) {
       return;
     }
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] removeSelectedParticipants | festivalId=${festivalId} | step=${activeStep} | count=${selectedParticipantIds.length}`
+    );
     try {
       const response = await api.post(
         `/v2/festivals/${festivalId}/participants/bulk-remove`,
@@ -372,12 +466,19 @@ export default function FestivalDetail() {
           participantIds: selectedParticipantIds,
         }
       );
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] removeSelectedParticipants | festivalId=${festivalId} | response: removed=${response.data.removed} alreadyRemoved=${response.data.alreadyRemoved}`
+      );
       setSelectedParticipantIds([]);
       setNotice(
         `Removed ${response.data.removed}; already removed ${response.data.alreadyRemoved}.`
       );
       await invalidateFestivalSetup();
     } catch (requestError) {
+      console.error(
+        `[FESTIVAL_SETUP_DEBUG] removeSelectedParticipants | festivalId=${festivalId} | error: ${requestError.message}`,
+        requestError.response?.data
+      );
       setError(
         requestError.response?.data?.message ||
           "Unable to remove selected participants."
@@ -491,6 +592,9 @@ export default function FestivalDetail() {
   const uploadImport = async () => {
     if (!importFile || importInFlight.current) return;
     importInFlight.current = true;
+    console.log(
+      `[FESTIVAL_SETUP_DEBUG] uploadImport | festivalId=${festivalId} | step=${activeStep} | fileName=${importFile.name} | fileSize=${importFile.size}`
+    );
     const formData = new FormData();
     formData.append("csv", importFile);
     setBusy(true);
@@ -508,6 +612,9 @@ export default function FestivalDetail() {
           },
         }
       );
+      console.log(
+        `[FESTIVAL_SETUP_DEBUG] uploadImport | festivalId=${festivalId} | response: processed=${response.data.processed} succeeded=${response.data.succeeded} failed=${response.data.failed}`
+      );
       setImportResult(response.data);
       setImportProgress(100);
       await invalidateFestivalSetup();
@@ -519,6 +626,10 @@ export default function FestivalDetail() {
         );
       }
     } catch (requestError) {
+      console.error(
+        `[FESTIVAL_SETUP_DEBUG] uploadImport | festivalId=${festivalId} | error: ${requestError.message}`,
+        requestError.response?.data
+      );
       setImportResult({
         processed: 0,
         succeeded: 0,
@@ -656,11 +767,17 @@ export default function FestivalDetail() {
                 navigate(
                   setupStage
                     ? `/festivals/${festivalId}/manage`
-                    : `/festivals/${festivalId}/auction-hub`
+                    : isReadyStage(festivalStage)
+                      ? `/auctions/festivals/${festivalId}`
+                      : `/festivals/${festivalId}/auction-hub`
                 )
               }
             >
-              {setupStage ? "Continue Setup" : "View Auction Details"}
+              {setupStage
+                ? "Continue Setup"
+                : isReadyStage(festivalStage)
+                  ? "Open Auction Arena"
+                  : "View Auction Details"}
             </Button>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
@@ -712,6 +829,20 @@ export default function FestivalDetail() {
             setFestival(nextFestival);
             await invalidateFestivalSetup();
           }}
+        />
+      )}
+
+      {/* Sticky lifecycle controls: Start / Pause / Resume / Complete auction.
+          Shown in operations view once the festival is past the setup stage so
+          the admin always has access to the Start Auction action when READY. */}
+      {operationsView && !setupStage && (
+        <FestivalControlCenter
+          festival={festival}
+          festivalId={festivalId}
+          revision={rosterRevision}
+          onNavigate={setActiveTab}
+          onReadiness={setReadiness}
+          onAuctionStatus={setAuctionStatus}
         />
       )}
 

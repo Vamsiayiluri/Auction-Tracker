@@ -43,8 +43,9 @@ import {
 import { socket } from "../webSocket/socket";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 import {
-  getFestivalAuctionStage,
+  getFestivalAuctionStageFromState,
   isSetupStage,
+  isReadyStage,
   isCompletedStage,
 } from "../utils/auctionStages";
 
@@ -64,6 +65,7 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
   const [festival, setFestival] = useState(null);
   const [state, setState] = useState(null);
   const [history, setHistory] = useState([]);
+  const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [teamFilter, setTeamFilter] = useState("all");
@@ -75,20 +77,39 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     setLoading(true);
     setError("");
     try {
-      const [festivalResponse, currentResponse, historyResponse] =
-        await Promise.all([
+      const [festivalResult, currentResult, historyResult, readinessResult] =
+        await Promise.allSettled([
           api.get(`/v2/festivals/${festivalId}`),
           api.get(`/v2/festivals/${festivalId}/auction/current`),
           api.get(`/v2/festivals/${festivalId}/auction/history`),
+          // Readiness is required to correctly determine READY stage.
+          // Failure is non-fatal — stage gracefully falls back to SETUP.
+          api.get(`/v2/festivals/${festivalId}/auction/readiness`),
         ]);
-      setFestival(festivalResponse.data.data);
-      setState(currentResponse.data.data);
-      setHistory(historyResponse.data.data || []);
-    } catch (requestError) {
-      setError(
-        requestError.response?.data?.message ||
-          "We could not load the Festival auction details. Try again."
-      );
+
+      if (festivalResult.status === "fulfilled") {
+        setFestival(festivalResult.value.data.data);
+      }
+      if (currentResult.status === "fulfilled") {
+        setState(currentResult.value.data.data);
+      }
+      if (historyResult.status === "fulfilled") {
+        setHistory(historyResult.value.data.data || []);
+      }
+      if (readinessResult.status === "fulfilled") {
+        setReadiness(readinessResult.value.data.data);
+      }
+
+      // Surface an error only when both primary data sources fail.
+      if (
+        festivalResult.status === "rejected" &&
+        currentResult.status === "rejected"
+      ) {
+        setError(
+          currentResult.reason?.response?.data?.message ||
+            "We could not load the Festival auction details. Try again."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -192,10 +213,13 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     setSection(value);
     setSearchParams(value === "Overview" ? {} : { section: value });
   };
-  const auctionStatus = state?.config?.auctionStatus || "setup";
-  const festivalStage = getFestivalAuctionStage({
-    auctionStatus,
-    festivalStatus: festival?.status,
+  // Stage is derived from all three sources so that a READY pre-launch festival
+  // (readiness = READY, auctionStatus = "setup", festivalStatus = "setup") is
+  // correctly identified as READY rather than SETUP.
+  const festivalStage = getFestivalAuctionStageFromState({
+    festival,
+    auction: state,
+    readiness,
   });
   const hasResults = results.length > 0;
 
@@ -233,6 +257,34 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
         }
         actionLabel="Browse Auctions"
         onAction={() => navigate("/auctions")}
+      />
+    );
+  }
+
+  // Pre-launch READY state: setup is complete but auction has not been started yet.
+  // Show a holding screen rather than an empty Hub with no bids or team data.
+  if (isReadyStage(festivalStage)) {
+    return (
+      <ProductStateCard
+        eyebrow="Festival Auction"
+        title={state?.viewer?.isOwner ? "Auction Ready — Launching Soon" : "Festival Auction Ready to Launch"}
+        message={
+          state?.viewer?.isOwner
+            ? "Setup is complete. The administrator will start the auction shortly. Bid history, team summaries, and statistics will appear once bidding begins."
+            : "The Festival auction is configured and ready. Auction details will be available once the administrator starts the auction."
+        }
+        actionLabel={state?.viewer?.isAdmin ? "Go to Festival Management" : "Browse Auctions"}
+        onAction={
+          state?.viewer?.isAdmin
+            ? () => navigate(`/festivals/${festivalId}/manage`)
+            : () => navigate("/auctions")
+        }
+        secondaryActionLabel={state?.viewer?.isAdmin ? "View Festival Overview" : undefined}
+        onSecondaryAction={
+          state?.viewer?.isAdmin
+            ? () => navigate(`/festivals/${festivalId}/command-center`)
+            : undefined
+        }
       />
     );
   }
