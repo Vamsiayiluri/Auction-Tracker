@@ -377,10 +377,16 @@ export default function MainFestivalAuction({
 
   useEffect(() => {
     const latest = finalizedResults[0];
-    if (!latest) return;
-    const id = latest.id;
-    if (id === lastResultId.current) return;
-    lastResultId.current = id;
+    // lastResultId starts as null (uninitialized).
+    // The first time we see a non-empty result list we seed the ref and return
+    // without toasting — this covers both the initial fetch and any refresh.
+    // After seeding, only a genuinely new result (different id) triggers a toast.
+    if (lastResultId.current === null) {
+      if (latest) lastResultId.current = latest.id;
+      return;
+    }
+    if (!latest || latest.id === lastResultId.current) return;
+    lastResultId.current = latest.id;
     const name = latest.participant?.employee?.name || latest.participant?.name || "Participant";
     const outcome = latest.result?.outcome;
     if (outcome === "sold") {
