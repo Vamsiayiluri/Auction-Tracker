@@ -1,8 +1,12 @@
+import { useState } from "react";
 import {
+  Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -16,9 +20,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import Button from "@mui/material/Button";
 
 const defaultFormatValue = (value) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
@@ -140,6 +144,35 @@ export function HubMetrics({ children }) {
   );
 }
 
+export const AVATAR_COLORS = [
+  "#1976d2", "#388e3c", "#f57c00", "#7b1fa2",
+  "#c62828", "#00838f", "#558b2f", "#ad1457",
+];
+
+export function nameInitials(name = "") {
+  const parts = name.trim().split(" ").filter(Boolean);
+  return parts.length >= 2
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
+
+export function avatarColor(name = "") {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+export function sourceChipProps(source = "") {
+  const s = source.toLowerCase();
+  if (s.includes("retention") || s.includes("retain"))
+    return { label: "Retained", color: "warning" };
+  if (s.includes("auction"))
+    return { label: "Auction", color: "success" };
+  return { label: source || "Auction", color: "default" };
+}
+
+const COLLAPSED_LIMIT = 6;
+
 export function HubTeamCard({
   name,
   isViewer,
@@ -148,70 +181,110 @@ export function HubTeamCard({
   roster = [],
   labels = [],
   formatValue = defaultFormatValue,
+  totalBudget,
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const retentions = roster.filter((m) => {
+    const src = (m.acquisitionType || m.rosterSource || m.source || "").toLowerCase();
+    return src.includes("retain");
+  }).length;
+  const auctionBought = roster.length - retentions;
+  const spentNum = Number(String(spent).replace(/[^0-9.]/g, "")) || 0;
+  const remainNum = Number(String(remaining).replace(/[^0-9.]/g, "")) || 0;
+  const total = spentNum + remainNum;
+  const spentPct = total > 0 ? Math.round((spentNum / total) * 100) : 0;
+  const visible = expanded ? roster : roster.slice(0, COLLAPSED_LIMIT);
+
   return (
     <Card
       variant="outlined"
-      sx={isViewer ? { borderColor: "primary.main", borderWidth: 2 } : undefined}
+      sx={{
+        borderColor: isViewer ? "primary.main" : "divider",
+        borderWidth: isViewer ? 2 : 1,
+        borderRadius: 3,
+        overflow: "hidden",
+      }}
     >
-      <CardContent>
-        <Stack direction="row" justifyContent="space-between" spacing={2}>
+      {/* Header */}
+      <Box sx={{ px: 2.5, pt: 2.5, pb: 1.5, bgcolor: isViewer ? "primary.50" : "background.paper" }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              {name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {roster.length} team member(s)
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="h6" fontWeight={800}>{name}</Typography>
+              {isViewer && <Chip size="small" color="primary" label="My Team" />}
+            </Stack>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              {roster.length} players &nbsp;·&nbsp; {retentions} retained &nbsp;·&nbsp; {auctionBought} via auction
             </Typography>
           </Box>
-          {isViewer && <Chip size="small" color="primary" label="My Team" />}
         </Stack>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: 1,
-            my: 2,
-          }}
-        >
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Remaining
-            </Typography>
-            <Typography fontWeight={800}>{remaining}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Spent
-            </Typography>
-            <Typography fontWeight={800}>{spent}</Typography>
-          </Box>
+
+        {/* Budget bar */}
+        <Box sx={{ mt: 2 }}>
+          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Budget used</Typography>
+            <Typography variant="caption" fontWeight={700}>{spentPct}%</Typography>
+          </Stack>
+          <LinearProgress
+            variant="determinate"
+            value={spentPct}
+            sx={{ height: 6, borderRadius: 3, bgcolor: "action.hover" }}
+            color={spentPct > 85 ? "error" : spentPct > 60 ? "warning" : "primary"}
+          />
+          <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Spent</Typography>
+              <Typography variant="body2" fontWeight={700}>{spent}</Typography>
+            </Box>
+            <Box sx={{ textAlign: "right" }}>
+              <Typography variant="caption" color="text.secondary">Remaining</Typography>
+              <Typography variant="body2" fontWeight={700} color={remainNum === 0 ? "error.main" : "success.main"}>
+                {remaining}
+              </Typography>
+            </Box>
+          </Stack>
         </Box>
-        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-          {labels.map((label) => (
-            <Chip key={label} size="small" variant="outlined" label={label} />
-          ))}
-        </Stack>
-        <Stack spacing={0.75} sx={{ mt: 2 }}>
-          {roster.slice(0, 8).map((member) => (
-            <TeamMemberRow
-              key={member.id || member.participant?.id}
-              member={member}
-              formatValue={formatValue}
-            />
-          ))}
-          {!roster.length && (
-            <Typography variant="body2" color="text.secondary">
-              No team members bought or assigned yet.
-            </Typography>
-          )}
-        </Stack>
-      </CardContent>
+      </Box>
+
+      <Divider />
+
+      {/* Player list */}
+      <Box sx={{ px: 2, py: 1.5 }}>
+        {!roster.length ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+            No players acquired yet.
+          </Typography>
+        ) : (
+          <>
+            <Stack spacing={0}>
+              {visible.map((member, idx) => (
+                <TeamMemberRow
+                  key={member.id || member.participant?.id || idx}
+                  member={member}
+                  index={idx + 1}
+                  formatValue={formatValue}
+                />
+              ))}
+            </Stack>
+            {roster.length > COLLAPSED_LIMIT && (
+              <Button
+                size="small"
+                onClick={() => setExpanded((e) => !e)}
+                sx={{ mt: 1, textTransform: "none" }}
+              >
+                {expanded
+                  ? "Show less"
+                  : `Show ${roster.length - COLLAPSED_LIMIT} more players`}
+              </Button>
+            )}
+          </>
+        )}
+      </Box>
     </Card>
   );
 }
 
-function TeamMemberRow({ member, formatValue }) {
+function TeamMemberRow({ member, index, formatValue }) {
   const participant =
     member.participant?.employee?.name ||
     member.participant?.name ||
@@ -229,31 +302,59 @@ function TeamMemberRow({ member, formatValue }) {
     member.acquisitionType ||
     member.rosterSource ||
     member.source ||
-    member.result?.acquisitionType;
-  const order =
-    member.auctionOrder ??
-    member.purchaseOrder ??
-    member.auctionOrderNumber ??
-    member.order;
+    member.result?.acquisitionType ||
+    "";
+  const { label: srcLabel, color: srcColor } = sourceChipProps(source);
+  const bgColor = avatarColor(participant);
+
   return (
-    <Box sx={{ py: 0.75, borderTop: 1, borderColor: "divider" }}>
-      <Stack direction="row" justifyContent="space-between" spacing={2}>
-        <Typography variant="body2" fontWeight={700}>
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={1.5}
+      sx={{
+        py: 1,
+        px: 0.5,
+        borderBottom: 1,
+        borderColor: "divider",
+        "&:last-child": { borderBottom: 0 },
+        borderRadius: 1,
+        transition: "background 0.15s",
+        "&:hover": { bgcolor: "action.hover" },
+      }}
+    >
+      <Tooltip title={participant} placement="left">
+        <Avatar
+          sx={{
+            width: 34,
+            height: 34,
+            fontSize: 13,
+            fontWeight: 700,
+            bgcolor: bgColor,
+            flexShrink: 0,
+          }}
+        >
+          {nameInitials(participant)}
+        </Avatar>
+      </Tooltip>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="body2" fontWeight={700} noWrap>
           {participant}
         </Typography>
-        {order ? (
-          <Typography variant="caption" color="text.secondary">
-            #{order}
-          </Typography>
-        ) : null}
-      </Stack>
-      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ mt: 0.5 }}>
-        <Chip size="small" variant="outlined" label={`Acquired Through: ${source || "Auction"}`} />
-        {amount ? (
-          <Chip size="small" variant="outlined" label={`Purchased For: ${formatValue(amount)}`} />
-        ) : null}
-      </Stack>
-    </Box>
+        <Chip
+          size="small"
+          label={srcLabel}
+          color={srcColor}
+          variant="outlined"
+          sx={{ height: 18, fontSize: 10, mt: 0.25 }}
+        />
+      </Box>
+      {amount ? (
+        <Typography variant="body2" fontWeight={700} color="text.secondary" sx={{ flexShrink: 0 }}>
+          ₹{formatValue(amount)}
+        </Typography>
+      ) : null}
+    </Stack>
   );
 }
 

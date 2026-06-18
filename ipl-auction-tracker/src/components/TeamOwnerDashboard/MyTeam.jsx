@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   FormControl,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useAuth } from "../../context/auth-context";
 import api from "../../utils/api";
+import { avatarColor, nameInitials, sourceChipProps } from "../AuctionHubPrimitives";
 
 const formatAmount = (amount) =>
   new Intl.NumberFormat("en-IN", {
@@ -184,28 +184,70 @@ const MyTeam = ({ tournamentId }) => {
         </Stack>
       </Stack>
 
+      {/* Budget progress bar */}
+      <Box sx={{ mb: 3 }}>
+        {(() => {
+          const total = Number(team?.totalAmount || 0);
+          const spent = Number(team?.amountSpent || 0);
+          const pct = total > 0 ? Math.round((spent / total) * 100) : 0;
+          return (
+            <>
+              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">Budget used</Typography>
+                <Typography variant="caption" fontWeight={700}>{pct}%</Typography>
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={pct}
+                color={pct > 85 ? "error" : pct > 60 ? "warning" : "primary"}
+                sx={{ height: 6, borderRadius: 3, bgcolor: "action.hover" }}
+              />
+            </>
+          );
+        })()}
+      </Box>
+
       <Card variant="outlined">
         {visiblePlayers.length ? (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Player</TableCell>
-                {hasRoles && <TableCell>Role</TableCell>}
-                <TableCell align="right">Bought For</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {visiblePlayers.map((player) => (
-                <TableRow key={player.id} hover>
-                  <TableCell sx={{ fontWeight: 500 }}>{player.name}</TableCell>
-                  {hasRoles && <TableCell>{player.role || "-"}</TableCell>}
-                  <TableCell align="right">
+          <Stack spacing={0} sx={{ p: 1 }}>
+            {visiblePlayers.map((player) => {
+              const bg = avatarColor(player.name || "");
+              const { label: srcLabel, color: srcColor } = sourceChipProps("");
+              return (
+                <Stack
+                  key={player.id}
+                  direction="row"
+                  alignItems="center"
+                  spacing={1.5}
+                  sx={{
+                    py: 1,
+                    px: 0.5,
+                    borderBottom: 1,
+                    borderColor: "divider",
+                    "&:last-child": { borderBottom: 0 },
+                    borderRadius: 1,
+                    transition: "background 0.15s",
+                    "&:hover": { bgcolor: "action.hover" },
+                  }}
+                >
+                  <Tooltip title={player.name} placement="left">
+                    <Avatar sx={{ width: 34, height: 34, fontSize: 13, fontWeight: 700, bgcolor: bg, flexShrink: 0 }}>
+                      {nameInitials(player.name || "")}
+                    </Avatar>
+                  </Tooltip>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" fontWeight={700} noWrap>{player.name}</Typography>
+                    {player.role && (
+                      <Chip size="small" label={player.role} variant="outlined" sx={{ height: 18, fontSize: 10, mt: 0.25 }} />
+                    )}
+                  </Box>
+                  <Typography variant="body2" fontWeight={700} color="text.secondary" sx={{ flexShrink: 0 }}>
                     {formatAmount(player.soldPrice)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </Typography>
+                </Stack>
+              );
+            })}
+          </Stack>
         ) : (
           <Box sx={{ py: 6, textAlign: "center" }}>
             <Typography variant="h6">No players found</Typography>

@@ -6,20 +6,21 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Avatar,
   Box,
   Card,
   CardContent,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
+  LinearProgress,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
 import { socket } from "../webSocket/socket";
 import { shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
 import { LoadingStateCard } from "./ProductState";
+import { avatarColor, nameInitials, sourceChipProps } from "./AuctionHubPrimitives";
 
 const formatMoney = (value) =>
   new Intl.NumberFormat("en-IN", {
@@ -233,19 +234,29 @@ export default function FestivalTeamsDirectory({
                       </Typography>
                     </Box>
                   </Stack>
-                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                    <Chip
-                      label={`Owner: ${
-                        summary?.owner?.employee?.name || "Not assigned"
-                      }`}
-                    />
-                    <Chip
-                      color="success"
-                      variant="outlined"
-                      label={`Purse left ${formatMoney(
-                        summary?.remainingBudget
-                      )}`}
-                    />
+                  <Stack spacing={0.5} sx={{ minWidth: 160 }}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" color="text.secondary">
+                        {summary?.owner?.employee?.name || "No owner"}
+                      </Typography>
+                      <Typography variant="caption" fontWeight={700}>
+                        ₹{formatMoney(summary?.remainingBudget)} left
+                      </Typography>
+                    </Stack>
+                    {(() => {
+                      const spent = Number(summary?.spentBudget || 0);
+                      const remaining = Number(summary?.remainingBudget || 0);
+                      const total = spent + remaining;
+                      const pct = total > 0 ? Math.round((spent / total) * 100) : 0;
+                      return (
+                        <LinearProgress
+                          variant="determinate"
+                          value={pct}
+                          color={pct > 85 ? "error" : pct > 60 ? "warning" : "primary"}
+                          sx={{ height: 5, borderRadius: 3, bgcolor: "action.hover", width: 160 }}
+                        />
+                      );
+                    })()}
                   </Stack>
                 </Stack>
               </AccordionSummary>
@@ -333,31 +344,60 @@ function TeamMembersCard({ title, children }) {
 function MembershipList({ memberships, showSource = false }) {
   if (!memberships.length) {
     return (
-      <Typography color="text.secondary">
+      <Typography color="text.secondary" variant="body2" sx={{ py: 1 }}>
         No participants in this section.
       </Typography>
     );
   }
 
   return (
-    <List dense disablePadding>
-      {memberships.map((membership, index) => (
-        <ListItem
-          key={membership.id}
-          disableGutters
-          divider={index < memberships.length - 1}
-        >
-          <ListItemText
-            primary={memberName(membership)}
-            secondary={
-              [memberNumber(membership), showSource ? membership.rosterSource : ""]
-                .filter(Boolean)
-                .join(" | ")
-            }
-            primaryTypographyProps={{ fontWeight: 700 }}
-          />
-        </ListItem>
-      ))}
-    </List>
+    <Stack spacing={0}>
+      {memberships.map((membership) => {
+        const name = memberName(membership);
+        const empNo = memberNumber(membership);
+        const source = showSource ? (membership.rosterSource || "") : "";
+        const { label: srcLabel, color: srcColor } = sourceChipProps(source);
+        const amount = membership.finalAmount ?? membership.purchaseAmount ?? membership.soldPrice;
+        const bg = avatarColor(name);
+        return (
+          <Stack
+            key={membership.id}
+            direction="row"
+            alignItems="center"
+            spacing={1.5}
+            sx={{
+              py: 1,
+              px: 0.5,
+              borderBottom: 1,
+              borderColor: "divider",
+              "&:last-child": { borderBottom: 0 },
+              borderRadius: 1,
+              transition: "background 0.15s",
+              "&:hover": { bgcolor: "action.hover" },
+            }}
+          >
+            <Tooltip title={name} placement="left">
+              <Avatar sx={{ width: 32, height: 32, fontSize: 12, fontWeight: 700, bgcolor: bg, flexShrink: 0 }}>
+                {nameInitials(name)}
+              </Avatar>
+            </Tooltip>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" fontWeight={700} noWrap>{name}</Typography>
+              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.25 }}>
+                {empNo && <Typography variant="caption" color="text.secondary">#{empNo}</Typography>}
+                {showSource && source && (
+                  <Chip size="small" label={srcLabel} color={srcColor} variant="outlined" sx={{ height: 16, fontSize: 10 }} />
+                )}
+              </Stack>
+            </Box>
+            {amount != null && (
+              <Typography variant="body2" fontWeight={700} color="text.secondary" sx={{ flexShrink: 0 }}>
+                ₹{new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Number(amount))}
+              </Typography>
+            )}
+          </Stack>
+        );
+      })}
+    </Stack>
   );
 }

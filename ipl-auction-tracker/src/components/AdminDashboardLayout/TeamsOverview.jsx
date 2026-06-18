@@ -6,21 +6,21 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Avatar,
   Box,
   Card,
   CardContent,
   Chip,
   CircularProgress,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
+  LinearProgress,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
 import api from "../../utils/api";
 import { formatCurrency } from "../../utils/bidUtils";
+import { avatarColor, nameInitials, sourceChipProps } from "../AuctionHubPrimitives";
 
 const TeamsOverview = ({ tournamentId: providedTournamentId }) => {
   const [searchParams] = useSearchParams();
@@ -181,52 +181,76 @@ const TeamsOverview = ({ tournamentId: providedTournamentId }) => {
                   </Stack>
                 </AccordionSummary>
 
-                <AccordionDetails>
+                <AccordionDetails sx={{ pt: 0 }}>
                   <Card variant="outlined">
                     <CardContent>
-                      <Stack
-                        direction={{ xs: "column", md: "row" }}
-                        spacing={2}
-                        divider={<Divider flexItem orientation="vertical" />}
-                      >
-                        <Box sx={{ minWidth: 180 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            Amount spent
+                      {/* Budget bar */}
+                      <Box sx={{ mb: 2 }}>
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">Budget used</Typography>
+                          <Typography variant="caption" fontWeight={700}>
+                            {total > 0 ? Math.round((spent / total) * 100) : 0}%
                           </Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                            {formatCurrency(spent)}
+                        </Stack>
+                        <LinearProgress
+                          variant="determinate"
+                          value={total > 0 ? Math.min(100, Math.round((spent / total) * 100)) : 0}
+                          color={total > 0 && spent / total > 0.85 ? "error" : spent / total > 0.6 ? "warning" : "primary"}
+                          sx={{ height: 6, borderRadius: 3, bgcolor: "action.hover" }}
+                        />
+                        <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">Spent: {formatCurrency(spent)}</Typography>
+                          <Typography variant="caption" color={remaining > 0 ? "success.main" : "error.main"} fontWeight={700}>
+                            Left: {formatCurrency(remaining)}
                           </Typography>
-                        </Box>
-
-                        <Box sx={{ flex: 1 }}>
-                          {players.length > 0 ? (
-                            <List dense disablePadding>
-                              {players.map((player) => (
-                                <ListItem
-                                  key={player.id}
-                                  disableGutters
-                                  secondaryAction={
-                                    <Chip
-                                      size="small"
-                                      label={formatCurrency(player.soldPrice)}
-                                    />
-                                  }
-                                >
-                                  <ListItemText
-                                    primary={player.name}
-                                    secondary={player.role || undefined}
-                                    primaryTypographyProps={{ fontWeight: 700 }}
-                                  />
-                                </ListItem>
-                              ))}
-                            </List>
-                          ) : (
-                            <Alert severity="info" variant="outlined">
-                              This team has not bought any players yet.
-                            </Alert>
-                          )}
-                        </Box>
-                      </Stack>
+                        </Stack>
+                      </Box>
+                      {/* Player list */}
+                      {players.length > 0 ? (
+                        <Stack spacing={0}>
+                          {players.map((player) => {
+                            const bg = avatarColor(player.name || "");
+                            const { label: srcLabel, color: srcColor } = sourceChipProps("");
+                            return (
+                              <Stack
+                                key={player.id}
+                                direction="row"
+                                alignItems="center"
+                                spacing={1.5}
+                                sx={{
+                                  py: 1,
+                                  px: 0.5,
+                                  borderBottom: 1,
+                                  borderColor: "divider",
+                                  "&:last-child": { borderBottom: 0 },
+                                  borderRadius: 1,
+                                  transition: "background 0.15s",
+                                  "&:hover": { bgcolor: "action.hover" },
+                                }}
+                              >
+                                <Tooltip title={player.name} placement="left">
+                                  <Avatar sx={{ width: 32, height: 32, fontSize: 12, fontWeight: 700, bgcolor: bg, flexShrink: 0 }}>
+                                    {nameInitials(player.name || "")}
+                                  </Avatar>
+                                </Tooltip>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                  <Typography variant="body2" fontWeight={700} noWrap>{player.name}</Typography>
+                                  {player.role && (
+                                    <Chip size="small" label={player.role} variant="outlined" sx={{ height: 16, fontSize: 10, mt: 0.25 }} />
+                                  )}
+                                </Box>
+                                <Typography variant="body2" fontWeight={700} color="text.secondary" sx={{ flexShrink: 0 }}>
+                                  {formatCurrency(player.soldPrice)}
+                                </Typography>
+                              </Stack>
+                            );
+                          })}
+                        </Stack>
+                      ) : (
+                        <Alert severity="info" variant="outlined">
+                          This team has not bought any players yet.
+                        </Alert>
+                      )}
                     </CardContent>
                   </Card>
                 </AccordionDetails>

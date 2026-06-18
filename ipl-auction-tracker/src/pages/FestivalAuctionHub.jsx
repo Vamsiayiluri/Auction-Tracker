@@ -186,12 +186,25 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
     () => saleValues.reduce((sum, value) => sum + value, 0),
     [saleValues]
   );
+  const highestSaleRound = useMemo(
+    () => sold.reduce((best, round) =>
+      Number(round.result?.finalAmount || 0) > Number(best?.result?.finalAmount || 0) ? round : best,
+      null
+    ),
+    [sold]
+  );
+  const lowestSaleRound = useMemo(
+    () => sold.reduce((best, round) =>
+      best === null || Number(round.result?.finalAmount || 0) < Number(best.result?.finalAmount || 0) ? round : best,
+      null
+    ),
+    [sold]
+  );
   const filteredRounds = useMemo(
     () => history.filter((round) => {
       const matchesTeam =
         teamFilter === "all" ||
-        String(round.result?.festivalTeamId) === teamFilter ||
-        (round.bids || []).some((bid) => String(bid.festivalTeamId) === teamFilter);
+        String(round.result?.festivalTeamId) === teamFilter;
       const matchesParticipant = participantName(round)
         .toLowerCase()
         .includes(participantFilter.trim().toLowerCase());
@@ -461,10 +474,10 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
         <Stack spacing={2}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel>Team</InputLabel>
+              <InputLabel>Winning Team</InputLabel>
               <Select
                 value={teamFilter}
-                label="Team"
+                label="Winning Team"
                 onChange={(event) => setTeamFilter(event.target.value)}
               >
                 <MenuItem value="all">All teams</MenuItem>
@@ -526,10 +539,12 @@ export default function FestivalAuctionHub({ initialSection = "Overview" }) {
             <HubMetric
               label="Highest Sale"
               value={formatAuctionValue(Math.max(0, ...saleValues))}
+              detail={highestSaleRound ? participantName(highestSaleRound) : undefined}
             />
             <HubMetric
               label="Lowest Sale"
               value={formatAuctionValue(saleValues.length ? Math.min(...saleValues) : 0)}
+              detail={lowestSaleRound ? participantName(lowestSaleRound) : undefined}
             />
             <HubMetric
               label="Average Sale"
