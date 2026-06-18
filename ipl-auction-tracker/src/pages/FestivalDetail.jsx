@@ -678,7 +678,9 @@ export default function FestivalDetail() {
 
       {isLiveStage(festivalStage) && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          Festival configuration is locked while the auction is active. Structural changes are disabled — use Auction Details to monitor bidding.
+          <strong>This configuration is locked because the auction has already started.</strong>{" "}
+          You can view festival configuration, team information, auction configuration, and setup summaries.
+          Editing teams, owners, participants in the auction pool, budgets, and pool generation is disabled to protect auction integrity.
         </Alert>
       )}
       {isCompletedStage(festivalStage) && (
@@ -768,9 +770,9 @@ export default function FestivalDetail() {
       />
       {locked && (
         <Alert severity="warning" sx={{ mb: 3 }}>
-          Festival setup is locked because the Main Auction is{" "}
-          {festival.lockState.auctionStatus}. Auction operations and history
-          remain available.
+          <strong>This configuration is locked because the auction has already started.</strong>{" "}
+          Festival details, team summaries, and setup information remain visible.
+          Changes to teams, owners, budgets, and the auction pool are disabled to protect auction integrity.
         </Alert>
       )}
 

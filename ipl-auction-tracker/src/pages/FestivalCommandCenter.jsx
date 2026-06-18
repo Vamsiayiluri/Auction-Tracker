@@ -352,19 +352,26 @@ export default function FestivalCommandCenter() {
         ) : (
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} flexWrap="wrap">
             {readyStage && (
-              <Button
-                variant="contained"
-                onClick={openFestivalAuction}
-              >
+              <Button variant="contained" onClick={openFestivalAuction}>
                 Launch Auction
               </Button>
             )}
             {liveStage && (
-              <Button
-                variant="contained"
-                onClick={openFestivalAuction}
-              >
+              <Button variant="contained" onClick={openFestivalAuction}>
                 Open Live Auction
+              </Button>
+            )}
+            {liveStage && (
+              <Button variant="outlined" onClick={openSetup}>
+                Edit Configuration
+              </Button>
+            )}
+            {completedStage && (
+              <Button
+                variant="outlined"
+                onClick={() => navigate(`/festivals/${festivalId}/results`)}
+              >
+                View Results
               </Button>
             )}
             <Button
