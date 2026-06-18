@@ -27,8 +27,6 @@ const emptyForm = {
   endDate: "",
   registrationOpensAt: "",
   registrationClosesAt: "",
-  timezone: "Asia/Kolkata",
-  currencyCode: "INR",
 };
 
 export default function FestivalDashboard() {
@@ -76,6 +74,8 @@ export default function FestivalDashboard() {
     try {
       const payload = {
         ...form,
+        timezone: "Asia/Kolkata",
+        currencyCode: "INR",
         registrationOpensAt: form.registrationOpensAt
           ? new Date(form.registrationOpensAt).toISOString()
           : null,
@@ -267,30 +267,6 @@ export default function FestivalDashboard() {
                   setForm((current) => ({
                     ...current,
                     registrationClosesAt: event.target.value,
-                  }))
-                }
-                fullWidth
-              />
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                label="Timezone"
-                value={form.timezone}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    timezone: event.target.value,
-                  }))
-                }
-                fullWidth
-              />
-              <TextField
-                label="Currency"
-                value={form.currencyCode}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    currencyCode: event.target.value,
                   }))
                 }
                 fullWidth

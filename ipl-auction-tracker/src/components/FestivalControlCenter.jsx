@@ -151,7 +151,7 @@ export default function FestivalControlCenter({
             ))}
           </Box>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignSelf={{ lg: "center" }}>
+          {/* <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignSelf={{ lg: "center" }}>
             {loading && <CircularProgress size={24} />}
             {!loading && getQuickActions(auctionStatus).map((action) => (
               <Button
@@ -171,7 +171,7 @@ export default function FestivalControlCenter({
                         : `${action[0].toUpperCase()}${action.slice(1)} Auction`}
               </Button>
             ))}
-          </Stack>
+          </Stack> */}
         </Stack>
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </CardContent>

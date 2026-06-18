@@ -99,7 +99,7 @@ export default function FestivalCommandCenter() {
             data.festivalAuction.current
           )} | Current bid ${formatValue(
             data.festivalAuction.current?.currentBid,
-            data.festival.currencyCode || "INR"
+            "INR"
           )}`,
           status: festivalStatus,
           route: `/festivals/${festivalId}/auction-hub`,
@@ -141,7 +141,7 @@ export default function FestivalCommandCenter() {
         outcome: round.result.outcome,
         teamName: round.result.teamName,
         value: round.result.finalAmount,
-          unit: data.festival?.currencyCode || "INR",
+          unit: "INR",
           date: round.result.finalizedAt || round.finalizedAt,
           route: `/festivals/${festivalId}/results`,
       }));
@@ -171,7 +171,6 @@ export default function FestivalCommandCenter() {
       )
       .slice(0, 6);
   }, [
-    data.festival?.currencyCode,
     data.festivalHistory,
     data.sportTournaments,
     festivalId,
@@ -256,7 +255,7 @@ export default function FestivalCommandCenter() {
               <Typography variant="h4">{data.festival.name}</Typography>
               <Typography color="text.secondary" sx={{ mt: 1 }}>
                 {data.festival.code} | {data.festival.startDate} to{" "}
-                {data.festival.endDate} | {data.festival.timezone}
+                {data.festival.endDate}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
@@ -353,7 +352,7 @@ export default function FestivalCommandCenter() {
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} flexWrap="wrap">
             {readyStage && (
               <Button variant="contained" onClick={openFestivalAuction}>
-                Launch Auction
+                Open Auction Arena
               </Button>
             )}
             {liveStage && (

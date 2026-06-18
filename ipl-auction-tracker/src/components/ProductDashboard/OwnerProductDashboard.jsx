@@ -134,7 +134,7 @@ export default function OwnerProductDashboard({ data }) {
                     budget
                       ? `${formatValue(
                           budget.remainingBudget,
-                          festivalState?.festival?.currencyCode || "INR"
+                          "INR"
                         )} purse remaining`
                       : "Festival Team assignment is active."
                   }

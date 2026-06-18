@@ -15,8 +15,6 @@ const toForm = (festival) => ({
   code: festival?.code || "",
   startDate: festival?.startDate || "",
   endDate: festival?.endDate || "",
-  timezone: festival?.timezone || "",
-  currencyCode: festival?.currencyCode || "",
 });
 
 export default function FestivalDetailsConfiguration({
@@ -49,7 +47,8 @@ export default function FestivalDetailsConfiguration({
     try {
       const response = await api.patch(`/v2/festivals/${festivalId}`, {
         ...form,
-        currencyCode: form.currencyCode || null,
+        timezone: "Asia/Kolkata",
+        currencyCode: "INR",
       });
       await onChanged?.(response.data.data);
     } catch (requestError) {
@@ -107,23 +106,6 @@ export default function FestivalDetailsConfiguration({
               onChange={updateField("endDate")}
             />
           </Stack>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              fullWidth
-              label="Timezone"
-              value={form.timezone}
-              disabled={locked}
-              onChange={updateField("timezone")}
-            />
-            <TextField
-              fullWidth
-              label="Currency Code"
-              value={form.currencyCode}
-              disabled={locked}
-              inputProps={{ maxLength: 3 }}
-              onChange={updateField("currencyCode")}
-            />
-          </Stack>
           <Button
             variant="contained"
             disabled={
@@ -132,8 +114,7 @@ export default function FestivalDetailsConfiguration({
               !form.name ||
               !form.code ||
               !form.startDate ||
-              !form.endDate ||
-              !form.timezone
+              !form.endDate
             }
             onClick={save}
             sx={{ alignSelf: "flex-start" }}

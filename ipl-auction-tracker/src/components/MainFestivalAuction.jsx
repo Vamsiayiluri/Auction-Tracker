@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -66,10 +67,13 @@ export default function MainFestivalAuction({
   const [lastUpdated, setLastUpdated] = useState(null);
   const [expiryConfirmationDelayed, setExpiryConfirmationDelayed] =
     useState(false);
+  const [resultToast, setResultToast] = useState(null); // { message, severity }
+
   const actionInFlight = useRef(false);
   const expiryRefreshInFlight = useRef(false);
   const loggedExpiryKey = useRef("");
   const lastRevision = useRef(0);
+  const lastResultId = useRef(null);
 
   const loadAuction = useCallback(
     async ({ refreshHistory = true, forceState = false } = {}) => {
@@ -250,7 +254,7 @@ export default function MainFestivalAuction({
     setError("");
     try {
       await api.post(`/v2/festivals/${festivalId}${path}`, body);
-      setNotice(successMessage);
+      if (successMessage) setNotice(successMessage);
       setSelectedParticipantId("");
       setBasePrice("");
       await loadAuction({ forceState: true });
@@ -370,6 +374,21 @@ export default function MainFestivalAuction({
     [history]
   );
   const recentResults = finalizedResults.slice(0, 4);
+
+  useEffect(() => {
+    const latest = finalizedResults[0];
+    if (!latest) return;
+    const id = latest.id;
+    if (id === lastResultId.current) return;
+    lastResultId.current = id;
+    const name = latest.participant?.employee?.name || latest.participant?.name || "Participant";
+    const outcome = latest.result?.outcome;
+    if (outcome === "sold") {
+      setResultToast({ message: `🏏 ${name} sold to ${latest.result.teamName} for ₹${formatMoney(latest.result.finalAmount)}`, severity: "success" });
+    } else if (outcome === "unsold") {
+      setResultToast({ message: `${name} went unsold`, severity: "warning" });
+    }
+  }, [finalizedResults]);
   const highestBid = finalizedResults.reduce(
     (highest, round) =>
       Math.max(highest, Number(round.result?.finalAmount || 0)),
@@ -479,6 +498,24 @@ export default function MainFestivalAuction({
   const isSetup = isSetupStage(festivalStage);
   const isReady = isReadyStage(festivalStage);
 
+  const resultToastEl = (
+    <Snackbar
+      open={Boolean(resultToast)}
+      autoHideDuration={6000}
+      onClose={() => setResultToast(null)}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      <Alert
+        onClose={() => setResultToast(null)}
+        severity={resultToast?.severity || "success"}
+        variant="filled"
+        sx={{ width: "100%", borderRadius: 2, boxShadow: 4, fontSize: "0.95rem" }}
+      >
+        {resultToast?.message}
+      </Alert>
+    </Snackbar>
+  );
+
   // Keep the loading card visible until both the auction state AND readiness
   // have resolved for pre-launch festivals. This prevents a brief flash of
   // "Auction Setup Incomplete" before readiness data arrives.
@@ -496,15 +533,18 @@ export default function MainFestivalAuction({
 
   if (status === "completed") {
     return (
-      <ProductStateCard
-        eyebrow="Festival Auction"
-        title="Auction Completed"
-        message="The live auction is closed. Results and team purchases are available in reporting."
-        actionLabel="View Results"
-        onAction={viewResults}
-        secondaryActionLabel="View Auction Details"
-        onSecondaryAction={exitArena}
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Festival Auction"
+          title="Auction Completed"
+          message="The live auction is closed. Results and team purchases are available in reporting."
+          actionLabel="View Results"
+          onAction={viewResults}
+          secondaryActionLabel="View Auction Details"
+          onSecondaryAction={exitArena}
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
@@ -539,17 +579,20 @@ export default function MainFestivalAuction({
 
   if (isReady && !isAdmin) {
     return (
-      <ProductStateCard
-        eyebrow="Festival Auction"
-        title={isOwner ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
-        message={
-          isOwner
-            ? "The Festival auction is configured and ready. The administrator will begin bidding shortly. Prepare your team strategy."
-            : "The Festival auction is configured and ready to launch. Bidding will begin once the administrator starts the first round."
-        }
-        actionLabel="Return To Festival Overview"
-        onAction={returnToFestivalOverview}
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Festival Auction"
+          title={isOwner ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
+          message={
+            isOwner
+              ? "The Festival auction is configured and ready. The administrator will begin bidding shortly. Prepare your team strategy."
+              : "The Festival auction is configured and ready to launch. Bidding will begin once the administrator starts the first round."
+          }
+          actionLabel="Return To Festival Overview"
+          onAction={returnToFestivalOverview}
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
@@ -593,15 +636,21 @@ export default function MainFestivalAuction({
           {error}
         </Alert>
       )}
-      {notice && (
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={4000}
+        onClose={() => setNotice("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
         <Alert
-          severity="success"
-          sx={{ mb: 2 }}
           onClose={() => setNotice("")}
+          severity="success"
+          variant="filled"
+          sx={{ width: "100%", borderRadius: 2, boxShadow: 4 }}
         >
           {notice}
         </Alert>
-      )}
+      </Snackbar>
 
       {isAdmin && (
         <AdminLifecycleControls
@@ -756,6 +805,7 @@ export default function MainFestivalAuction({
         viewerTeamId={viewerTeamId}
         onViewResults={viewResults}
       />
+      {resultToastEl}
     </Box>
   );
 }
@@ -984,7 +1034,7 @@ function PendingFinalizationControls({
             onClick={() =>
               onRun(
                 `/auction/participants/${current.festivalParticipantId}/sell`,
-                "Participant sold and added to the winning Team.",
+                "",
                 true,
                 {},
                 "sell"
@@ -1002,7 +1052,7 @@ function PendingFinalizationControls({
             onClick={() =>
               onRun(
                 `/auction/participants/${current.festivalParticipantId}/unsold`,
-                "Participant marked unsold.",
+                "",
                 false,
                 {},
                 "unsold"

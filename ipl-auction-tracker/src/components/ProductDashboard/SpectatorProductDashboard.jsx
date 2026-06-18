@@ -27,7 +27,7 @@ export default function SpectatorProductDashboard({ data }) {
         title: festival.name,
         description: `${participantName(current.current)} | ${formatValue(
           current.current?.currentBid,
-          festival.currencyCode || "INR"
+          "INR"
         )}`,
         status: current.config.auctionStatus,
         route: `/festivals/${festival.id}/auction-hub`,

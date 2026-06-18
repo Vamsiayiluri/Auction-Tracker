@@ -34,6 +34,7 @@ import {
   Radio,
   RadioGroup,
   Select,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -722,11 +723,21 @@ export default function FestivalDetail() {
   return (
     <Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice("")}>
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={4000}
+        onClose={() => setNotice("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={() => setNotice("")}
+          severity="success"
+          variant="filled"
+          sx={{ width: "100%", borderRadius: 2, boxShadow: 4 }}
+        >
           {notice}
         </Alert>
-      )}
+      </Snackbar>
 
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>

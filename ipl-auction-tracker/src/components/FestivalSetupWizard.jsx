@@ -57,7 +57,6 @@ export default function FestivalSetupWizard({
       `[FESTIVAL_SETUP_DEBUG] openStep | festivalId=${festivalId} | from=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) → to=${index} (${FESTIVAL_SETUP_STEPS[index]})`
     );
     onStepChange(index);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (

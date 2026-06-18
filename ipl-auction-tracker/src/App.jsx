@@ -60,6 +60,7 @@ export default function AppRouter() {
     <AuthProvider>
       <Router>
         <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/login"
             element={

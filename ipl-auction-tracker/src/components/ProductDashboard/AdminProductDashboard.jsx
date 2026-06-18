@@ -119,7 +119,7 @@ export default function AdminProductDashboard({ data }) {
         title: festival.name,
         description: `${participantName(current.current)} | Current bid ${formatValue(
           current.current?.currentBid,
-          festival.currencyCode || "INR"
+          "INR"
         )}`,
         status: current.config.auctionStatus,
         route: `/auctions/festivals/${festival.id}`,

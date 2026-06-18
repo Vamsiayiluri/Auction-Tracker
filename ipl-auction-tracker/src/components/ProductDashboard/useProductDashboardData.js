@@ -170,7 +170,7 @@ export default function useProductDashboardData(user) {
           outcome: round.result.outcome,
           teamName: round.result.teamName,
           value: round.result.finalAmount,
-          unit: festival.currencyCode || "INR",
+          unit: "INR",
           date: round.result.finalizedAt || round.finalizedAt,
           route: `/festivals/${festival.id}/results`,
         }))
