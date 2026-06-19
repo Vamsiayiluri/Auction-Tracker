@@ -1297,7 +1297,7 @@ export const startFestivalAuctionParticipant = async (req, res) => {
           basePrice: req.body.basePrice,
           startedBy: req.user.id,
           startedAt: new Date(),
-          endsAt: createFestivalAuctionDeadline(),
+          endsAt: null,
           attemptNumber: attemptCount + 1,
         },
         { transaction }
@@ -1310,6 +1310,11 @@ export const startFestivalAuctionParticipant = async (req, res) => {
       return { auctionId: auction.id };
     });
     if (result.status) return res.status(result.status).json(result);
+    const endsAt = createFestivalAuctionDeadline();
+    await FestivalAuction.update(
+      { endsAt, pausedRemainingMs: null },
+      { where: { id: result.auctionId } }
+    );
     const auction = await loadAuctionResponse(result.auctionId);
     scheduleFestivalAuctionEnd(auction.id, auction.endsAt);
     const config = await loadConfig(req.params.festivalId);

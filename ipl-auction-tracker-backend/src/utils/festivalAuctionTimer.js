@@ -1,4 +1,4 @@
-export const FESTIVAL_AUCTION_DURATION_MS = 20_000;
+export const FESTIVAL_AUCTION_DURATION_MS = 30_000;
 
 export const createFestivalAuctionDeadline = (
   now = Date.now(),

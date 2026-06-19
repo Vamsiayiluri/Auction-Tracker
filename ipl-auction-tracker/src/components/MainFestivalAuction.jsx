@@ -41,6 +41,47 @@ const formatMoney = (value) =>
 const participantId = (round) =>
   round?.festivalParticipantId || round?.participant?.id;
 
+const logBidUiTrace = (details) =>
+  console.info("[BID_UI_TRACE]", {
+    timestamp: new Date().toISOString(),
+    ...details,
+  });
+
+const applyImmediateFestivalBid = (previous, payload) => {
+  if (!previous?.current || previous.current.id !== payload?.festivalAuctionId) {
+    return previous;
+  }
+  const currentBids = previous.current.bids || [];
+  const bidExists = currentBids.some(({ id }) => id === payload.id);
+  const bid = {
+    id: payload.id,
+    festivalAuctionId: payload.festivalAuctionId,
+    festivalParticipantId: payload.festivalParticipantId,
+    festivalTeamId: payload.festivalTeamId,
+    teamName: payload.teamName,
+    amount: payload.amount,
+    placedAt: payload.placedAt,
+    bidNumber: payload.bidNumber,
+  };
+  const bids = bidExists ? currentBids : [...currentBids, bid];
+  return {
+    ...previous,
+    current: {
+      ...previous.current,
+      bids,
+      currentBid: payload.currentBid ?? payload.amount,
+      nextBid: payload.nextBid ?? previous.current.nextBid,
+      incrementAmount:
+        payload.incrementAmount ?? previous.current.incrementAmount,
+      incrementPercentage:
+        payload.incrementPercentage ?? previous.current.incrementPercentage,
+      leadingTeam: payload.teamName || previous.current.leadingTeam,
+      bidCount: payload.bidCount ?? bids.length,
+      endsAt: payload.endsAt || previous.current.endsAt,
+    },
+  };
+};
+
 export default function MainFestivalAuction({
   festivalId,
   onRosterChanged,
@@ -74,6 +115,8 @@ export default function MainFestivalAuction({
   const loggedExpiryKey = useRef("");
   const lastRevision = useRef(0);
   const lastResultId = useRef(null);
+  const currentAuctionId = useRef(null);
+  const bidRequestStartedAt = useRef(null);
 
   const loadAuction = useCallback(
     async ({ refreshHistory = true, forceState = false } = {}) => {
@@ -141,6 +184,10 @@ export default function MainFestivalAuction({
   }, [festivalId, loadAuction, refreshing, roomJoined]);
 
   useEffect(() => {
+    currentAuctionId.current = state?.current?.id || null;
+  }, [state]);
+
+  useEffect(() => {
     let active = true;
     api
       .get(`/v2/festivals/${festivalId}`)
@@ -177,6 +224,7 @@ export default function MainFestivalAuction({
 
   useEffect(() => {
     const applySnapshot = (payload) => {
+      const reconcileStartedAt = performance.now();
       if (
         payload?.scopeType !== "festival" ||
         payload.scopeId !== festivalId ||
@@ -184,25 +232,64 @@ export default function MainFestivalAuction({
       ) {
         return;
       }
+      if (payload.reason === "bid-placed") {
+        logBidUiTrace({
+          scopeType: "festival",
+          festivalId,
+          phase: "auctionStateReceived",
+          revision: payload.revision,
+        });
+      }
       if (payload.reason === "auction-pending-finalization") {
         console.info("[festival-auction-expiry] socket event received", {
           auctionId: payload.state?.current?.id,
           festivalId,
         });
       }
-      if (payload.reason === "bid-placed") {
-        console.info("[BID_TRACE]", {
-          scopeType: "festival",
-          festivalId,
-          phase: "uiAuctionStateApplied",
-          timestamp: new Date().toISOString(),
-          revision: payload.revision,
-        });
-      }
       lastRevision.current = payload.revision;
       setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
       setState((previous) => mergeAuctionSnapshotState(previous, payload));
       setHistory(payload.history || []);
+      if (payload.reason === "bid-placed") {
+        logBidUiTrace({
+          scopeType: "festival",
+          festivalId,
+          phase: "snapshotReconciliationComplete",
+          revision: payload.revision,
+          reconciliationLatencyMs: Number(
+            (performance.now() - reconcileStartedAt).toFixed(2)
+          ),
+          snapshotLatencyMs: bidRequestStartedAt.current
+            ? Number((performance.now() - bidRequestStartedAt.current).toFixed(2))
+            : null,
+        });
+      }
+    };
+    const applyBidPlaced = (payload) => {
+      const updateStartedAt = performance.now();
+      if (payload?.festivalAuctionId !== currentAuctionId.current) return;
+      logBidUiTrace({
+        scopeType: "festival",
+        festivalId,
+        phase: "bidPlacedReceived",
+        auctionId: payload.festivalAuctionId,
+        bidId: payload.id,
+      });
+      setState((previous) => applyImmediateFestivalBid(previous, payload));
+      logBidUiTrace({
+        scopeType: "festival",
+        festivalId,
+        phase: "uiUpdated",
+        auctionId: payload.festivalAuctionId,
+        bidId: payload.id,
+        perceivedLatencyMs: Number(
+          (
+            performance.now() -
+            (bidRequestStartedAt.current || updateStartedAt)
+          ).toFixed(2)
+        ),
+        updateLatencyMs: Number((performance.now() - updateStartedAt).toFixed(2)),
+      });
     };
     const joinRoom = () => {
       setConnected(true);
@@ -222,12 +309,14 @@ export default function MainFestivalAuction({
     };
 
     void loadAuction();
+    socket.on("bid-placed", applyBidPlaced);
     socket.on("auction-state", applySnapshot);
     socket.on("connect", joinRoom);
     socket.on("disconnect", disconnect);
     if (socket.connected) joinRoom();
     return () => {
       socket.emit("leave-festival-auction", { festivalId });
+      socket.off("bid-placed", applyBidPlaced);
       socket.off("auction-state", applySnapshot);
       socket.off("connect", joinRoom);
       socket.off("disconnect", disconnect);
@@ -288,11 +377,11 @@ export default function MainFestivalAuction({
     setBusy(true);
     setActiveAction("bid");
     setError("");
-    console.info("[BID_TRACE]", {
+    bidRequestStartedAt.current = performance.now();
+    logBidUiTrace({
       scopeType: "festival",
       festivalId,
-      phase: "uiBidRequestStarted",
-      timestamp: new Date().toISOString(),
+      phase: "bidRequestStarted",
       auctionId: state.current.id,
     });
     try {
@@ -300,22 +389,23 @@ export default function MainFestivalAuction({
         auctionId: state.current.id,
         expectedCurrentBid: state.current.currentBid,
       });
-      console.info("[BID_TRACE]", {
+      logBidUiTrace({
         scopeType: "festival",
         festivalId,
-        phase: "uiBidApiResponseReceived",
-        timestamp: new Date().toISOString(),
+        phase: "apiResponseReceived",
         auctionId: state.current.id,
+        socketConnected: socket.connected,
       });
       setNotice("Bid accepted.");
-      await loadAuction({ forceState: true });
-      console.info("[BID_TRACE]", {
-        scopeType: "festival",
-        festivalId,
-        phase: "uiForcedStateReloadFinished",
-        timestamp: new Date().toISOString(),
-        auctionId: state.current.id,
-      });
+      if (!socket.connected) {
+        await loadAuction({ forceState: true });
+        logBidUiTrace({
+          scopeType: "festival",
+          festivalId,
+          phase: "fallbackStateReloadFinished",
+          auctionId: state.current.id,
+        });
+      }
     } catch (requestError) {
       await loadAuction({ forceState: true });
       setError(
@@ -1062,7 +1152,7 @@ function PendingFinalizationControls({
               )
             }
           >
-            {activeAction === "extend" ? "Extending..." : "Extend 20 Seconds"}
+            {activeAction === "extend" ? "Extending..." : "Extend 30 Seconds"}
           </Button>
           <Button
             variant="contained"

@@ -55,6 +55,44 @@ const credits = (value) =>
 const participantName = (record) =>
   record?.participant?.employee?.name || "Participant";
 
+const logBidUiTrace = (details) =>
+  console.info("[BID_UI_TRACE]", {
+    timestamp: new Date().toISOString(),
+    ...details,
+  });
+
+const applyImmediateSportBid = (previous, payload) => {
+  if (!previous?.current || previous.current.id !== payload?.sportAuctionId) {
+    return previous;
+  }
+  const currentBids = previous.current.bids || [];
+  const bidExists = currentBids.some(({ id }) => id === payload.id);
+  const bid = {
+    id: payload.id,
+    sportAuctionId: payload.sportAuctionId,
+    sportTeamId: payload.sportTeamId,
+    teamName: payload.teamName,
+    amount: payload.amount,
+    placedAt: payload.placedAt,
+    bidNumber: payload.bidNumber,
+  };
+  const bids = bidExists ? currentBids : [...currentBids, bid];
+  return {
+    ...previous,
+    current: {
+      ...previous.current,
+      bids,
+      currentCredits: payload.currentCredits ?? payload.amount,
+      nextCredits: payload.nextCredits ?? previous.current.nextCredits,
+      incrementCredits:
+        payload.incrementCredits ?? previous.current.incrementCredits,
+      leadingTeam: payload.teamName || previous.current.leadingTeam,
+      bidCount: payload.bidCount ?? bids.length,
+      endsAt: payload.endsAt || previous.current.endsAt,
+    },
+  };
+};
+
 export default function SportAuctionArena() {
   const { sportTournamentId } = useParams();
   const navigate = useNavigate();
@@ -64,6 +102,8 @@ export default function SportAuctionArena() {
   const queuedForceState = useRef(false);
   const expiryRefreshInFlight = useRef(false);
   const lastRevision = useRef(0);
+  const currentAuctionId = useRef(null);
+  const bidRequestStartedAt = useRef(null);
   const [state, setState] = useState(null);
   const [tournamentDetails, setTournamentDetails] = useState(null);
   const [history, setHistory] = useState([]);
@@ -158,6 +198,10 @@ export default function SportAuctionArena() {
   }, [busy, load, refreshing, roomJoined, sportTournamentId]);
 
   useEffect(() => {
+    currentAuctionId.current = state?.current?.id || null;
+  }, [state]);
+
+  useEffect(() => {
     let active = true;
     api
       .get(`/v2/sport-tournaments/${sportTournamentId}`)
@@ -180,6 +224,7 @@ export default function SportAuctionArena() {
 
   useEffect(() => {
     const applySnapshot = (payload) => {
+      const reconcileStartedAt = performance.now();
       if (
         payload?.scopeType !== "sport" ||
         payload.scopeId !== sportTournamentId ||
@@ -188,11 +233,10 @@ export default function SportAuctionArena() {
         return;
       }
       if (payload.reason === "bid-placed") {
-        console.info("[BID_TRACE]", {
+        logBidUiTrace({
           scopeType: "sport",
           sportTournamentId,
-          phase: "uiAuctionStateApplied",
-          timestamp: new Date().toISOString(),
+          phase: "auctionStateReceived",
           revision: payload.revision,
         });
       }
@@ -201,6 +245,47 @@ export default function SportAuctionArena() {
       setState((previous) => mergeAuctionSnapshotState(previous, payload));
       setHistory(payload.history || []);
       setRefreshing(false);
+      if (payload.reason === "bid-placed") {
+        logBidUiTrace({
+          scopeType: "sport",
+          sportTournamentId,
+          phase: "snapshotReconciliationComplete",
+          revision: payload.revision,
+          reconciliationLatencyMs: Number(
+            (performance.now() - reconcileStartedAt).toFixed(2)
+          ),
+          snapshotLatencyMs: bidRequestStartedAt.current
+            ? Number((performance.now() - bidRequestStartedAt.current).toFixed(2))
+            : null,
+        });
+      }
+    };
+    const applyBidPlaced = (payload) => {
+      const updateStartedAt = performance.now();
+      if (payload?.sportTournamentId !== sportTournamentId) return;
+      if (payload?.sportAuctionId !== currentAuctionId.current) return;
+      logBidUiTrace({
+        scopeType: "sport",
+        sportTournamentId,
+        phase: "sportBidPlacedReceived",
+        auctionId: payload.sportAuctionId,
+        bidId: payload.id,
+      });
+      setState((previous) => applyImmediateSportBid(previous, payload));
+      logBidUiTrace({
+        scopeType: "sport",
+        sportTournamentId,
+        phase: "uiUpdated",
+        auctionId: payload.sportAuctionId,
+        bidId: payload.id,
+        perceivedLatencyMs: Number(
+          (
+            performance.now() -
+            (bidRequestStartedAt.current || updateStartedAt)
+          ).toFixed(2)
+        ),
+        updateLatencyMs: Number((performance.now() - updateStartedAt).toFixed(2)),
+      });
     };
     const joinRoom = () => {
       setConnected(true);
@@ -220,6 +305,7 @@ export default function SportAuctionArena() {
     };
 
     void load();
+    socket.on("sport-bid-placed", applyBidPlaced);
     socket.on("auction-state", applySnapshot);
     if (socket.connected) joinRoom();
     socket.on("connect", joinRoom);
@@ -228,6 +314,7 @@ export default function SportAuctionArena() {
       socket.emit("leave-sport-auction", { sportTournamentId });
       socket.off("connect", joinRoom);
       socket.off("disconnect", disconnect);
+      socket.off("sport-bid-placed", applyBidPlaced);
       socket.off("auction-state", applySnapshot);
     };
   }, [load, sportTournamentId]);
@@ -291,11 +378,11 @@ export default function SportAuctionArena() {
     setBusy(true);
     setActiveAction("bid");
     setError("");
-    console.info("[BID_TRACE]", {
+    bidRequestStartedAt.current = performance.now();
+    logBidUiTrace({
       scopeType: "sport",
       sportTournamentId,
-      phase: "uiBidRequestStarted",
-      timestamp: new Date().toISOString(),
+      phase: "bidRequestStarted",
       auctionId: current.id,
     });
     try {
@@ -306,30 +393,27 @@ export default function SportAuctionArena() {
           expectedCurrentBid: current.currentCredits,
         }
       );
-      console.info("[BID_TRACE]", {
+      logBidUiTrace({
         scopeType: "sport",
         sportTournamentId,
-        phase: "uiBidApiResponseReceived",
-        timestamp: new Date().toISOString(),
+        phase: "apiResponseReceived",
         auctionId: current.id,
         socketConnected: socket.connected,
       });
       setNotice("Bid accepted.");
       if (!socket.connected) {
         await load({ background: true, forceState: true });
-        console.info("[BID_TRACE]", {
+        logBidUiTrace({
           scopeType: "sport",
           sportTournamentId,
-          phase: "uiFallbackStateReloadFinished",
-          timestamp: new Date().toISOString(),
+          phase: "fallbackStateReloadFinished",
           auctionId: current.id,
         });
       } else {
-        console.info("[BID_TRACE]", {
+        logBidUiTrace({
           scopeType: "sport",
           sportTournamentId,
-          phase: "uiWaitingForAuctionState",
-          timestamp: new Date().toISOString(),
+          phase: "waitingForAuctionState",
           auctionId: current.id,
         });
       }
