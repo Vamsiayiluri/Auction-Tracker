@@ -187,6 +187,15 @@ export default function SportAuctionArena() {
       ) {
         return;
       }
+      if (payload.reason === "bid-placed") {
+        console.info("[BID_TRACE]", {
+          scopeType: "sport",
+          sportTournamentId,
+          phase: "uiAuctionStateApplied",
+          timestamp: new Date().toISOString(),
+          revision: payload.revision,
+        });
+      }
       lastRevision.current = payload.revision;
       setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
       setState((previous) => mergeAuctionSnapshotState(previous, payload));
@@ -282,6 +291,13 @@ export default function SportAuctionArena() {
     setBusy(true);
     setActiveAction("bid");
     setError("");
+    console.info("[BID_TRACE]", {
+      scopeType: "sport",
+      sportTournamentId,
+      phase: "uiBidRequestStarted",
+      timestamp: new Date().toISOString(),
+      auctionId: current.id,
+    });
     try {
       await api.post(
         `/v2/sport-tournaments/${sportTournamentId}/auction/bid`,
@@ -290,9 +306,32 @@ export default function SportAuctionArena() {
           expectedCurrentBid: current.currentCredits,
         }
       );
+      console.info("[BID_TRACE]", {
+        scopeType: "sport",
+        sportTournamentId,
+        phase: "uiBidApiResponseReceived",
+        timestamp: new Date().toISOString(),
+        auctionId: current.id,
+        socketConnected: socket.connected,
+      });
       setNotice("Bid accepted.");
       if (!socket.connected) {
         await load({ background: true, forceState: true });
+        console.info("[BID_TRACE]", {
+          scopeType: "sport",
+          sportTournamentId,
+          phase: "uiFallbackStateReloadFinished",
+          timestamp: new Date().toISOString(),
+          auctionId: current.id,
+        });
+      } else {
+        console.info("[BID_TRACE]", {
+          scopeType: "sport",
+          sportTournamentId,
+          phase: "uiWaitingForAuctionState",
+          timestamp: new Date().toISOString(),
+          auctionId: current.id,
+        });
       }
     } catch (requestError) {
       await load({ background: true, forceState: true });

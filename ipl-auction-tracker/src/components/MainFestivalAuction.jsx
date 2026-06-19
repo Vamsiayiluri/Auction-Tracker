@@ -190,6 +190,15 @@ export default function MainFestivalAuction({
           festivalId,
         });
       }
+      if (payload.reason === "bid-placed") {
+        console.info("[BID_TRACE]", {
+          scopeType: "festival",
+          festivalId,
+          phase: "uiAuctionStateApplied",
+          timestamp: new Date().toISOString(),
+          revision: payload.revision,
+        });
+      }
       lastRevision.current = payload.revision;
       setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
       setState((previous) => mergeAuctionSnapshotState(previous, payload));
@@ -279,13 +288,34 @@ export default function MainFestivalAuction({
     setBusy(true);
     setActiveAction("bid");
     setError("");
+    console.info("[BID_TRACE]", {
+      scopeType: "festival",
+      festivalId,
+      phase: "uiBidRequestStarted",
+      timestamp: new Date().toISOString(),
+      auctionId: state.current.id,
+    });
     try {
       await api.post(`/v2/festivals/${festivalId}/auction/bid`, {
         auctionId: state.current.id,
         expectedCurrentBid: state.current.currentBid,
       });
+      console.info("[BID_TRACE]", {
+        scopeType: "festival",
+        festivalId,
+        phase: "uiBidApiResponseReceived",
+        timestamp: new Date().toISOString(),
+        auctionId: state.current.id,
+      });
       setNotice("Bid accepted.");
       await loadAuction({ forceState: true });
+      console.info("[BID_TRACE]", {
+        scopeType: "festival",
+        festivalId,
+        phase: "uiForcedStateReloadFinished",
+        timestamp: new Date().toISOString(),
+        auctionId: state.current.id,
+      });
     } catch (requestError) {
       await loadAuction({ forceState: true });
       setError(

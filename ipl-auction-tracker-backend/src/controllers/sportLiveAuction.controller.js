@@ -681,11 +681,30 @@ const getSportSynchronizationService = () => {
 };
 
 const publishSportAuctionState = async (sportTournamentId, reason) => {
+  const publishStartedAt = nowMs();
+  if (reason === "bid-placed") {
+    logBidLatencyTrace({
+      scopeType: "sport",
+      sportTournamentId,
+      phase: "publishAuctionStateStarted",
+      reason,
+    });
+  }
   try {
-    return await getSportSynchronizationService().publish(
+    const payload = await getSportSynchronizationService().publish(
       sportTournamentId,
       reason
     );
+    if (reason === "bid-placed") {
+      logBidLatencyTrace({
+        scopeType: "sport",
+        sportTournamentId,
+        phase: "publishAuctionStateFinished",
+        reason,
+        publishState: elapsedMs(publishStartedAt),
+      });
+    }
+    return payload;
   } catch (error) {
     console.error("Failed to publish Sport Auction state:", error.message);
     return null;
@@ -1268,6 +1287,8 @@ export const placeSportAuctionBid = async (req, res) => {
     scopeType: "sport",
     sportTournamentId: req.params.sportTournamentId,
     endpoint: "Place Bid",
+    phase: "bidRequest",
+    requestReceivedAt: new Date().toISOString(),
     validationMs: 0,
     dbMs: 0,
     socketBroadcastMs: 0,
@@ -1275,6 +1296,15 @@ export const placeSportAuctionBid = async (req, res) => {
     socketPayloadBytes: 0,
     publishAuctionStateMs: "deferred",
   };
+  logBidLatencyTrace(trace);
+  res.on("finish", () => {
+    logBidLatencyTrace({
+      ...trace,
+      phase: "httpResponseSent",
+      statusCode: res.statusCode,
+      response: elapsedMs(traceStartedAt),
+    });
+  });
   try {
     const result = await sequelize.transaction(async (transaction) => {
       const validationStartedAt = nowMs();
@@ -1333,6 +1363,7 @@ export const placeSportAuctionBid = async (req, res) => {
         return { status: 400, message: "Bid exceeds the Team's remaining credits" };
       }
       trace.validationMs = elapsedMs(validationStartedAt);
+      trace.validationCompleteAt = new Date().toISOString();
       const dbStartedAt = nowMs();
       const bid = await SportAuctionBid.create({
         id: randomUUID(),
@@ -1352,6 +1383,7 @@ export const placeSportAuctionBid = async (req, res) => {
       const endsAt = deadline(config);
       await round.update({ endsAt, pausedRemainingMs: null }, { transaction });
       trace.dbMs = elapsedMs(dbStartedAt);
+      trace.dbWriteCompleteAt = new Date().toISOString();
       return {
         data: {
           bidId: bid.id,
@@ -1400,7 +1432,10 @@ export const placeSportAuctionBid = async (req, res) => {
       socketPayload
     );
     trace.socketBroadcastMs = elapsedMs(socketStartedAt);
+    trace.socketBid = trace.socketBroadcastMs;
+    trace.immediateBidSocketEmittedAt = new Date().toISOString();
     trace.httpResponseMs = elapsedMs(traceStartedAt);
+    trace.response = trace.httpResponseMs;
     logBidLatencyTrace(trace);
     void publishSportAuctionState(req.params.sportTournamentId, "bid-placed");
     return res.status(201).json({ data: payload });

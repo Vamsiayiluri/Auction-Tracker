@@ -704,11 +704,30 @@ const getFestivalSynchronizationService = () => {
 };
 
 const publishFestivalAuctionState = async (festivalId, reason) => {
+  const publishStartedAt = nowMs();
+  if (reason === "bid-placed") {
+    logBidLatencyTrace({
+      scopeType: "festival",
+      festivalId,
+      phase: "publishAuctionStateStarted",
+      reason,
+    });
+  }
   try {
-    return await getFestivalSynchronizationService().publish(
+    const payload = await getFestivalSynchronizationService().publish(
       festivalId,
       reason
     );
+    if (reason === "bid-placed") {
+      logBidLatencyTrace({
+        scopeType: "festival",
+        festivalId,
+        phase: "publishAuctionStateFinished",
+        reason,
+        publishState: elapsedMs(publishStartedAt),
+      });
+    }
+    return payload;
   } catch (error) {
     console.error("Failed to publish Festival Auction state:", error.message);
     return null;
@@ -1317,6 +1336,8 @@ export const placeFestivalAuctionBid = async (req, res) => {
     scopeType: "festival",
     festivalId: req.params.festivalId,
     endpoint: "Place Bid",
+    phase: "bidRequest",
+    requestReceivedAt: new Date().toISOString(),
     validationMs: 0,
     dbMs: 0,
     socketBroadcastMs: 0,
@@ -1324,6 +1345,15 @@ export const placeFestivalAuctionBid = async (req, res) => {
     socketPayloadBytes: 0,
     publishAuctionStateMs: "deferred",
   };
+  logBidLatencyTrace(trace);
+  res.on("finish", () => {
+    logBidLatencyTrace({
+      ...trace,
+      phase: "httpResponseSent",
+      statusCode: res.statusCode,
+      response: elapsedMs(traceStartedAt),
+    });
+  });
   try {
     if (req.user.role !== "team_owner") {
       return res.status(403).json({
@@ -1407,6 +1437,7 @@ export const placeFestivalAuctionBid = async (req, res) => {
         };
       }
       trace.validationMs = elapsedMs(validationStartedAt);
+      trace.validationCompleteAt = new Date().toISOString();
       const dbStartedAt = nowMs();
       const bid = await FestivalAuctionBid.create(
         {
@@ -1432,6 +1463,7 @@ export const placeFestivalAuctionBid = async (req, res) => {
         { transaction }
       );
       trace.dbMs = elapsedMs(dbStartedAt);
+      trace.dbWriteCompleteAt = new Date().toISOString();
       return {
         bidId: bid.id,
         auctionId: auction.id,
@@ -1485,7 +1517,10 @@ export const placeFestivalAuctionBid = async (req, res) => {
       timerPayload
     );
     trace.socketBroadcastMs = elapsedMs(socketStartedAt);
+    trace.socketBid = trace.socketBroadcastMs;
+    trace.immediateBidSocketEmittedAt = new Date().toISOString();
     trace.httpResponseMs = elapsedMs(traceStartedAt);
+    trace.response = trace.httpResponseMs;
     logBidLatencyTrace(trace);
     void publishFestivalAuctionState(req.params.festivalId, "bid-placed");
     return res.status(201).json({ data: payload });

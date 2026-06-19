@@ -119,6 +119,8 @@ export const payloadSizeBytes = (payload) =>
   Buffer.byteLength(JSON.stringify(payload), "utf8");
 
 export const logBidLatencyTrace = (details) => {
-  if (!isDevelopment()) return;
-  console.info("[bid-latency]", details);
+  console.info("[BID_TRACE]", {
+    timestamp: new Date().toISOString(),
+    ...details,
+  });
 };

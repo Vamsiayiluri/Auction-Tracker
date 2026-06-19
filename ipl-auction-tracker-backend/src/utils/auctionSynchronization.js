@@ -66,10 +66,14 @@ export const createAuctionSynchronizationService = ({
           scopeId,
           phase: "publishAuctionState",
           publishAuctionStateMs: elapsedMs(publishStartedAt),
+          publishState: elapsedMs(publishStartedAt),
           snapshotMs,
           serializationMs,
           payloadBytes: bytes,
           broadcastMs,
+          broadcast: broadcastMs,
+          auctionStateSocketEmittedAt: new Date().toISOString(),
+          eventName,
         });
       }
       return payload;
