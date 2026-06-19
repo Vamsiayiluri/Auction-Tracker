@@ -36,9 +36,16 @@ import { socket } from "../webSocket/socket";
 import {
   getAuctionRemainingSeconds,
   getServerClockOffsetMs,
-  mergeAuctionSnapshotState,
   shouldApplyAuctionSnapshot,
 } from "../utils/auctionSynchronization";
+import {
+  applyAuctionSnapshotEvent,
+  applySportBidEvent,
+  applySportParticipantStartedEvent,
+  applySportTimerEvent,
+  applySynchronizedClock,
+  getRoundTimerDurationSeconds,
+} from "../utils/liveAuctionEventApplication";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 import {
   getSportAuctionStageFromState,
@@ -61,38 +68,6 @@ const logBidUiTrace = (details) =>
     ...details,
   });
 
-const applyImmediateSportBid = (previous, payload) => {
-  if (!previous?.current || previous.current.id !== payload?.sportAuctionId) {
-    return previous;
-  }
-  const currentBids = previous.current.bids || [];
-  const bidExists = currentBids.some(({ id }) => id === payload.id);
-  const bid = {
-    id: payload.id,
-    sportAuctionId: payload.sportAuctionId,
-    sportTeamId: payload.sportTeamId,
-    teamName: payload.teamName,
-    amount: payload.amount,
-    placedAt: payload.placedAt,
-    bidNumber: payload.bidNumber,
-  };
-  const bids = bidExists ? currentBids : [...currentBids, bid];
-  return {
-    ...previous,
-    current: {
-      ...previous.current,
-      bids,
-      currentCredits: payload.currentCredits ?? payload.amount,
-      nextCredits: payload.nextCredits ?? previous.current.nextCredits,
-      incrementCredits:
-        payload.incrementCredits ?? previous.current.incrementCredits,
-      leadingTeam: payload.teamName || previous.current.leadingTeam,
-      bidCount: payload.bidCount ?? bids.length,
-      endsAt: payload.endsAt || previous.current.endsAt,
-    },
-  };
-};
-
 export default function SportAuctionArena() {
   const { sportTournamentId } = useParams();
   const navigate = useNavigate();
@@ -104,6 +79,7 @@ export default function SportAuctionArena() {
   const lastRevision = useRef(0);
   const currentAuctionId = useRef(null);
   const bidRequestStartedAt = useRef(null);
+  const clockOffsetRef = useRef(0);
   const [state, setState] = useState(null);
   const [tournamentDetails, setTournamentDetails] = useState(null);
   const [history, setHistory] = useState([]);
@@ -202,6 +178,10 @@ export default function SportAuctionArena() {
   }, [state]);
 
   useEffect(() => {
+    clockOffsetRef.current = clockOffsetMs;
+  }, [clockOffsetMs]);
+
+  useEffect(() => {
     let active = true;
     api
       .get(`/v2/sport-tournaments/${sportTournamentId}`)
@@ -242,7 +222,7 @@ export default function SportAuctionArena() {
       }
       lastRevision.current = payload.revision;
       setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
-      setState((previous) => mergeAuctionSnapshotState(previous, payload));
+      setState((previous) => applyAuctionSnapshotEvent(previous, payload));
       setHistory(payload.history || []);
       setRefreshing(false);
       if (payload.reason === "bid-placed") {
@@ -264,6 +244,7 @@ export default function SportAuctionArena() {
       const updateStartedAt = performance.now();
       if (payload?.sportTournamentId !== sportTournamentId) return;
       if (payload?.sportAuctionId !== currentAuctionId.current) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
       logBidUiTrace({
         scopeType: "sport",
         sportTournamentId,
@@ -271,7 +252,7 @@ export default function SportAuctionArena() {
         auctionId: payload.sportAuctionId,
         bidId: payload.id,
       });
-      setState((previous) => applyImmediateSportBid(previous, payload));
+      setState((previous) => applySportBidEvent(previous, payload));
       logBidUiTrace({
         scopeType: "sport",
         sportTournamentId,
@@ -286,6 +267,17 @@ export default function SportAuctionArena() {
         ),
         updateLatencyMs: Number((performance.now() - updateStartedAt).toFixed(2)),
       });
+    };
+    const applyParticipantStarted = (payload) => {
+      if (payload?.sportTournamentId !== sportTournamentId) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      setState((previous) => applySportParticipantStartedEvent(previous, payload));
+    };
+    const applyTimerUpdated = (payload) => {
+      if (payload?.sportTournamentId !== sportTournamentId) return;
+      if (payload?.auctionId !== currentAuctionId.current) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      setState((previous) => applySportTimerEvent(previous, payload));
     };
     const joinRoom = () => {
       setConnected(true);
@@ -306,6 +298,9 @@ export default function SportAuctionArena() {
 
     void load();
     socket.on("sport-bid-placed", applyBidPlaced);
+    socket.on("sport-participant-started", applyParticipantStarted);
+    socket.on("sport-auction-extended", applyTimerUpdated);
+    socket.on("sport-auction-resumed", applyTimerUpdated);
     socket.on("auction-state", applySnapshot);
     if (socket.connected) joinRoom();
     socket.on("connect", joinRoom);
@@ -315,22 +310,36 @@ export default function SportAuctionArena() {
       socket.off("connect", joinRoom);
       socket.off("disconnect", disconnect);
       socket.off("sport-bid-placed", applyBidPlaced);
+      socket.off("sport-participant-started", applyParticipantStarted);
+      socket.off("sport-auction-extended", applyTimerUpdated);
+      socket.off("sport-auction-resumed", applyTimerUpdated);
       socket.off("auction-state", applySnapshot);
     };
   }, [load, sportTournamentId]);
 
   const currentEndsAt = state?.current?.endsAt;
+  const timerDurationSeconds = getRoundTimerDurationSeconds(
+    state?.current,
+    state?.config?.timerDurationSeconds || 20
+  );
   useEffect(() => {
     if (!currentEndsAt) {
       setTimeLeft(0);
       return undefined;
     }
     const tick = () =>
-      setTimeLeft(getAuctionRemainingSeconds(currentEndsAt, clockOffsetMs));
+      setTimeLeft(
+        getAuctionRemainingSeconds(
+          currentEndsAt,
+          clockOffsetMs,
+          Date.now(),
+          timerDurationSeconds
+        )
+      );
     tick();
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [clockOffsetMs, currentEndsAt]);
+  }, [clockOffsetMs, currentEndsAt, timerDurationSeconds]);
 
   const run = async (
     path,
@@ -773,6 +782,7 @@ export default function SportAuctionArena() {
           current={current}
           festivalTeamName={tournamentDetails?.festivalTeam?.name}
           timeLeft={timeLeft}
+          timerDuration={timerDurationSeconds}
           formatCredits={credits}
           onRefresh={manualRefresh}
           refreshing={refreshing}

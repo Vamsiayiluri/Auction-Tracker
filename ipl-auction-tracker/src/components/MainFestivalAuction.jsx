@@ -18,9 +18,16 @@ import { socket } from "../webSocket/socket";
 import {
   getAuctionRemainingSeconds,
   getServerClockOffsetMs,
-  mergeAuctionSnapshotState,
   shouldApplyAuctionSnapshot,
 } from "../utils/auctionSynchronization";
+import {
+  applyAuctionSnapshotEvent,
+  applyFestivalBidEvent,
+  applyFestivalParticipantStartedEvent,
+  applyFestivalTimerEvent,
+  applySynchronizedClock,
+  getRoundTimerDurationSeconds,
+} from "../utils/liveAuctionEventApplication";
 import ArenaHeader from "./FestivalAuctionArena/ArenaHeader";
 import ParticipantStage from "./FestivalAuctionArena/ParticipantStage";
 import {
@@ -46,43 +53,6 @@ const logBidUiTrace = (details) =>
     timestamp: new Date().toISOString(),
     ...details,
   });
-
-const applyImmediateFestivalBid = (previous, payload) => {
-  if (!previous?.current || previous.current.id !== payload?.festivalAuctionId) {
-    return previous;
-  }
-  const currentBids = previous.current.bids || [];
-  const bidExists = currentBids.some(({ id }) => id === payload.id);
-  const bid = {
-    id: payload.id,
-    festivalAuctionId: payload.festivalAuctionId,
-    festivalParticipantId: payload.festivalParticipantId,
-    festivalTeamId: payload.festivalTeamId,
-    teamName: payload.teamName,
-    amount: payload.amount,
-    placedAt: payload.placedAt,
-    bidNumber: payload.bidNumber,
-  };
-  const bids = bidExists ? currentBids : [...currentBids, bid];
-  return {
-    ...previous,
-    current: {
-      ...previous.current,
-      bids,
-      currentBid: payload.currentBid ?? payload.amount,
-      nextBid: payload.nextBid ?? previous.current.nextBid,
-      incrementAmount:
-        payload.incrementAmount ?? previous.current.incrementAmount,
-      incrementPercentage:
-        payload.incrementPercentage ?? previous.current.incrementPercentage,
-      timerDurationSeconds:
-        payload.timerDurationSeconds ?? previous.current.timerDurationSeconds,
-      leadingTeam: payload.teamName || previous.current.leadingTeam,
-      bidCount: payload.bidCount ?? bids.length,
-      endsAt: payload.endsAt || previous.current.endsAt,
-    },
-  };
-};
 
 export default function MainFestivalAuction({
   festivalId,
@@ -119,6 +89,7 @@ export default function MainFestivalAuction({
   const lastResultId = useRef(null);
   const currentAuctionId = useRef(null);
   const bidRequestStartedAt = useRef(null);
+  const clockOffsetRef = useRef(0);
 
   const loadAuction = useCallback(
     async ({ refreshHistory = true, forceState = false } = {}) => {
@@ -190,6 +161,10 @@ export default function MainFestivalAuction({
   }, [state]);
 
   useEffect(() => {
+    clockOffsetRef.current = clockOffsetMs;
+  }, [clockOffsetMs]);
+
+  useEffect(() => {
     let active = true;
     api
       .get(`/v2/festivals/${festivalId}`)
@@ -250,7 +225,7 @@ export default function MainFestivalAuction({
       }
       lastRevision.current = payload.revision;
       setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
-      setState((previous) => mergeAuctionSnapshotState(previous, payload));
+      setState((previous) => applyAuctionSnapshotEvent(previous, payload));
       setHistory(payload.history || []);
       if (payload.reason === "bid-placed") {
         logBidUiTrace({
@@ -270,6 +245,7 @@ export default function MainFestivalAuction({
     const applyBidPlaced = (payload) => {
       const updateStartedAt = performance.now();
       if (payload?.festivalAuctionId !== currentAuctionId.current) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
       logBidUiTrace({
         scopeType: "festival",
         festivalId,
@@ -277,7 +253,7 @@ export default function MainFestivalAuction({
         auctionId: payload.festivalAuctionId,
         bidId: payload.id,
       });
-      setState((previous) => applyImmediateFestivalBid(previous, payload));
+      setState((previous) => applyFestivalBidEvent(previous, payload));
       logBidUiTrace({
         scopeType: "festival",
         festivalId,
@@ -292,6 +268,17 @@ export default function MainFestivalAuction({
         ),
         updateLatencyMs: Number((performance.now() - updateStartedAt).toFixed(2)),
       });
+    };
+    const applyParticipantStarted = (payload) => {
+      if (payload?.festivalId && payload.festivalId !== festivalId) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      setState((previous) => applyFestivalParticipantStartedEvent(previous, payload));
+    };
+    const applyTimerUpdated = (payload) => {
+      if (payload?.festivalId !== festivalId) return;
+      if (payload?.auctionId !== currentAuctionId.current) return;
+      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      setState((previous) => applyFestivalTimerEvent(previous, payload));
     };
     const joinRoom = () => {
       setConnected(true);
@@ -312,6 +299,10 @@ export default function MainFestivalAuction({
 
     void loadAuction();
     socket.on("bid-placed", applyBidPlaced);
+    socket.on("participant-started", applyParticipantStarted);
+    socket.on("auction-timer-updated", applyTimerUpdated);
+    socket.on("auction-extended", applyTimerUpdated);
+    socket.on("auction-resumed", applyTimerUpdated);
     socket.on("auction-state", applySnapshot);
     socket.on("connect", joinRoom);
     socket.on("disconnect", disconnect);
@@ -319,6 +310,10 @@ export default function MainFestivalAuction({
     return () => {
       socket.emit("leave-festival-auction", { festivalId });
       socket.off("bid-placed", applyBidPlaced);
+      socket.off("participant-started", applyParticipantStarted);
+      socket.off("auction-timer-updated", applyTimerUpdated);
+      socket.off("auction-extended", applyTimerUpdated);
+      socket.off("auction-resumed", applyTimerUpdated);
       socket.off("auction-state", applySnapshot);
       socket.off("connect", joinRoom);
       socket.off("disconnect", disconnect);
@@ -326,6 +321,10 @@ export default function MainFestivalAuction({
   }, [festivalId, loadAuction]);
 
   const currentEndsAt = state?.current?.endsAt;
+  const timerDurationSeconds = getRoundTimerDurationSeconds(
+    state?.current,
+    30
+  );
 
   useEffect(() => {
     const endsAt = currentEndsAt;
@@ -334,11 +333,18 @@ export default function MainFestivalAuction({
       return undefined;
     }
     const updateTimer = () =>
-      setTimeLeft(getAuctionRemainingSeconds(endsAt, clockOffsetMs));
+      setTimeLeft(
+        getAuctionRemainingSeconds(
+          endsAt,
+          clockOffsetMs,
+          Date.now(),
+          timerDurationSeconds
+        )
+      );
     updateTimer();
     const timer = setInterval(updateTimer, 250);
     return () => clearInterval(timer);
-  }, [clockOffsetMs, currentEndsAt]);
+  }, [clockOffsetMs, currentEndsAt, timerDurationSeconds]);
 
   const runAction = async (
     path,
@@ -805,7 +811,7 @@ export default function MainFestivalAuction({
           current={current}
           leadingBid={leadingBid}
           timeLeft={timeLeft}
-          timerDuration={current?.timerDurationSeconds}
+          timerDuration={timerDurationSeconds}
           formatMoney={formatMoney}
           onRefresh={manualRefresh}
           refreshing={refreshing}

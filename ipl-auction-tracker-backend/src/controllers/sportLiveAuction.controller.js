@@ -50,6 +50,12 @@ const eventPayload = (sportTournamentId, payload = {}) => ({
 const toNumber = (value) => Number(value || 0);
 let sportSynchronizationService;
 const durationMs = (config) => Number(config?.timerDurationSeconds || 20) * 1000;
+const durationSeconds = (config) => Number(config?.timerDurationSeconds || 20);
+const deadlineEventPayload = (sportTournamentId, config, payload = {}) =>
+  eventPayload(sportTournamentId, {
+    ...payload,
+    timerDurationSeconds: durationSeconds(config),
+  });
 const deadline = (config, now = Date.now()) =>
   createFestivalAuctionDeadline(now, durationMs(config));
 const progression = (auction, config, currentBid = 0) =>
@@ -203,6 +209,7 @@ const toRound = (auction, config) => {
     leadingTeam: lead?.teamName || null,
     bidCount: bids.length,
     bids,
+    timerDurationSeconds: durationSeconds(config),
     attemptNumber: auction.attemptNumber,
     startedAt: auction.startedAt,
     endsAt: auction.endsAt,
@@ -293,6 +300,7 @@ const toCompactRound = async (auction, config, transaction) => {
           },
         ]
       : [],
+    timerDurationSeconds: durationSeconds(config),
     attemptNumber: auction.attemptNumber,
     startedAt: auction.startedAt,
     endsAt: auction.endsAt,
@@ -1034,7 +1042,13 @@ export const resumeSportAuction = async (req, res) => {
         details: { endsAt },
         transaction,
       });
-      return { data: { auctionId: round?.id || null, endsAt } };
+      return {
+        data: {
+          auctionId: round?.id || null,
+          endsAt,
+          timerDurationSeconds: durationSeconds(config),
+        },
+      };
     });
     if (result.status) return res.status(result.status).json(result);
     if (result.data.auctionId) scheduleEnd(result.data.auctionId, result.data.endsAt);
@@ -1083,7 +1097,13 @@ export const extendSportAuction = async (req, res) => {
         details: { endsAt, attemptNumber: round.attemptNumber },
         transaction,
       });
-      return { data: { auctionId: round.id, endsAt } };
+      return {
+        data: {
+          auctionId: round.id,
+          endsAt,
+          timerDurationSeconds: durationSeconds(config),
+        },
+      };
     });
     if (result.status) return res.status(result.status).json(result);
     scheduleEnd(result.data.auctionId, result.data.endsAt);
@@ -1268,7 +1288,11 @@ export const startSportAuctionParticipant = async (req, res) => {
     emit(
       req.params.sportTournamentId,
       "sport-participant-started",
-      eventPayload(req.params.sportTournamentId, { current: payload })
+      deadlineEventPayload(req.params.sportTournamentId, config, {
+        current: payload,
+        auctionId: payload.id,
+        endsAt: payload.endsAt,
+      })
     );
     await publishSportAuctionState(
       req.params.sportTournamentId,
@@ -1397,6 +1421,7 @@ export const placeSportAuctionBid = async (req, res) => {
           festivalParticipantId: round.festivalParticipantId,
           sportTeamId: captain.sportTeamId,
           teamName: captain.team?.name,
+          timerDurationSeconds: durationSeconds(config),
         },
       };
     });
@@ -1417,6 +1442,7 @@ export const placeSportAuctionBid = async (req, res) => {
       bidNumber: result.data.bidCount,
       bidCount: result.data.bidCount,
       endsAt: result.data.endsAt,
+      timerDurationSeconds: result.data.timerDurationSeconds,
       currentCredits: bidProgression.currentBid,
       nextCredits: bidProgression.nextBid,
       incrementCredits: bidProgression.incrementAmount,

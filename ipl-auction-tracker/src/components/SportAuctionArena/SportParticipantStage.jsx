@@ -22,6 +22,7 @@ export default function SportParticipantStage({
   current,
   festivalTeamName,
   timeLeft,
+  timerDuration,
   formatCredits,
   onRefresh,
   refreshing = false,
@@ -121,7 +122,7 @@ export default function SportParticipantStage({
               sx={{ borderRadius: 2, bgcolor: "action.hover", p: 2 }}
             >
               {current.status === "live" ? (
-                <VisualTimer timeLeft={timeLeft} />
+                <VisualTimer timeLeft={timeLeft} duration={timerDuration} />
               ) : (
                 <Chip
                   color={current.status === "pending" ? "warning" : "default"}

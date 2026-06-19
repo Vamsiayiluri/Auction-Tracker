@@ -48,6 +48,12 @@ import {
 const roomName = (festivalId) => `festival-auction:${festivalId}`;
 const festivalAuctionTimers = new Map();
 const DEADLINE_MATCH_TOLERANCE_MS = 1_500;
+const festivalTimerDurationSeconds = () => FESTIVAL_AUCTION_DURATION_MS / 1000;
+const festivalDeadlineEventPayload = (payload = {}) => ({
+  ...payload,
+  timerDurationSeconds: festivalTimerDurationSeconds(),
+  serverTime: new Date().toISOString(),
+});
 const emitFestivalEvent = (festivalId, event, payload) =>
   io.to(roomName(festivalId)).emit(event, payload);
 const logExpiry = (message, details) =>
@@ -1125,12 +1131,13 @@ export const resumeFestivalAuction = async (req, res) => {
       return lifecycleError(res, "Only a paused auction can be resumed");
     }
     if (result.auctionId) scheduleFestivalAuctionEnd(result.auctionId, result.endsAt);
-    const payload = {
+    const payload = festivalDeadlineEventPayload({
       festivalId: req.params.festivalId,
+      auctionId: result.auctionId,
       auctionStatus: "live",
       roundStatus: result.auctionId ? "live" : null,
       endsAt: result.endsAt,
-    };
+    });
     emitFestivalEvent(req.params.festivalId, "auction-resumed", payload);
     await publishFestivalAuctionState(req.params.festivalId, "auction-resumed");
     return res.status(200).json({ data: payload });
@@ -1163,12 +1170,12 @@ export const extendFestivalAuction = async (req, res) => {
     });
     if (result.status) return res.status(result.status).json(result);
     scheduleFestivalAuctionEnd(result.auctionId, result.endsAt);
-    const payload = {
+    const payload = festivalDeadlineEventPayload({
       festivalId: req.params.festivalId,
       auctionId: result.auctionId,
       roundStatus: "live",
       endsAt: result.endsAt,
-    };
+    });
     emitFestivalEvent(req.params.festivalId, "auction-extended", payload);
     emitFestivalEvent(req.params.festivalId, "auction-timer-updated", payload);
     await publishFestivalAuctionState(req.params.festivalId, "auction-extended");
@@ -1320,7 +1327,7 @@ export const startFestivalAuctionParticipant = async (req, res) => {
     const auction = await loadAuctionResponse(result.auctionId);
     scheduleFestivalAuctionEnd(auction.id, auction.endsAt);
     const config = await loadConfig(req.params.festivalId);
-    const payload = toAuction(auction, config);
+    const payload = festivalDeadlineEventPayload(toAuction(auction, config));
     emitFestivalEvent(
       req.params.festivalId,
       "participant-started",
@@ -1492,7 +1499,7 @@ export const placeFestivalAuctionBid = async (req, res) => {
       currentBid: result.amount,
       incrementPercentage: result.incrementPercentage || 20,
     });
-    const payload = {
+    const payload = festivalDeadlineEventPayload({
       id: result.bidId,
       festivalAuctionId: result.auctionId,
       festivalParticipantId: result.festivalParticipantId,
@@ -1502,19 +1509,18 @@ export const placeFestivalAuctionBid = async (req, res) => {
       placedAt: result.placedAt,
       bidNumber: result.bidCount,
       bidCount: result.bidCount,
-      timerDurationSeconds: FESTIVAL_AUCTION_DURATION_MS / 1000,
       endsAt: result.endsAt,
       ...progression,
-    };
+    });
     const socketStartedAt = nowMs();
     const serializeStartedAt = nowMs();
     const bidPayloadBytes = payloadSizeBytes(payload);
-    const timerPayload = {
+    const timerPayload = festivalDeadlineEventPayload({
       festivalId: req.params.festivalId,
       auctionId: result.auctionId,
       endsAt: result.endsAt,
       roundStatus: "live",
-    };
+    });
     const timerPayloadBytes = payloadSizeBytes(timerPayload);
     trace.socketSerializationMs = elapsedMs(serializeStartedAt);
     trace.socketPayloadBytes = bidPayloadBytes + timerPayloadBytes;
