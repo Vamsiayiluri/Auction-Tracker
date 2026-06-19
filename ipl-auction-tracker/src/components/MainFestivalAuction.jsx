@@ -75,6 +75,8 @@ const applyImmediateFestivalBid = (previous, payload) => {
         payload.incrementAmount ?? previous.current.incrementAmount,
       incrementPercentage:
         payload.incrementPercentage ?? previous.current.incrementPercentage,
+      timerDurationSeconds:
+        payload.timerDurationSeconds ?? previous.current.timerDurationSeconds,
       leadingTeam: payload.teamName || previous.current.leadingTeam,
       bidCount: payload.bidCount ?? bids.length,
       endsAt: payload.endsAt || previous.current.endsAt,
@@ -803,6 +805,7 @@ export default function MainFestivalAuction({
           current={current}
           leadingBid={leadingBid}
           timeLeft={timeLeft}
+          timerDuration={current?.timerDurationSeconds}
           formatMoney={formatMoney}
           onRefresh={manualRefresh}
           refreshing={refreshing}

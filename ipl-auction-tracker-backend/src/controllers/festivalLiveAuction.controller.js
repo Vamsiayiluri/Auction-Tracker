@@ -215,6 +215,7 @@ const toAuction = (auction, configOrBudget = 0) => {
     leadingTeam: highestBid?.teamName || null,
     attemptNumber: auction.attemptNumber,
     nextBid: progression.nextBid,
+    timerDurationSeconds: FESTIVAL_AUCTION_DURATION_MS / 1000,
     startedAt: auction.startedAt,
     endsAt: auction.endsAt,
     pausedRemainingMs: auction.pausedRemainingMs,
@@ -309,6 +310,7 @@ const toCompactAuction = async (auction, config, transaction) => {
     leadingTeam: lead?.team?.name || null,
     attemptNumber: auction.attemptNumber,
     nextBid: bidProgression.nextBid,
+    timerDurationSeconds: FESTIVAL_AUCTION_DURATION_MS / 1000,
     startedAt: auction.startedAt,
     endsAt: auction.endsAt,
     pausedRemainingMs: auction.pausedRemainingMs,
@@ -1500,6 +1502,7 @@ export const placeFestivalAuctionBid = async (req, res) => {
       placedAt: result.placedAt,
       bidNumber: result.bidCount,
       bidCount: result.bidCount,
+      timerDurationSeconds: FESTIVAL_AUCTION_DURATION_MS / 1000,
       endsAt: result.endsAt,
       ...progression,
     };

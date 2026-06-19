@@ -22,6 +22,7 @@ export default function ParticipantStage({
   current,
   leadingBid,
   timeLeft,
+  timerDuration,
   formatMoney,
   onRefresh,
   refreshing = false,
@@ -153,7 +154,7 @@ export default function ParticipantStage({
               }}
             >
               {roundStatus === "live" ? (
-                <VisualTimer timeLeft={timeLeft} />
+                <VisualTimer timeLeft={timeLeft} duration={timerDuration} />
               ) : (
                 <Chip
                   color={roundStatus === "pending" ? "warning" : "default"}

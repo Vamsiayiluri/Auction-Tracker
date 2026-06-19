@@ -2,7 +2,8 @@ import { Box, CircularProgress, Typography } from "@mui/material";
 
 const VisualTimer = ({ timeLeft, duration = 20 }) => {
   const safeTime = Math.max(0, Number(timeLeft) || 0);
-  const progress = Math.min(100, (safeTime / duration) * 100);
+  const safeDuration = Math.max(1, Number(duration) || 20);
+  const progress = Math.min(100, (safeTime / safeDuration) * 100);
 
   return (
     <Box
