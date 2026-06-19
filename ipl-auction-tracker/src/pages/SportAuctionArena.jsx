@@ -10,11 +10,12 @@ import {
   DialogContent,
   DialogTitle,
   LinearProgress,
+  Snackbar,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import SportArenaHeader from "../components/SportAuctionArena/SportArenaHeader";
 import SportParticipantStage from "../components/SportAuctionArena/SportParticipantStage";
@@ -81,6 +82,8 @@ export default function SportAuctionArena() {
   const [error, setError] = useState("");
   const [contextWarning, setContextWarning] = useState("");
   const [notice, setNotice] = useState("");
+  const [resultToast, setResultToast] = useState(null);
+  const lastResultId = useRef(null);
   const [confirmation, setConfirmation] = useState(null);
 
   const load = useCallback(async ({ background = false, forceState = false } = {}) => {
@@ -441,6 +444,45 @@ export default function SportAuctionArena() {
     return () => window.clearInterval(retryTimer);
   }, [current?.id, load, locallyExpired]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const latest = history.find(({ result }) => Boolean(result));
+    if (lastResultId.current === null) {
+      if (latest) lastResultId.current = latest.id;
+      return;
+    }
+    if (!latest || latest.id === lastResultId.current) return;
+    lastResultId.current = latest.id;
+    const name = latest.participant?.employee?.name || latest.participant?.name || "Participant";
+    const outcome = latest.result?.outcome;
+    if (outcome === "sold") {
+      setResultToast({
+        message: `🏅 ${name} sold to ${latest.result.teamName} for ${credits(latest.result.finalCredits)} credits`,
+        severity: "success",
+      });
+    } else if (outcome === "unsold") {
+      setResultToast({ message: `${name} went unsold`, severity: "warning" });
+    }
+  }, [history]);
+
+  const resultToastEl = (
+    <Snackbar
+      open={Boolean(resultToast)}
+      autoHideDuration={6000}
+      onClose={() => setResultToast(null)}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      <Alert
+        onClose={() => setResultToast(null)}
+        severity={resultToast?.severity || "success"}
+        variant="filled"
+        sx={{ width: "100%", borderRadius: 2, boxShadow: 4, fontSize: "0.95rem" }}
+      >
+        {resultToast?.message}
+      </Alert>
+    </Snackbar>
+  );
+
   if (loading && !state) {
     return (
       <LoadingStateCard
@@ -452,63 +494,75 @@ export default function SportAuctionArena() {
 
   if (isCompletedStage(sportStage)) {
     return (
-      <ProductStateCard
-        eyebrow="Sport Auction"
-        title="Auction Completed"
-        message="The Sport auction is closed. Results and team purchases are ready to review."
-        actionLabel="View Results"
-        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}
-        secondaryActionLabel="View Auction Details"
-        onSecondaryAction={() =>
-          navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)
-        }
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Sport Auction"
+          title="Auction Completed"
+          message="The Sport auction is closed. Results and team purchases are ready to review."
+          actionLabel="View Results"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}
+          secondaryActionLabel="View Auction Details"
+          onSecondaryAction={() =>
+            navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)
+          }
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
   if (isSetupStage(sportStage) && canManage) {
     return (
-      <ProductStateCard
-        eyebrow="Sport Auction"
-        title="Tournament Setup Incomplete"
-        message="Complete the tournament setup before the live auction can begin. Teams, credits, and the player pool must be configured."
-        actionLabel="Continue Tournament Setup"
-        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}
-        secondaryActionLabel="View Tournament Overview"
-        onSecondaryAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Sport Auction"
+          title="Tournament Setup Incomplete"
+          message="Complete the tournament setup before the live auction can begin. Teams, credits, and the player pool must be configured."
+          actionLabel="Continue Tournament Setup"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}
+          secondaryActionLabel="View Tournament Overview"
+          onSecondaryAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
   if (isReadyStage(sportStage) && !canManage) {
     return (
-      <ProductStateCard
-        eyebrow="Sport Auction"
-        title={canBid ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
-        message={
-          canBid
-            ? "The auction is fully configured and your team is ready. The tournament organiser will start bidding shortly."
-            : "The Sport auction is configured and ready to launch. Bidding will begin once the organiser opens the first round."
-        }
-        actionLabel="Return To Tournament Overview"
-        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Sport Auction"
+          title={canBid ? "Auction Ready — Launching Soon" : "Auction Launching Soon"}
+          message={
+            canBid
+              ? "The auction is fully configured and your team is ready. The tournament organiser will start bidding shortly."
+              : "The Sport auction is configured and ready to launch. Bidding will begin once the organiser opens the first round."
+          }
+          actionLabel="Return To Tournament Overview"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
   if (!canManage && isSetupStage(sportStage)) {
     return (
-      <ProductStateCard
-        eyebrow="Sport Auction"
-        title={canBid ? "Waiting For Tournament Setup" : "Sport Auction In Setup"}
-        message={
-          canBid
-            ? "Your team is assigned, but this Sport auction is not ready yet. The organiser may still be finishing team setup, budget configuration, or pool generation."
-            : "This Sport auction has not started yet. Return to the Tournament overview for the current setup status."
-        }
-        actionLabel="Return To Tournament Overview"
-        onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
-      />
+      <Fragment>
+        <ProductStateCard
+          eyebrow="Sport Auction"
+          title={canBid ? "Waiting For Tournament Setup" : "Sport Auction In Setup"}
+          message={
+            canBid
+              ? "Your team is assigned, but this Sport auction is not ready yet. The organiser may still be finishing team setup, budget configuration, or pool generation."
+              : "This Sport auction has not started yet. Return to the Tournament overview for the current setup status."
+          }
+          actionLabel="Return To Tournament Overview"
+          onAction={() => navigate(`/sport-tournaments/${sportTournamentId}`)}
+        />
+        {resultToastEl}
+      </Fragment>
     );
   }
 
@@ -551,11 +605,18 @@ export default function SportAuctionArena() {
           {contextWarning}
         </Alert>
       )}
-      {notice && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice("")}>
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={4000}
+        onClose={() => setNotice("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert onClose={() => setNotice("")} severity="success" variant="filled"
+          sx={{ width: "100%", borderRadius: 2, boxShadow: 4 }}>
           {notice}
         </Alert>
-      )}
+      </Snackbar>
+      {resultToastEl}
 
       {isReadyStage(sportStage) && canManage && (
         <Alert severity="info" sx={{ mb: 2 }}>

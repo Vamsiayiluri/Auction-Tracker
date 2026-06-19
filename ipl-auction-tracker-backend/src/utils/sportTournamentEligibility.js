@@ -8,6 +8,10 @@ import {
   SportTournament,
 } from "../models/index.js";
 import { toEmployeeResponse } from "./employeeResponse.js";
+import {
+  requestCacheGetOrSet,
+  transactionScopedCacheKey,
+} from "./requestPerformance.js";
 
 export const SPORT_ELIGIBILITY_REASONS = {
   NOT_ON_PARENT_FESTIVAL_TEAM: "NOT_ON_PARENT_FESTIVAL_TEAM",
@@ -20,16 +24,36 @@ export const SPORT_ELIGIBILITY_REASONS = {
 };
 
 const participantInclude = [
-  { model: Employee, as: "employee", required: false },
+  {
+    model: Employee,
+    as: "employee",
+    required: false,
+    attributes: [
+      "id",
+      "employeeNumber",
+      "name",
+      "email",
+      "department",
+      "gender",
+      "employmentStatus",
+      "source",
+      "identityStatus",
+      "userId",
+      "createdAt",
+      "updatedAt",
+    ],
+  },
   {
     model: FestivalParticipantSport,
     as: "sportRegistrations",
     required: false,
+    attributes: ["id", "festivalParticipantId", "sportId"],
   },
   {
     model: FestivalTeamMembership,
     as: "teamMembership",
     required: false,
+    attributes: ["id", "festivalId", "festivalTeamId", "festivalParticipantId"],
   },
 ];
 
@@ -99,57 +123,72 @@ export const getSportTournamentEligibility = async (
   sportTournamentId,
   transaction
 ) => {
-  const tournament = await SportTournament.findByPk(sportTournamentId, {
-    transaction,
-  });
-  if (!tournament) return null;
-
-  const [participants, captains, memberships] = await Promise.all([
-    FestivalParticipant.findAll({
-      where: { festivalId: tournament.festivalId },
-      include: participantInclude,
-      order: [[{ model: Employee, as: "employee" }, "name", "ASC"]],
-      transaction,
-    }),
-    SportTeamCaptain.findAll({
-      where: { sportTournamentId, status: "active" },
-      attributes: ["festivalParticipantId"],
-      transaction,
-    }),
-    SportTeamMembership.findAll({
-      where: { sportTournamentId },
-      attributes: ["festivalParticipantId"],
-      transaction,
-    }),
-  ]);
-
-  const captainParticipantIds = new Set(
-    captains.map(({ festivalParticipantId }) => festivalParticipantId)
-  );
-  const sportTeamMemberParticipantIds = new Set(
-    memberships.map(({ festivalParticipantId }) => festivalParticipantId)
-  );
-  const evaluated = participants.map((participant) =>
-    evaluateSportTournamentParticipant({
-      tournament,
-      participant,
-      captainParticipantIds,
-      sportTeamMemberParticipantIds,
-    })
-  );
-
-  return {
+  const cacheKey = transactionScopedCacheKey(
+    "sport-tournament-eligibility",
     sportTournamentId,
-    totalParticipants: evaluated.length,
-    eligibleCount: evaluated.filter(({ eligible }) => eligible).length,
-    availablePoolCount: evaluated.filter(
-      ({ availableParticipantPool }) => availableParticipantPool
-    ).length,
-    included: evaluated.filter(({ eligible }) => eligible),
-    excluded: evaluated.filter(({ eligible }) => !eligible),
-    poolExcluded: evaluated.filter(
-      ({ eligible, availableParticipantPool }) =>
-        eligible && !availableParticipantPool
-    ),
-  };
+    transaction
+  );
+  return requestCacheGetOrSet(cacheKey, async () => {
+    const tournament = await SportTournament.findByPk(sportTournamentId, {
+      attributes: [
+        "id",
+        "festivalId",
+        "festivalTeamId",
+        "sportId",
+        "participantGenderRule",
+      ],
+      transaction,
+    });
+    if (!tournament) return null;
+
+    const [participants, captains, memberships] = await Promise.all([
+      FestivalParticipant.findAll({
+        where: { festivalId: tournament.festivalId },
+        attributes: ["id", "festivalId", "employeeId", "status"],
+        include: participantInclude,
+        order: [[{ model: Employee, as: "employee" }, "name", "ASC"]],
+        transaction,
+      }),
+      SportTeamCaptain.findAll({
+        where: { sportTournamentId, status: "active" },
+        attributes: ["festivalParticipantId"],
+        transaction,
+      }),
+      SportTeamMembership.findAll({
+        where: { sportTournamentId },
+        attributes: ["festivalParticipantId"],
+        transaction,
+      }),
+    ]);
+
+    const captainParticipantIds = new Set(
+      captains.map(({ festivalParticipantId }) => festivalParticipantId)
+    );
+    const sportTeamMemberParticipantIds = new Set(
+      memberships.map(({ festivalParticipantId }) => festivalParticipantId)
+    );
+    const evaluated = participants.map((participant) =>
+      evaluateSportTournamentParticipant({
+        tournament,
+        participant,
+        captainParticipantIds,
+        sportTeamMemberParticipantIds,
+      })
+    );
+
+    return {
+      sportTournamentId,
+      totalParticipants: evaluated.length,
+      eligibleCount: evaluated.filter(({ eligible }) => eligible).length,
+      availablePoolCount: evaluated.filter(
+        ({ availableParticipantPool }) => availableParticipantPool
+      ).length,
+      included: evaluated.filter(({ eligible }) => eligible),
+      excluded: evaluated.filter(({ eligible }) => !eligible),
+      poolExcluded: evaluated.filter(
+        ({ eligible, availableParticipantPool }) =>
+          eligible && !availableParticipantPool
+      ),
+    };
+  });
 };

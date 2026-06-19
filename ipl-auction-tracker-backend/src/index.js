@@ -44,6 +44,7 @@ import { getNextMinimumBid, validateBidAmount } from "./utils/bidRules.js";
 import { validateSocketPayload } from "./middleware/validate.middleware.js";
 import { placeBidSocketSchema } from "./validation/socket.validation.js";
 import { verifyEmailTransport } from "./utils/emailService.js";
+import { requestPerformanceMiddleware } from "./utils/requestPerformance.js";
 
 dotenv.config();
 
@@ -64,6 +65,7 @@ app.use(express.json());
 app.use(express.text());
 
 app.use(express.urlencoded({ extended: true }));
+app.use(requestPerformanceMiddleware);
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", TeamRoutes);
 app.use("/api/players", PlayerRoutes);

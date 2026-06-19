@@ -26,6 +26,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../utils/api";
+import { useAuth } from "../context/auth-context";
+import {
+  cachedRequest,
+  refreshCachedRequest,
+  stableCacheKey,
+  userCacheScope,
+} from "../utils/clientCache";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   getSportAuctionStageFromState,
@@ -46,6 +53,8 @@ const sections = [
   "Settings",
 ];
 
+const WORKSPACE_TTL_MS = 45_000;
+
 const participantLabel = (participant) => {
   const employee = participant?.employee;
   return employee
@@ -56,6 +65,7 @@ const participantLabel = (participant) => {
 export default function SportTournamentWorkspace() {
   const { sportTournamentId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const mutationInFlight = useRef(false);
   const [activeSection, setActiveSection] = useState("Overview");
   const [tournament, setTournament] = useState(null);
@@ -86,24 +96,27 @@ export default function SportTournamentWorkspace() {
   const loadCore = useCallback(async () => {
     setLoading(true);
     setError("");
-    try {
-      const [tournamentResponse, readinessResponse, auctionResponse] =
-        await Promise.all([
-          api.get(`/v2/sport-tournaments/${sportTournamentId}`),
-          api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
-          api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`),
-        ]);
-      const nextTournament = tournamentResponse.data.data;
+    const scope = userCacheScope(user);
+    const tournamentKey = stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}`);
+    const readinessKey = stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}/readiness`);
+    const [tournamentResult, readinessResult, auctionResult] =
+      await Promise.allSettled([
+        cachedRequest(
+          tournamentKey,
+          () => api.get(`/v2/sport-tournaments/${sportTournamentId}`),
+          { ttlMs: WORKSPACE_TTL_MS }
+        ),
+        cachedRequest(
+          readinessKey,
+          () => api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
+          { ttlMs: WORKSPACE_TTL_MS }
+        ),
+        api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`),
+      ]);
+
+    if (tournamentResult.status === "fulfilled") {
+      const nextTournament = tournamentResult.value.data.data;
       setTournament(nextTournament);
-      setReadiness(readinessResponse.data.data);
-      setAuctionState(auctionResponse.data.data);
-      if (auctionResponse.data.data?.config) {
-        setAuctionConfig({
-          timerDurationSeconds: auctionResponse.data.data.config.timerDurationSeconds,
-          incrementPercentage: auctionResponse.data.data.config.incrementPercentage,
-          reauctionEnabled: auctionResponse.data.data.config.reauctionEnabled,
-        });
-      }
       setSettings({
         name: nextTournament.name,
         code: nextTournament.code,
@@ -119,15 +132,31 @@ export default function SportTournamentWorkspace() {
           ])
         )
       );
-    } catch (requestError) {
+    } else {
       setError(
-        requestError.response?.data?.message ||
+        tournamentResult.reason?.response?.data?.message ||
           "Unable to load Sport Tournament workspace."
       );
-    } finally {
-      setLoading(false);
     }
-  }, [sportTournamentId]);
+
+    if (readinessResult.status === "fulfilled") {
+      setReadiness(readinessResult.value.data.data);
+    }
+
+    if (auctionResult.status === "fulfilled") {
+      const auctionData = auctionResult.value.data.data;
+      setAuctionState(auctionData);
+      if (auctionData?.config) {
+        setAuctionConfig({
+          timerDurationSeconds: auctionData.config.timerDurationSeconds,
+          incrementPercentage: auctionData.config.incrementPercentage,
+          reauctionEnabled: auctionData.config.reauctionEnabled,
+        });
+      }
+    }
+
+    setLoading(false);
+  }, [sportTournamentId, user]);
 
   useEffect(() => {
     loadCore();
@@ -135,7 +164,11 @@ export default function SportTournamentWorkspace() {
 
   // ─── Targeted refresh helpers (called individually after mutations) ───────
   const refreshTournament = useCallback(async () => {
-    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}`);
+    const response = await refreshCachedRequest(
+      stableCacheKey("GET", userCacheScope(user), `/v2/sport-tournaments/${sportTournamentId}`),
+      () => api.get(`/v2/sport-tournaments/${sportTournamentId}`),
+      { ttlMs: WORKSPACE_TTL_MS }
+    );
     const nextTournament = response.data.data;
     setTournament(nextTournament);
     setSettings({
@@ -153,20 +186,32 @@ export default function SportTournamentWorkspace() {
         ])
       )
     );
-  }, [sportTournamentId]);
+  }, [sportTournamentId, user]);
 
   const refreshReadiness = useCallback(async () => {
-    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`);
+    const response = await refreshCachedRequest(
+      stableCacheKey("GET", userCacheScope(user), `/v2/sport-tournaments/${sportTournamentId}/readiness`),
+      () => api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
+      { ttlMs: WORKSPACE_TTL_MS }
+    );
     setReadiness(response.data.data);
-  }, [sportTournamentId]);
+  }, [sportTournamentId, user]);
 
   const refreshEligibility = useCallback(async () => {
-    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`);
+    const response = await refreshCachedRequest(
+      stableCacheKey("GET", userCacheScope(user), `/v2/sport-tournaments/${sportTournamentId}/eligibility`),
+      () => api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`),
+      { ttlMs: WORKSPACE_TTL_MS }
+    );
     setEligibility(response.data.data);
-  }, [sportTournamentId]);
+  }, [sportTournamentId, user]);
 
   const refreshBudgets = useCallback(async () => {
-    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`);
+    const response = await refreshCachedRequest(
+      stableCacheKey("GET", userCacheScope(user), `/v2/sport-tournaments/${sportTournamentId}/budgets`),
+      () => api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`),
+      { ttlMs: WORKSPACE_TTL_MS }
+    );
     const data = response.data.data;
     setBudgets(data);
     setBudgetEdits(
@@ -181,12 +226,16 @@ export default function SportTournamentWorkspace() {
         ])
       )
     );
-  }, [sportTournamentId]);
+  }, [sportTournamentId, user]);
 
   const refreshPool = useCallback(async () => {
-    const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`);
+    const response = await refreshCachedRequest(
+      stableCacheKey("GET", userCacheScope(user), `/v2/sport-tournaments/${sportTournamentId}/pool`),
+      () => api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`),
+      { ttlMs: WORKSPACE_TTL_MS }
+    );
     setPool(response.data.data);
-  }, [sportTournamentId]);
+  }, [sportTournamentId, user]);
 
   const refreshAuction = useCallback(async () => {
     const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`);
@@ -209,16 +258,60 @@ export default function SportTournamentWorkspace() {
     const needsEligibility = ["Captains", "Eligibility", "Pool"].includes(activeSection);
     const needsBudgets = activeSection === "Budgets";
     const needsPool = activeSection === "Pool";
+    const scope = userCacheScope(user);
 
     const tasks = [];
     if (needsEligibility && !loadedSections.current.has("eligibility")) {
-      tasks.push({ key: "eligibility", fn: refreshEligibility });
+      tasks.push({
+        key: "eligibility",
+        fn: async () => {
+          const response = await cachedRequest(
+            stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}/eligibility`),
+            () => api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`),
+            { ttlMs: WORKSPACE_TTL_MS }
+          );
+          setEligibility(response.data.data);
+        },
+      });
     }
     if (needsBudgets && !loadedSections.current.has("budgets")) {
-      tasks.push({ key: "budgets", fn: refreshBudgets });
+      tasks.push({
+        key: "budgets",
+        fn: async () => {
+          const response = await cachedRequest(
+            stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}/budgets`),
+            () => api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`),
+            { ttlMs: WORKSPACE_TTL_MS }
+          );
+          const data = response.data.data;
+          setBudgets(data);
+          setBudgetEdits(
+            Object.fromEntries(
+              (data?.teams || []).map((team) => [
+                team.sportTeamId,
+                {
+                  allocatedCredits: team.allocatedCredits,
+                  adjustmentCredits: team.adjustmentCredits,
+                  status: team.status === "missing" ? "active" : team.status,
+                },
+              ])
+            )
+          );
+        },
+      });
     }
     if (needsPool && !loadedSections.current.has("pool")) {
-      tasks.push({ key: "pool", fn: refreshPool });
+      tasks.push({
+        key: "pool",
+        fn: async () => {
+          const response = await cachedRequest(
+            stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}/pool`),
+            () => api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`),
+            { ttlMs: WORKSPACE_TTL_MS }
+          );
+          setPool(response.data.data);
+        },
+      });
     }
     if (tasks.length === 0) return;
 
@@ -227,7 +320,7 @@ export default function SportTournamentWorkspace() {
       .then(() => tasks.forEach(({ key }) => loadedSections.current.add(key)))
       .catch(() => {/* errors surfaced through individual state setters */})
       .finally(() => setTabLoading(false));
-  }, [activeSection, refreshEligibility, refreshBudgets, refreshPool]);
+  }, [activeSection, sportTournamentId, user]);
 
   // Each mutation passes a targeted `refresh` instead of reloading all 6 endpoints.
   const mutate = async (action, refresh, successMessage) => {

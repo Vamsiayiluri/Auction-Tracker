@@ -36,24 +36,70 @@ const captainInclude = {
   model: SportTeamCaptain,
   as: "captainAssignment",
   required: false,
+  attributes: [
+    "id",
+    "sportTournamentId",
+    "sportTeamId",
+    "festivalParticipantId",
+    "status",
+    "assignedAt",
+  ],
   include: [
     {
       model: FestivalParticipant,
       as: "participant",
       required: false,
-      include: [{ model: Employee, as: "employee", required: false }],
+      attributes: ["id", "employeeId"],
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+          required: false,
+          attributes: [
+            "id",
+            "employeeNumber",
+            "name",
+            "email",
+            "department",
+            "gender",
+            "employmentStatus",
+            "source",
+            "identityStatus",
+            "userId",
+            "createdAt",
+            "updatedAt",
+          ],
+        },
+      ],
     },
   ],
 };
 
 const tournamentInclude = [
-  { model: Festival, as: "festival" },
-  { model: FestivalTeam, as: "festivalTeam" },
-  { model: Sport, as: "sport" },
+  { model: Festival, as: "festival", attributes: ["id", "name", "code"] },
+  {
+    model: FestivalTeam,
+    as: "festivalTeam",
+    attributes: ["id", "name", "code"],
+  },
+  { model: Sport, as: "sport", attributes: ["id", "name", "code"] },
   {
     model: SportTeam,
     as: "teams",
     required: false,
+    attributes: [
+      "id",
+      "sportTournamentId",
+      "festivalId",
+      "festivalTeamId",
+      "name",
+      "code",
+      "color",
+      "logoUrl",
+      "status",
+      "createdAt",
+      "updatedAt",
+    ],
     include: [captainInclude],
   },
 ];
@@ -336,6 +382,11 @@ export const createSportTournament = async (req, res) => {
 export const listSportTournaments = async (req, res) => {
   try {
     let where = {};
+    let ownerFestivalTeamIds = new Set();
+    let participantIds = [];
+    if (req.query.festivalId) {
+      where.festivalId = req.query.festivalId;
+    }
     if (req.user.role !== "admin") {
       const employee = await Employee.findOne({
         where: { userId: req.user.id, employmentStatus: "active" },
@@ -343,65 +394,81 @@ export const listSportTournaments = async (req, res) => {
       if (!employee) return res.status(200).json({ data: [] });
       const participants = await FestivalParticipant.findAll({
         where: { employeeId: employee.id, status: "registered" },
-        attributes: ["id"],
+        attributes: ["id", "festivalId"],
       });
-      const [owners, captainAssignments] = await Promise.all([
-        FestivalTeamOwner.findAll({
-        where: {
-          festivalParticipantId: participants.map(({ id }) => id),
-          status: "active",
-        },
-        attributes: ["festivalTeamId"],
+      participantIds = participants.map(({ id }) => id);
+      const festivalIds = [...new Set(participants.map(({ festivalId }) => festivalId))];
+      const [festivalTeams, owners] = await Promise.all([
+        FestivalTeam.findAll({
+          where: { festivalId: { [Op.in]: festivalIds } },
+          attributes: ["id"],
         }),
-        SportTeamCaptain.findAll({
+        FestivalTeamOwner.findAll({
           where: {
-            festivalParticipantId: participants.map(({ id }) => id),
+            festivalParticipantId: participantIds,
             status: "active",
           },
-          attributes: ["sportTournamentId"],
+          attributes: ["festivalTeamId"],
         }),
       ]);
+      ownerFestivalTeamIds = new Set(
+        owners.map(({ festivalTeamId }) => festivalTeamId)
+      );
       where = {
-        [Op.or]:
-          req.user.role === "spectator"
-            ? [
-                {
-                  status: {
-                    [Op.in]: [
-                      "auction_live",
-                      "auction_paused",
-                      "auction_completed",
-                    ],
-                  },
-                },
-                {
-                  id: captainAssignments.map(
-                    ({ sportTournamentId }) => sportTournamentId
-                  ),
-                },
-              ]
-            : [
-                {
-                  festivalTeamId: owners.map(
-                    ({ festivalTeamId }) => festivalTeamId
-                  ),
-                },
-                {
-                  id: captainAssignments.map(
-                    ({ sportTournamentId }) => sportTournamentId
-                  ),
-                },
-              ],
+        ...where,
+        festivalTeamId: { [Op.in]: festivalTeams.map(({ id }) => id) },
       };
     }
 
     const tournaments = await SportTournament.findAll({
       where,
+      attributes: [
+        "id",
+        "festivalId",
+        "festivalTeamId",
+        "festivalSportId",
+        "sportId",
+        "name",
+        "code",
+        "division",
+        "participantGenderRule",
+        "status",
+        "teamCount",
+        "createdAt",
+        "updatedAt",
+      ],
       include: tournamentInclude,
       order: [["createdAt", "DESC"]],
     });
+    const captainAssignments =
+      req.user.role === "admin" || !participantIds.length || !tournaments.length
+        ? []
+        : await SportTeamCaptain.findAll({
+            where: {
+              sportTournamentId: tournaments.map(({ id }) => id),
+              festivalParticipantId: participantIds,
+              status: "active",
+            },
+            attributes: ["sportTournamentId", "sportTeamId"],
+          });
+    const captainByTournamentId = new Map(
+      captainAssignments.map((captain) => [captain.sportTournamentId, captain])
+    );
     return res.status(200).json({
-      data: tournaments.map(toSportTournamentResponse),
+      data: tournaments.map((tournament) => {
+        const response = toSportTournamentResponse(tournament);
+        const captain = captainByTournamentId.get(tournament.id);
+        return {
+          ...response,
+          permissions: {
+            canManage:
+              req.user.role === "admin" ||
+              ownerFestivalTeamIds.has(tournament.festivalTeamId),
+            canBid: Boolean(captain),
+            sportTeamId: captain?.sportTeamId || null,
+          },
+        };
+      }),
     });
   } catch (error) {
     console.error("Failed to list Sport Tournaments:", error);

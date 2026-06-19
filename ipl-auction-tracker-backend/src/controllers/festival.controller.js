@@ -204,6 +204,24 @@ export const createFestival = async (req, res) => {
 export const getFestivals = async (req, res) => {
   try {
     const festivals = await Festival.findAll({
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "startDate",
+        "endDate",
+        "registrationOpensAt",
+        "registrationClosesAt",
+        "status",
+        "teamAssignmentStatus",
+        "rosterFormationMode",
+        "timezone",
+        "currencyCode",
+        "configurationLockState",
+        "createdByUserId",
+        "createdAt",
+        "updatedAt",
+      ],
       order: [
         ["startDate", "DESC"],
         ["name", "ASC"],

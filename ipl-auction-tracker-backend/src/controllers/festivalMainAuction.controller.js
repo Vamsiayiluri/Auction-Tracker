@@ -27,6 +27,11 @@ import { calculateFestivalTeamBudget } from "../utils/festivalAuctionBudget.js";
 import { createFestivalAudit } from "../utils/festivalAudit.js";
 import { normalizeIdentityEmail } from "../utils/employeeUserLinking.js";
 import { sendTeamOwnerCredentialsEmail } from "../utils/emailService.js";
+import {
+  incrementRequestCounter,
+  requestCacheGetOrSet,
+  transactionScopedCacheKey,
+} from "../utils/requestPerformance.js";
 
 const isUniqueConflict = (error) =>
   error?.name === "SequelizeUniqueConstraintError";
@@ -167,43 +172,57 @@ export const calculateTeamBudgets = async (
   config,
   transaction
 ) => {
-  const [teams, owners, retentions, auctionResults] = await Promise.all([
-    FestivalTeam.findAll({
-      where: { festivalId, status: "active" },
-      order: [["name", "ASC"]],
-      transaction,
-    }),
-    FestivalTeamOwner.findAll({ where: { festivalId }, transaction }),
-    FestivalRetention.findAll({ where: { festivalId }, transaction }),
-    FestivalAuctionResult.findAll({
-      where: { festivalId, outcome: "sold" },
-      transaction,
-    }),
-  ]);
-  const ownerByTeamId = new Map(
-    owners.map((owner) => [owner.festivalTeamId, owner])
+  const configVersion = [
+    toMoney(config?.totalBudget),
+    toMoney(config?.ownerCost),
+    Number(config?.incrementPercentage || 20),
+  ].join(":");
+  const cacheKey = transactionScopedCacheKey(
+    "festival-team-budgets",
+    festivalId,
+    transaction,
+    configVersion
   );
+  return requestCacheGetOrSet(cacheKey, async () => {
+    incrementRequestCounter("festivalTeamBudgetCalculations");
+    const [teams, owners, retentions, auctionResults] = await Promise.all([
+      FestivalTeam.findAll({
+        where: { festivalId, status: "active" },
+        order: [["name", "ASC"]],
+        transaction,
+      }),
+      FestivalTeamOwner.findAll({ where: { festivalId }, transaction }),
+      FestivalRetention.findAll({ where: { festivalId }, transaction }),
+      FestivalAuctionResult.findAll({
+        where: { festivalId, outcome: "sold" },
+        transaction,
+      }),
+    ]);
+    const ownerByTeamId = new Map(
+      owners.map((owner) => [owner.festivalTeamId, owner])
+    );
 
-  return teams.map((team) => {
-    const owner = ownerByTeamId.get(team.id);
-    const retentionAmounts = retentions
-      .filter((retention) => retention.festivalTeamId === team.id)
-      .map((retention) => retention.amount);
-    const auctionAmounts = auctionResults
-      .filter((result) => result.festivalTeamId === team.id)
-      .map((result) => result.finalAmount);
-    const budget = calculateFestivalTeamBudget({
-      totalBudget: config?.totalBudget,
-      ownerCost: owner?.ownerCost,
-      retentionAmounts,
-      auctionAmounts,
+    return teams.map((team) => {
+      const owner = ownerByTeamId.get(team.id);
+      const retentionAmounts = retentions
+        .filter((retention) => retention.festivalTeamId === team.id)
+        .map((retention) => retention.amount);
+      const auctionAmounts = auctionResults
+        .filter((result) => result.festivalTeamId === team.id)
+        .map((result) => result.finalAmount);
+      const budget = calculateFestivalTeamBudget({
+        totalBudget: config?.totalBudget,
+        ownerCost: owner?.ownerCost,
+        retentionAmounts,
+        auctionAmounts,
+      });
+
+      return {
+        festivalTeamId: team.id,
+        team: toFestivalTeamResponse(team),
+        ...budget,
+      };
     });
-
-    return {
-      festivalTeamId: team.id,
-      team: toFestivalTeamResponse(team),
-      ...budget,
-    };
   });
 };
 

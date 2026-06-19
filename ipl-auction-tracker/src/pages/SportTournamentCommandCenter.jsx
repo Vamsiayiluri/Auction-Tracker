@@ -7,38 +7,75 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Stack,
   Typography,
 } from "@mui/material";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
+import { LoadingStateCard } from "../components/ProductState";
 import {
   getSportAuctionStageFromState,
   AUCTION_STAGE,
   isSetupStage,
 } from "../utils/auctionStages";
 import api from "../utils/api";
+import { useAuth } from "../context/auth-context";
+import {
+  cachedRequest,
+  getCachedValue,
+  refreshCachedRequest,
+  setCachedValue,
+  stableCacheKey,
+  userCacheScope,
+} from "../utils/clientCache";
+
+const COMMAND_CENTER_TTL_MS = 45_000;
 
 export default function SportTournamentCommandCenter() {
   const { sportTournamentId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tournament, setTournament] = useState(null);
   const [readiness, setReadiness] = useState(null);
   const [auction, setAuction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async ({ force = false, background = false } = {}) => {
+    const scope = userCacheScope(user);
+    const staticKey = stableCacheKey("sport-command-center", scope, sportTournamentId);
+    const cachedStatic = !force ? getCachedValue(staticKey) : null;
+    if (cachedStatic) {
+      setTournament(cachedStatic.tournament);
+      setReadiness(cachedStatic.readiness);
+      setError("");
+      setLoading(false);
+      void load({ force: true, background: true });
+      return;
+    }
+
+    if (!background) {
+      setLoading(true);
+      setError("");
+    }
+    const read = (key, fetcher) =>
+      force
+        ? refreshCachedRequest(key, fetcher, { ttlMs: COMMAND_CENTER_TTL_MS })
+        : cachedRequest(key, fetcher, { ttlMs: COMMAND_CENTER_TTL_MS });
     const [tournamentResult, readinessResult, auctionResult] = await Promise.allSettled([
-      api.get(`/v2/sport-tournaments/${sportTournamentId}`),
-      api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
+      read(stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}`), () =>
+        api.get(`/v2/sport-tournaments/${sportTournamentId}`)
+      ),
+      read(stableCacheKey("GET", scope, `/v2/sport-tournaments/${sportTournamentId}/readiness`), () =>
+        api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`)
+      ),
       api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`),
     ]);
 
+    let nextTournament = null;
+    let nextReadiness = null;
     if (tournamentResult.status === "fulfilled") {
-      setTournament(tournamentResult.value.data.data);
+      nextTournament = tournamentResult.value.data.data;
+      setTournament(nextTournament);
     } else {
       setError(
         tournamentResult.reason?.response?.data?.message
@@ -46,13 +83,21 @@ export default function SportTournamentCommandCenter() {
       );
     }
     if (readinessResult.status === "fulfilled") {
-      setReadiness(readinessResult.value.data.data);
+      nextReadiness = readinessResult.value.data.data;
+      setReadiness(nextReadiness);
     }
     if (auctionResult.status === "fulfilled") {
       setAuction(auctionResult.value.data.data);
     }
-    setLoading(false);
-  }, [sportTournamentId]);
+    if (nextTournament) {
+      setCachedValue(
+        staticKey,
+        { tournament: nextTournament, readiness: nextReadiness },
+        COMMAND_CENTER_TTL_MS
+      );
+    }
+    if (!background) setLoading(false);
+  }, [sportTournamentId, user]);
 
   useEffect(() => {
     load();
@@ -95,14 +140,15 @@ export default function SportTournamentCommandCenter() {
 
   if (loading) {
     return (
-      <Box sx={{ display: "grid", minHeight: 320, placeItems: "center" }}>
-        <CircularProgress />
-      </Box>
+      <LoadingStateCard
+        title="Loading Tournament Overview"
+        message="Checking tournament status, setup readiness, and live auction state."
+      />
     );
   }
 
   if (!tournament) {
-    return <Alert severity="error" action={<Button onClick={load}>Retry</Button>}>{error}</Alert>;
+    return <Alert severity="error" action={<Button onClick={() => load({ force: true })}>Retry</Button>}>{error}</Alert>;
   }
 
   return (
@@ -122,6 +168,14 @@ export default function SportTournamentCommandCenter() {
                   />
                 )}
               </Stack>
+              {readiness?.counts && (
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+                  <Chip size="small" label={`${readiness.counts.configuredTeams ?? 0} teams`} variant="outlined" />
+                  <Chip size="small" label={`${readiness.counts.captainsAssigned ?? 0} captains`} variant="outlined" />
+                  <Chip size="small" label={`${readiness.counts.eligibleParticipants ?? 0} eligible`} variant="outlined" />
+                  <Chip size="small" label={`${readiness.counts.availableParticipantPool ?? 0} in pool`} variant="outlined" />
+                </Stack>
+              )}
               <Typography color="text.secondary" sx={{ mt: 0.5 }}>
                 {canManage
                   ? "Tournament status, setup issues, and the next action."
@@ -186,7 +240,7 @@ export default function SportTournamentCommandCenter() {
                   <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}>
                     Continue Setup
                   </Button>
-                  <Button variant="outlined" onClick={load}>
+                  <Button variant="outlined" onClick={() => load({ force: true })}>
                     Refresh Setup Check
                   </Button>
                 </>

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../utils/api";
+import {
+  cachedRequest,
+  getCachedValue,
+  refreshCachedRequest,
+  setCachedValue,
+  stableCacheKey,
+} from "../utils/clientCache";
 
 const auctionVisibleStatuses = new Set([
   "auction_live",
@@ -13,6 +20,14 @@ const auctionVisibleStatuses = new Set([
 const fulfilledData = (result, fallback = null) =>
   result.status === "fulfilled" ? result.value.data.data ?? fallback : fallback;
 
+const idsParam = (items) =>
+  items.map(({ id }) => id).filter(Boolean).join(",");
+
+const toMap = (items, key) =>
+  new Map((items || []).map((item) => [item[key], item]));
+
+const COMMAND_CENTER_TTL_MS = 45_000;
+
 export default function useFestivalCommandCenterData(festivalId) {
   const [state, setState] = useState({
     festival: null,
@@ -25,32 +40,51 @@ export default function useFestivalCommandCenterData(festivalId) {
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    setWarnings([]);
+  const load = useCallback(async ({ force = false, background = false } = {}) => {
+    const commandCenterKey = stableCacheKey("festival-command-center", festivalId);
+    const cachedState = !force ? getCachedValue(commandCenterKey) : null;
+    if (cachedState) {
+      setState(cachedState.state);
+      setWarnings(cachedState.warnings || []);
+      setError("");
+      setLoading(false);
+      void load({ force: true, background: true });
+      return;
+    }
 
-    // ── Phase 1: festival core data + global tournament list (parallel) ──────
-    //
-    // NOTE (H-02 / PERFORMANCE_AUDIT.md): `GET /v2/sport-tournaments` returns
-    // ALL tournaments visible to this user, regardless of which festival is
-    // being viewed. The response is filtered client-side by `festivalId`.
-    //
-    // API improvement required to eliminate this over-fetch:
-    //   Option A: Add query parameter support →
-    //             GET /v2/sport-tournaments?festivalId=:festivalId
-    //   Option B: Expose a sub-resource →
-    //             GET /v2/festivals/:festivalId/sport-tournaments
-    //
-    // Until the API supports one of these, the client fetches the full list
-    // and discards tournaments that belong to other festivals. For installations
-    // with many festivals and tournaments this is significant wasted bandwidth.
+    if (!background) {
+      setLoading(true);
+      setError("");
+      setWarnings([]);
+    }
+
+    const read = (key, fetcher) =>
+      force
+        ? refreshCachedRequest(key, fetcher, { ttlMs: COMMAND_CENTER_TTL_MS })
+        : cachedRequest(key, fetcher, { ttlMs: COMMAND_CENTER_TTL_MS });
+
     const baseResults = await Promise.allSettled([
-      api.get(`/v2/festivals/${festivalId}`),
-      api.get(`/v2/festivals/${festivalId}/auction/readiness`),
-      api.get(`/v2/festivals/${festivalId}/auction/current`),
-      api.get(`/v2/festivals/${festivalId}/auction/history`),
-      api.get("/v2/sport-tournaments"),
+      read(stableCacheKey("GET", `/v2/festivals/${festivalId}`), () =>
+        api.get(`/v2/festivals/${festivalId}`)
+      ),
+      read(stableCacheKey("GET", "/v2/sport-tournaments", { festivalId }), () =>
+        api.get("/v2/sport-tournaments", { params: { festivalId } })
+      ),
+      read(
+        stableCacheKey("GET", "/v2/festivals/auction/summaries", {
+          ids: festivalId,
+          includeReadiness: true,
+          includeOutcomes: true,
+        }),
+        () =>
+          api.get("/v2/festivals/auction/summaries", {
+            params: {
+              ids: festivalId,
+              includeReadiness: true,
+              includeOutcomes: true,
+            },
+          })
+      ),
     ]);
 
     const festival = fulfilledData(baseResults[0]);
@@ -60,80 +94,92 @@ export default function useFestivalCommandCenterData(festivalId) {
       return;
     }
 
-    // Use summaries filtered by festivalId directly — no N+1 detail fetch.
-    //
-    // NOTE (C-02 / PERFORMANCE_AUDIT.md): The previous implementation fetched
-    // GET /v2/sport-tournaments/:id for every tournament in this festival
-    // (N+1 pattern), then used those detail objects to gate the per-tournament
-    // state fetches below. Tournament summaries already contain `status` and
-    // (depending on API version) `permissions`, which is all that is needed
-    // to determine which state endpoints to call.
-    //
-    // If `permissions.canManage` is absent from the summary, the readiness
-    // fetch is skipped for that tournament. This is an acceptable degradation
-    // until the API includes permissions in list responses (same mitigation
-    // as the Dashboard hook — see useProductDashboardData.js C-01 note).
-    const tournamentSummaries = fulfilledData(baseResults[4], []).filter(
+    const tournamentSummaries = fulfilledData(baseResults[1], []).filter(
       (tournament) => tournament.festivalId === festivalId
     );
-
-    // ── Phase 2: per-tournament state fetches (using summaries) ─────────────
-    const tournamentStateResults = await Promise.allSettled(
-      tournamentSummaries.map(async (tournament) => {
-        const [readinessResult, auctionResult, historyResult] =
-          await Promise.allSettled([
-            Boolean(tournament.permissions?.canManage)
-              ? api.get(`/v2/sport-tournaments/${tournament.id}/readiness`)
-              : Promise.resolve({ data: { data: null } }),
-            auctionVisibleStatuses.has(tournament.status)
-              ? api.get(
-                  `/v2/sport-tournaments/${tournament.id}/auction/current`
-                )
-              : Promise.resolve({ data: { data: null } }),
-            auctionVisibleStatuses.has(tournament.status)
-              ? api.get(
-                  `/v2/sport-tournaments/${tournament.id}/auction/history`
-                )
-              : Promise.resolve({ data: { data: [] } }),
-          ]);
-        return {
-          ...tournament,
-          readiness: fulfilledData(readinessResult),
-          auction: fulfilledData(auctionResult),
-          history: fulfilledData(historyResult, []),
-        };
-      })
+    const visibleTournamentSummaries = tournamentSummaries.filter(
+      (tournament) =>
+        auctionVisibleStatuses.has(tournament.status) ||
+        Boolean(tournament.permissions?.canManage)
     );
+    const sportSummaryResult = visibleTournamentSummaries.length
+      ? await Promise.allSettled([
+          read(
+            stableCacheKey("GET", "/v2/sport-tournaments/auction/summaries", {
+              ids: idsParam(visibleTournamentSummaries),
+              includeReadiness: true,
+              includeOutcomes: true,
+              currentStatuses: "auction_live,auction_paused",
+            }),
+            () =>
+              api.get("/v2/sport-tournaments/auction/summaries", {
+                params: {
+                  ids: idsParam(visibleTournamentSummaries),
+                  includeReadiness: true,
+                  includeOutcomes: true,
+                  currentStatuses: "auction_live,auction_paused",
+                },
+              })
+          ),
+        ]).then(([result]) => result)
+      : { status: "fulfilled", value: { data: { data: [] } } };
 
     const nextWarnings = [];
     if (baseResults[1].status === "rejected") {
-      nextWarnings.push("Festival setup status could not be loaded.");
+      nextWarnings.push("Sport Tournaments could not be loaded.");
     }
     if (baseResults[2].status === "rejected") {
       nextWarnings.push("Festival Auction status could not be loaded.");
     }
-    if (baseResults[3].status === "rejected") {
-      nextWarnings.push("Festival Auction history could not be loaded.");
-    }
-    if (baseResults[4].status === "rejected") {
-      nextWarnings.push("Sport Tournaments could not be loaded.");
-    }
-    if (tournamentStateResults.some(({ status }) => status === "rejected")) {
+    if (sportSummaryResult.status === "rejected") {
       nextWarnings.push("Some Sport Tournament status details are unavailable.");
     }
 
-    setState({
-      festival,
-      festivalReadiness: fulfilledData(baseResults[1]),
-      festivalAuction: fulfilledData(baseResults[2]),
-      festivalHistory: fulfilledData(baseResults[3], []),
-      sportTournaments: tournamentStateResults
-        .filter(({ status }) => status === "fulfilled")
-        .map(({ value }) => value),
+    const festivalSummary = fulfilledData(baseResults[2], [])[0] || {};
+    const sportSummaryById = toMap(
+      fulfilledData(sportSummaryResult, []),
+      "sportTournamentId"
+    );
+    const sportTournaments = tournamentSummaries.map((tournament) => {
+      const summary = sportSummaryById.get(tournament.id) || {};
+      return {
+        ...tournament,
+        readiness: summary.readiness || null,
+        auction: summary.current || null,
+        history: [],
+        recentOutcomes: summary.recentOutcomes || [],
+      };
     });
+
+    const nextState = {
+      festival,
+      festivalReadiness: festivalSummary.readiness || null,
+      festivalAuction: festivalSummary.current || null,
+      festivalHistory: (festivalSummary.recentOutcomes || []).map((outcome) => ({
+        id: outcome.id,
+        result: {
+          outcome: outcome.outcome,
+          teamName: outcome.teamName,
+          finalAmount: outcome.value,
+          finalizedAt: outcome.date,
+        },
+        participant: { name: outcome.title },
+        finalizedAt: outcome.date,
+      })),
+      sportTournaments,
+    };
+
+    setState(nextState);
     setWarnings(nextWarnings);
-    setLoading(false);
+    setCachedValue(
+      commandCenterKey,
+      { state: nextState, warnings: nextWarnings },
+      COMMAND_CENTER_TTL_MS
+    );
+    if (!background) setLoading(false);
   }, [festivalId]);
+
+  const reload = useCallback(() => load({ force: true }), [load]);
 
   useEffect(() => {
     void load();
@@ -145,8 +191,8 @@ export default function useFestivalCommandCenterData(festivalId) {
       loading,
       error,
       warnings,
-      reload: load,
+      reload,
     }),
-    [error, load, loading, state, warnings]
+    [error, loading, reload, state, warnings]
   );
 }

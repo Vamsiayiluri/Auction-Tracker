@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Transaction } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import sequelize from "../config/dbconfig.js";
 import {
   Employee,
@@ -29,6 +29,14 @@ import { getSportTournamentReadiness } from "../utils/sportTournamentReadiness.j
 import { getSportTournamentBudgetSummary } from "../utils/sportTeamBudget.js";
 import { getSportTournamentEligibility } from "../utils/sportTournamentEligibility.js";
 import { createAuctionSynchronizationService } from "../utils/auctionSynchronization.js";
+import {
+  elapsedMs,
+  logBidLatencyTrace,
+  nowMs,
+  payloadSizeBytes,
+  requestCacheGetOrSet,
+  transactionScopedCacheKey,
+} from "../utils/requestPerformance.js";
 
 const timers = new Map();
 const DEADLINE_MATCH_TOLERANCE_MS = 1_500;
@@ -56,6 +64,30 @@ const participantInclude = {
   as: "participant",
   include: [{ model: Employee, as: "employee" }],
 };
+const compactParticipantInclude = {
+  model: FestivalParticipant,
+  as: "participant",
+  attributes: ["id", "festivalId", "employeeId", "status", "registeredAt"],
+  include: [
+    {
+      model: Employee,
+      as: "employee",
+      attributes: ["id", "name", "employeeNumber", "department", "gender"],
+    },
+  ],
+};
+const compactRoundAttributes = [
+  "id",
+  "sportTournamentId",
+  "festivalParticipantId",
+  "status",
+  "baseCredits",
+  "startedAt",
+  "endsAt",
+  "pausedRemainingMs",
+  "attemptNumber",
+  "finalizedAt",
+];
 const auctionInclude = [
   participantInclude,
   {
@@ -78,12 +110,23 @@ const clearTimer = (auctionId) => {
   timers.delete(auctionId);
 };
 
+const HISTORY_LIMIT = 100;
+const ACTIVITY_LIMIT = 50;
+
 const loadConfig = (sportTournamentId, transaction, lock = false) =>
-  SportAuctionConfig.findOne({
-    where: { sportTournamentId },
-    transaction,
-    ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
-  });
+  requestCacheGetOrSet(
+    transactionScopedCacheKey(
+      "sport-auction-config",
+      sportTournamentId,
+      transaction,
+      lock ? "lock" : "read"
+    ),
+    () => SportAuctionConfig.findOne({
+      where: { sportTournamentId },
+      transaction,
+      ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
+    })
+  );
 
 const loadCurrentRound = async (config, transaction, lock = false) => {
   if (!config?.currentParticipantId) return null;
@@ -175,6 +218,87 @@ const toRound = (auction, config) => {
         : toNumber(auction.result.finalCredits),
       finalizedAt: auction.result.finalizedAt,
     } : null,
+  };
+};
+
+const groupedCountMap = (rows, key = "state") =>
+  new Map(
+    rows.map((row) => {
+      const plain =
+        typeof row?.get === "function" ? row.get({ plain: true }) : row;
+      return [plain[key], Number(plain.count || 0)];
+    })
+  );
+
+const toCompactRound = async (auction, config, transaction) => {
+  if (!auction) return null;
+  const [lead, bidCount] = await Promise.all([
+    SportAuctionBid.findOne({
+      where: { sportAuctionId: auction.id },
+      attributes: ["id", "sportAuctionId", "sportTeamId", "amount", "placedAt"],
+      include: [{ model: SportTeam, as: "team", attributes: ["id", "name"] }],
+      order: [["amount", "DESC"], ["createdAt", "ASC"]],
+      transaction,
+    }),
+    SportAuctionBid.count({
+      where: { sportAuctionId: auction.id },
+      transaction,
+    }),
+  ]);
+  const currentBid = lead ? toNumber(lead.amount) : 0;
+  const bidProgression = progression(auction, config, currentBid);
+  const pending = auction.status === "pending";
+  return {
+    id: auction.id,
+    sportTournamentId: auction.sportTournamentId,
+    festivalParticipantId: auction.festivalParticipantId,
+    participant: auction.participant
+      ? {
+          id: auction.participant.id,
+          employee: auction.participant.employee
+            ? {
+                id: auction.participant.employee.id,
+                name: auction.participant.employee.name,
+                employeeNumber: auction.participant.employee.employeeNumber,
+                department: auction.participant.employee.department,
+                gender: auction.participant.employee.gender,
+              }
+            : null,
+        }
+      : undefined,
+    status: auction.status,
+    lifecycleState: auction.status === "live" ? "ACTIVE" : pending ? "OWNER_DECISION" : auction.status.toUpperCase(),
+    adminActions: {
+      extend: pending,
+      sell: pending && Boolean(lead),
+      unsold: pending && !lead,
+    },
+    baseCredits: bidProgression.basePrice,
+    currentCredits: bidProgression.currentBid,
+    nextCredits: bidProgression.nextBid,
+    incrementPercentage: bidProgression.incrementPercentage,
+    incrementCredits: bidProgression.incrementAmount,
+    leadingTeam: lead?.team?.name || null,
+    bidCount,
+    bids: lead
+      ? [
+          {
+            id: lead.id,
+            sportAuctionId: lead.sportAuctionId,
+            sportTeamId: lead.sportTeamId,
+            teamName: lead.team?.name,
+            amount: currentBid,
+            placedAt: lead.placedAt,
+            bidNumber: bidCount,
+          },
+        ]
+      : [],
+    attemptNumber: auction.attemptNumber,
+    startedAt: auction.startedAt,
+    endsAt: auction.endsAt,
+    pausedRemainingMs: auction.pausedRemainingMs,
+    finalizedAt: auction.finalizedAt,
+    result: null,
   };
 };
 
@@ -274,18 +398,95 @@ const loadSportAuctionSharedState = async (sportTournamentId, transaction) => {
   };
 };
 
+const loadSportAuctionSummaryState = async (
+  tournament,
+  { includeTeamContext = false } = {},
+  transaction
+) => {
+  if (!tournament) return null;
+  const config = await loadConfig(tournament.id, transaction);
+  const roundPromise = config?.currentParticipantId
+    ? SportAuction.findOne({
+        where: {
+          sportTournamentId: tournament.id,
+          festivalParticipantId: config.currentParticipantId,
+        },
+        attributes: compactRoundAttributes,
+        include: [compactParticipantInclude],
+        order: [["attemptNumber", "DESC"]],
+        transaction,
+      })
+    : Promise.resolve(null);
+  const countRowsPromise = SportAuctionPool.count({
+    where: { sportTournamentId: tournament.id },
+    attributes: ["state"],
+    group: ["state"],
+    transaction,
+  });
+  const resultCountRowsPromise = SportAuctionResult.count({
+    where: { sportTournamentId: tournament.id },
+    attributes: ["outcome"],
+    group: ["outcome"],
+    transaction,
+  });
+  const teamContextPromise = includeTeamContext
+    ? Promise.all([
+        getSportTournamentBudgetSummary(tournament.id, transaction),
+        SportTeamMembership.count({
+          where: { sportTournamentId: tournament.id },
+          attributes: ["sportTeamId"],
+          group: ["sportTeamId"],
+          transaction,
+        }),
+      ])
+    : Promise.resolve([null, []]);
+
+  const [round, countRows, resultCountRows, [budgets, rosterCountRows]] = await Promise.all([
+    roundPromise,
+    countRowsPromise,
+    resultCountRowsPromise,
+    teamContextPromise,
+  ]);
+  const countsByState = groupedCountMap(countRows);
+  const countsByOutcome = groupedCountMap(resultCountRows, "outcome");
+  const rosterCounts = groupedCountMap(rosterCountRows, "sportTeamId");
+  return {
+    tournament: {
+      id: tournament.id,
+      name: tournament.name,
+      status: tournament.status,
+    },
+    config: toConfig(config),
+    current: await toCompactRound(round, config, transaction),
+    budgets,
+    pool: [],
+    counts: {
+      available: countsByState.get("available") || 0,
+      sold: countsByState.get("sold") || 0,
+      unsold: countsByState.get("unsold") || 0,
+      soldAttempts: countsByOutcome.get("sold") || 0,
+      unsoldAttempts: countsByOutcome.get("unsold") || 0,
+    },
+    teams: (budgets?.teams || []).map((budget) => ({
+      ...budget,
+      roster: new Array(rosterCounts.get(budget.sportTeamId) || 0).fill(null),
+    })),
+  };
+};
+
 const loadSportAuctionHistory = async (sportTournamentId, transaction) => {
   const [rounds, audits, config] = await Promise.all([
     SportAuction.findAll({
       where: { sportTournamentId },
       include: auctionInclude,
       order: [["startedAt", "DESC"]],
+      limit: HISTORY_LIMIT,
       transaction,
     }),
     SportOperationAudit.findAll({
       where: { sportTournamentId },
       order: [["createdAt", "DESC"]],
-      limit: 500,
+      limit: ACTIVITY_LIMIT,
       transaction,
     }),
     loadConfig(sportTournamentId, transaction),
@@ -300,6 +501,63 @@ const loadSportAuctionHistory = async (sportTournamentId, transaction) => {
       createdAt: entry.createdAt,
     })),
   };
+};
+
+const parseIds = (ids) =>
+  String(ids || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+const recentSportOutcome = (result) => ({
+  id: result.id,
+  auctionId: result.sportAuctionId,
+  sportTournamentId: result.sportTournamentId,
+  type: "Sport Auction",
+  title:
+    result.participant?.employee?.name ||
+    result.participant?.name ||
+    "Participant",
+  outcome: result.outcome,
+  teamName: result.team?.name,
+  value: result.finalCredits === null ? null : toNumber(result.finalCredits),
+  unit: "credits",
+  date: result.finalizedAt,
+});
+
+const loadRecentSportOutcomes = async (sportTournamentIds) => {
+  if (!sportTournamentIds.length) return new Map();
+  const results = await SportAuctionResult.findAll({
+    where: { sportTournamentId: { [Op.in]: sportTournamentIds } },
+    attributes: [
+      "id",
+      "sportAuctionId",
+      "sportTournamentId",
+      "festivalParticipantId",
+      "sportTeamId",
+      "outcome",
+      "finalCredits",
+      "finalizedAt",
+    ],
+    include: [
+      {
+        model: FestivalParticipant,
+        as: "participant",
+        attributes: ["id", "employeeId"],
+        include: [{ model: Employee, as: "employee", attributes: ["id", "name"] }],
+      },
+      { model: SportTeam, as: "team", attributes: ["id", "name"] },
+    ],
+    order: [["finalizedAt", "DESC"]],
+    limit: 20,
+  });
+  const byTournamentId = new Map();
+  results.forEach((result) => {
+    const list = byTournamentId.get(result.sportTournamentId) || [];
+    list.push(recentSportOutcome(result));
+    byTournamentId.set(result.sportTournamentId, list);
+  });
+  return byTournamentId;
 };
 
 export const getSportAuctionSynchronizationSnapshot = async (
@@ -318,6 +576,96 @@ export const getSportAuctionSynchronizationSnapshot = async (
       return { state, ...historyPayload };
     }
   );
+};
+
+export const getSportAuctionSummaries = async (req, res) => {
+  try {
+    const requestedIds = parseIds(req.query.ids);
+    const currentStatuses = new Set(parseIds(req.query.currentStatuses));
+    const includeReadiness = req.query.includeReadiness !== "false";
+    const includeOutcomes = req.query.includeOutcomes !== "false";
+    const tournaments = await SportTournament.findAll({
+      where: requestedIds.length ? { id: { [Op.in]: requestedIds } } : undefined,
+      attributes: [
+        "id",
+        "festivalId",
+        "festivalTeamId",
+        "name",
+        "status",
+      ],
+    });
+    const sportTournamentIds = tournaments.map(({ id }) => id);
+    const [states, readinessResults, outcomesByTournamentId] =
+      await Promise.all([
+        Promise.all(
+          tournaments.map(async (tournament) => {
+            const shouldLoadCurrent =
+              !currentStatuses.size || currentStatuses.has(tournament.status);
+            const [manager, captain] = await Promise.all([
+              canManage(req.user, tournament),
+              findActiveSportCaptainForUser({
+                userId: req.user.id,
+                sportTournamentId: tournament.id,
+              }),
+            ]);
+            const current = shouldLoadCurrent
+              ? await loadSportAuctionSummaryState(tournament, {
+                  includeTeamContext: Boolean(manager || captain),
+                })
+              : null;
+            return {
+              sportTournamentId: tournament.id,
+              current: current
+                ? {
+                    ...current,
+                    serverTime: new Date().toISOString(),
+                    viewer: {
+                      canManage: manager,
+                      canBid: Boolean(captain),
+                      isSpectator: !manager && !captain,
+                      sportTeamId: captain?.sportTeamId || null,
+                      sportTeamName: captain?.team?.name || null,
+                    },
+                  }
+                : null,
+            };
+          })
+        ),
+        includeReadiness
+          ? Promise.all(
+              sportTournamentIds.map(async (sportTournamentId) => ({
+                sportTournamentId,
+                readiness: await getSportTournamentReadiness(
+                  sportTournamentId,
+                  undefined,
+                  { persistStatus: false }
+                ),
+              }))
+            )
+          : Promise.resolve([]),
+        includeOutcomes
+          ? loadRecentSportOutcomes(sportTournamentIds)
+          : Promise.resolve(new Map()),
+      ]);
+    const readinessByTournamentId = new Map(
+      readinessResults.map(({ sportTournamentId, readiness }) => [
+        sportTournamentId,
+        readiness,
+      ])
+    );
+    const data = states.map(({ sportTournamentId, current }) => ({
+      sportTournamentId,
+      current,
+      readiness: readinessByTournamentId.get(sportTournamentId) || null,
+      recentOutcomes: outcomesByTournamentId.get(sportTournamentId) || [],
+    }));
+    return res.status(200).json({ data, meta: { count: data.length } });
+  } catch (error) {
+    console.error("Failed to load Sport Auction summaries:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to load Sport Auction summaries" });
+  }
 };
 
 const getSportSynchronizationService = () => {
@@ -915,8 +1263,21 @@ export const startSportAuctionParticipant = async (req, res) => {
 };
 
 export const placeSportAuctionBid = async (req, res) => {
+  const traceStartedAt = nowMs();
+  const trace = {
+    scopeType: "sport",
+    sportTournamentId: req.params.sportTournamentId,
+    endpoint: "Place Bid",
+    validationMs: 0,
+    dbMs: 0,
+    socketBroadcastMs: 0,
+    socketSerializationMs: 0,
+    socketPayloadBytes: 0,
+    publishAuctionStateMs: "deferred",
+  };
   try {
     const result = await sequelize.transaction(async (transaction) => {
+      const validationStartedAt = nowMs();
       const tournament = await SportTournament.findByPk(req.params.sportTournamentId, {
         transaction,
         lock: transaction.LOCK.UPDATE,
@@ -971,6 +1332,8 @@ export const placeSportAuctionBid = async (req, res) => {
       if (!budget || nextBid > budget.remainingCredits) {
         return { status: 400, message: "Bid exceeds the Team's remaining credits" };
       }
+      trace.validationMs = elapsedMs(validationStartedAt);
+      const dbStartedAt = nowMs();
       const bid = await SportAuctionBid.create({
         id: randomUUID(),
         sportTournamentId: tournament.id,
@@ -988,6 +1351,7 @@ export const placeSportAuctionBid = async (req, res) => {
       });
       const endsAt = deadline(config);
       await round.update({ endsAt, pausedRemainingMs: null }, { transaction });
+      trace.dbMs = elapsedMs(dbStartedAt);
       return {
         data: {
           bidId: bid.id,
@@ -995,34 +1359,50 @@ export const placeSportAuctionBid = async (req, res) => {
           baseCredits: Number(round.baseCredits),
           bidCount,
           endsAt,
+          incrementPercentage: config.incrementPercentage,
+          amount: nextBid,
+          placedAt: bid.placedAt,
+          festivalParticipantId: round.festivalParticipantId,
+          sportTeamId: captain.sportTeamId,
+          teamName: captain.team?.name,
         },
       };
     });
     if (result.status) return res.status(result.status).json(result);
-    const bid = await SportAuctionBid.findByPk(result.data.bidId, {
-      include: [{ model: SportTeam, as: "team" }],
-    });
     scheduleEnd(result.data.auctionId, result.data.endsAt);
-    const config = await loadConfig(req.params.sportTournamentId);
     const bidProgression = getFestivalBidProgression({
       basePrice: result.data.baseCredits,
-      currentBid: bid.amount,
-      incrementPercentage: config?.incrementPercentage || 20,
+      currentBid: result.data.amount,
+      incrementPercentage: result.data.incrementPercentage || 20,
     });
     const payload = {
-      ...toBid(bid, result.data.bidCount - 1),
+      id: result.data.bidId,
+      sportAuctionId: result.data.auctionId,
+      sportTeamId: result.data.sportTeamId,
+      teamName: result.data.teamName,
+      amount: toNumber(result.data.amount),
+      placedAt: result.data.placedAt,
+      bidNumber: result.data.bidCount,
       bidCount: result.data.bidCount,
       endsAt: result.data.endsAt,
       currentCredits: bidProgression.currentBid,
       nextCredits: bidProgression.nextBid,
       incrementCredits: bidProgression.incrementAmount,
     };
+    const socketStartedAt = nowMs();
+    const serializeStartedAt = nowMs();
+    const socketPayload = eventPayload(req.params.sportTournamentId, payload);
+    trace.socketPayloadBytes = payloadSizeBytes(socketPayload);
+    trace.socketSerializationMs = elapsedMs(serializeStartedAt);
     emit(
       req.params.sportTournamentId,
       "sport-bid-placed",
-      eventPayload(req.params.sportTournamentId, payload)
+      socketPayload
     );
-    await publishSportAuctionState(req.params.sportTournamentId, "bid-placed");
+    trace.socketBroadcastMs = elapsedMs(socketStartedAt);
+    trace.httpResponseMs = elapsedMs(traceStartedAt);
+    logBidLatencyTrace(trace);
+    void publishSportAuctionState(req.params.sportTournamentId, "bid-placed");
     return res.status(201).json({ data: payload });
   } catch (error) {
     if (error?.name === "SequelizeUniqueConstraintError") {

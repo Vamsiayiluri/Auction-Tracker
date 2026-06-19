@@ -50,6 +50,7 @@ import {
   getFestivalAuctionCurrent,
   getFestivalAuctionHistory,
   getFestivalAuctionReadiness,
+  getFestivalAuctionSummaries,
   markFestivalAuctionParticipantUnsold,
   pauseFestivalAuction,
   placeFestivalAuctionBid,
@@ -105,6 +106,7 @@ router.use(authMiddleware);
 
 router.post("/", adminMiddleware, validate(createFestivalSchema), createFestival);
 router.get("/", getFestivals);
+router.get("/auction/summaries", getFestivalAuctionSummaries);
 router.get("/:festivalId", validate(festivalIdSchema), getFestivalById);
 router.patch(
   "/:festivalId",

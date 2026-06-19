@@ -1,5 +1,6 @@
 import { Sequelize } from "sequelize";
 import dotenv from "dotenv";
+import { recordQueryTiming } from "../utils/requestPerformance.js";
 
 dotenv.config();
 
@@ -27,7 +28,11 @@ const sequelize = new Sequelize(
     host: process.env.MYSQL_DB_HOST,
     port: Number(process.env.MYSQL_DB_PORT || 3306),
     dialect: "mysql",
-    logging: false,
+    benchmark: process.env.NODE_ENV !== "production",
+    logging:
+      process.env.NODE_ENV === "production"
+        ? false
+        : (sql, durationMs) => recordQueryTiming(sql, durationMs),
 
     dialectOptions: {
       ssl: {

@@ -15,13 +15,21 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
 import {
+  cachedRequest,
+  getCachedValue,
+  refreshCachedRequest,
+  setCachedValue,
+  stableCacheKey,
+  userCacheScope,
+} from "../utils/clientCache";
+import {
   AUCTION_STAGE,
   getFestivalAuctionStageFromState,
   getSportAuctionStage,
   getStageLabel,
   shouldShowInAuctionDirectory,
 } from "../utils/auctionStages";
-import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import { LoadingStateCard } from "../components/ProductState";
 
 const getFestivalActions = (festival, stage) => {
   if (stage === AUCTION_STAGE.SETUP) {
@@ -89,6 +97,11 @@ const getSportActions = (tournament, stage) => {
   };
 };
 
+const idsParam = (items) =>
+  items.map(({ id }) => id).filter(Boolean).join(",");
+
+const DIRECTORY_TTL_MS = 45_000;
+
 export default function AuctionDirectory() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -103,67 +116,63 @@ export default function AuctionDirectory() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState([]);
 
-  const loadAuctions = useCallback(async () => {
-    setLoading(true);
-    setErrors([]);
+  const loadAuctions = useCallback(async ({ force = false, background = false } = {}) => {
+    const scope = userCacheScope(user);
+    const directoryKey = stableCacheKey("auction-directory", scope);
+    const cachedDirectory = !force ? getCachedValue(directoryKey) : null;
+    if (cachedDirectory) {
+      setFestivals(cachedDirectory.festivals);
+      setTournaments(cachedDirectory.tournaments);
+      setFestivalStageData(cachedDirectory.festivalStageData);
+      setErrors([]);
+      setLoading(false);
+      void loadAuctions({ force: true, background: true });
+      return;
+    }
 
-    // ── H-06 optimisation ────────────────────────────────────────────────────
-    // Previously: await both lists → then fetch festival stages (second wave).
-    // Now: kick off both list requests simultaneously AND chain the festival
-    // stage fetches directly off the festival list promise so they begin as
-    // soon as festivals arrive — without waiting for the tournament list.
-    //
-    // Sport tournament stage is derived purely from `tournament.status` in the
-    // list response, so tournaments need no extra per-entity fetches at all.
-    //
-    // Timeline (before):  [festivals ──┐  [stages ────────]
-    //                     [tournaments─┘]
-    //
-    // Timeline (after):   [festivals ──┬──[stages ────────]
-    //                     [tournaments─┘]
-    //                     ↑ all three complete in one Promise.allSettled wave
-    const festivalListPromise = api.get("/v2/festivals");
-    const tournamentListPromise = api.get("/v2/sport-tournaments");
+    if (!background) {
+      setLoading(true);
+      setErrors([]);
+    }
 
-    // Chain stage fetches immediately off the festival list — they start as
-    // soon as the list resolves, potentially overlapping with the tournament
-    // list response time.
+    const read = (key, fetcher) =>
+      force
+        ? refreshCachedRequest(key, fetcher, { ttlMs: DIRECTORY_TTL_MS })
+        : cachedRequest(key, fetcher, { ttlMs: DIRECTORY_TTL_MS });
+    const festivalListPromise = read(stableCacheKey("GET", scope, "/v2/festivals"), () =>
+      api.get("/v2/festivals")
+    );
+    const tournamentListPromise = read(stableCacheKey("GET", scope, "/v2/sport-tournaments"), () =>
+      api.get("/v2/sport-tournaments")
+    );
     const festivalStagePromise = festivalListPromise
       .then(async (result) => {
         const nextFestivals = result.data.data || [];
         if (!nextFestivals.length) return {};
-        const stageResults = await Promise.allSettled(
-          nextFestivals.map(async (festival) => {
-            const [currentResult, readinessResult] = await Promise.allSettled([
-              api.get(`/v2/festivals/${festival.id}/auction/current`),
-              user?.role === "admin"
-                ? api.get(`/v2/festivals/${festival.id}/auction/readiness`)
-                : Promise.resolve({ data: { data: null } }),
-            ]);
-            return {
-              festivalId: festival.id,
-              auction:
-                currentResult.status === "fulfilled"
-                  ? currentResult.value.data.data
-                  : null,
-              readiness:
-                readinessResult.status === "fulfilled"
-                  ? readinessResult.value.data.data
-                  : null,
-            };
-          }),
+        const params = {
+            ids: idsParam(nextFestivals),
+            includeReadiness: user?.role === "admin",
+            includeOutcomes: false,
+        };
+        const summaryResult = await read(
+          stableCacheKey("GET", scope, "/v2/festivals/auction/summaries", params),
+          () =>
+            api.get("/v2/festivals/auction/summaries", {
+              params,
+            })
         );
         return Object.fromEntries(
-          stageResults
-            .filter(({ status }) => status === "fulfilled")
-            .map(({ value }) => [value.festivalId, value]),
+          (summaryResult.data.data || []).map((summary) => [
+            summary.festivalId,
+            {
+              auction: summary.current,
+              readiness: summary.readiness,
+            },
+          ])
         );
       })
       .catch(() => ({}));
 
-    // Await all three chains together. festivalListPromise appearing in both
-    // festivalStagePromise's chain and here is safe — JS promises are
-    // idempotent and always return the same settled value on re-await.
     const [festivalResult, tournamentResult, nextStageData] =
       await Promise.allSettled([
         festivalListPromise,
@@ -172,23 +181,36 @@ export default function AuctionDirectory() {
       ]);
 
     const nextErrors = [];
+    let nextFestivals = [];
+    let nextTournaments = [];
+    let nextFestivalStageData = {};
     if (festivalResult.status === "fulfilled") {
-      setFestivals(festivalResult.value.data.data || []);
+      nextFestivals = festivalResult.value.data.data || [];
+      setFestivals(nextFestivals);
     } else {
       nextErrors.push("Festival Auctions could not be loaded.");
     }
     if (tournamentResult.status === "fulfilled") {
-      setTournaments(tournamentResult.value.data.data || []);
+      nextTournaments = tournamentResult.value.data.data || [];
+      setTournaments(nextTournaments);
     } else {
       nextErrors.push("Sport Auctions could not be loaded.");
     }
-    setFestivalStageData(
-      nextStageData.status === "fulfilled" ? nextStageData.value : {},
-    );
-
+    nextFestivalStageData =
+      nextStageData.status === "fulfilled" ? nextStageData.value : {};
+    setFestivalStageData(nextFestivalStageData);
     setErrors(nextErrors);
-    setLoading(false);
-  }, [user?.role]);
+    setCachedValue(
+      directoryKey,
+      {
+        festivals: nextFestivals,
+        tournaments: nextTournaments,
+        festivalStageData: nextFestivalStageData,
+      },
+      DIRECTORY_TTL_MS
+    );
+    if (!background) setLoading(false);
+  }, [user]);
 
   useEffect(() => {
     void loadAuctions();
@@ -234,7 +256,7 @@ export default function AuctionDirectory() {
       .filter(({ stage }) => shouldShowInAuctionDirectory(stage));
 
     return [...festivalEntries, ...sportEntries].filter(
-      ({ type }) => selectedType === "all" || type === selectedType,
+      ({ type }) => selectedType === "all" || type === selectedType
     );
   }, [festivalStageData, festivals, selectedType, tournaments]);
 
@@ -266,11 +288,11 @@ export default function AuctionDirectory() {
         readiness: stageData.readiness,
       });
     });
-    const allSportStages = tournaments.map((t) =>
-      getSportAuctionStage({ status: t.status })
+    const allSportStages = tournaments.map((tournament) =>
+      getSportAuctionStage({ status: tournament.status })
     );
     const allInSetup = [...allFestivalStages, ...allSportStages].every(
-      (s) => s === AUCTION_STAGE.SETUP
+      (stage) => stage === AUCTION_STAGE.SETUP
     );
     if (allInSetup) {
       return "Auctions exist but are still in setup. They will appear here once setup is complete and the auction is ready or live.";
@@ -294,7 +316,7 @@ export default function AuctionDirectory() {
         <Alert
           key={message}
           severity="warning"
-          action={<Button onClick={loadAuctions}>Retry</Button>}
+          action={<Button onClick={() => loadAuctions({ force: true })}>Retry</Button>}
         >
           {message}
         </Alert>

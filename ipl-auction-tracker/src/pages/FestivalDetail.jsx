@@ -49,6 +49,11 @@ import {
 } from "@mui/material";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import api from "../utils/api";
+import {
+  cachedRequest,
+  refreshCachedRequest,
+  stableCacheKey,
+} from "../utils/clientCache";
 import FestivalSetupWizard from "../components/FestivalSetupWizard";
 import FestivalConfigurationStatus from "../components/FestivalConfigurationStatus";
 import FestivalControlCenter from "../components/FestivalControlCenter";
@@ -81,6 +86,8 @@ const FestivalBidHistory = lazy(
 const FestivalTeamsDirectory = lazy(
   () => import("../components/FestivalTeamsDirectory")
 );
+
+const FESTIVAL_DETAIL_TTL_MS = 45_000;
 
 export default function FestivalDetail() {
   const { festivalId } = useParams();
@@ -157,11 +164,15 @@ export default function FestivalDetail() {
     [setupStage]
   );
 
-  const loadWorkspace = useCallback(async () => {
+  const loadWorkspace = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
     setError("");
     try {
-      const festivalResponse = await api.get(`/v2/festivals/${festivalId}`);
+      const festivalResponse = await (force ? refreshCachedRequest : cachedRequest)(
+        stableCacheKey("GET", `/v2/festivals/${festivalId}`),
+        () => api.get(`/v2/festivals/${festivalId}`),
+        { ttlMs: FESTIVAL_DETAIL_TTL_MS }
+      );
       const nextFestival = festivalResponse.data.data;
       console.log(
         `[FESTIVAL_SETUP_DEBUG] loadWorkspace | festivalId=${festivalId} | name=${nextFestival?.name} | status=${nextFestival?.status} | lockState=${JSON.stringify(nextFestival?.lockState)}`
@@ -188,7 +199,7 @@ export default function FestivalDetail() {
     }
   }, [festivalId]);
 
-  const loadRegistrationData = useCallback(async () => {
+  const loadRegistrationData = useCallback(async ({ force = false } = {}) => {
     const needsCatalog = configurationView && activeStep === 1;
     const needsSports =
       (configurationView && [1, 2].includes(activeStep)) ||
@@ -199,12 +210,26 @@ export default function FestivalDetail() {
     console.log(
       `[FESTIVAL_SETUP_DEBUG] loadRegistrationData | festivalId=${festivalId} | step=${activeStep} (${FESTIVAL_SETUP_STEPS[activeStep]}) | needsCatalog=${needsCatalog} | needsSports=${needsSports} | needsParticipants=${needsParticipants}`
     );
+    const read = (key, fetcher) =>
+      force
+        ? refreshCachedRequest(key, fetcher, { ttlMs: FESTIVAL_DETAIL_TTL_MS })
+        : cachedRequest(key, fetcher, { ttlMs: FESTIVAL_DETAIL_TTL_MS });
     const [catalogResponse, sportsResponse, participantResponse] =
       await Promise.all([
-        needsCatalog ? api.get("/sports") : null,
-        needsSports ? api.get(`/v2/festivals/${festivalId}/sports`) : null,
+        needsCatalog
+          ? read(stableCacheKey("GET", "/sports"), () => api.get("/sports"))
+          : null,
+        needsSports
+          ? read(
+              stableCacheKey("GET", `/v2/festivals/${festivalId}/sports`),
+              () => api.get(`/v2/festivals/${festivalId}/sports`)
+            )
+          : null,
         needsParticipants
-          ? api.get(`/v2/festivals/${festivalId}/participants`)
+          ? read(
+              stableCacheKey("GET", `/v2/festivals/${festivalId}/participants`),
+              () => api.get(`/v2/festivals/${festivalId}/participants`)
+            )
           : null,
       ]);
     if (catalogResponse) setCatalogSports(catalogResponse.data || []);
@@ -224,11 +249,13 @@ export default function FestivalDetail() {
     operationsView,
   ]);
 
-  const refreshReadiness = useCallback(async () => {
+  const refreshReadiness = useCallback(async ({ force = false } = {}) => {
     // No try/catch here — callers (useEffect and invalidateFestivalSetup) handle
     // rejections. We re-throw so callers get the real error.
-    const response = await api.get(
-      `/v2/festivals/${festivalId}/auction/readiness`
+    const response = await (force ? refreshCachedRequest : cachedRequest)(
+      stableCacheKey("GET", `/v2/festivals/${festivalId}/auction/readiness`),
+      () => api.get(`/v2/festivals/${festivalId}/auction/readiness`),
+      { ttlMs: FESTIVAL_DETAIL_TTL_MS }
     );
     const nextReadiness = response.data.data;
     console.log(
@@ -260,9 +287,9 @@ export default function FestivalDetail() {
     setRosterRevision((current) => current + 1);
     try {
       const results = await Promise.allSettled([
-        loadWorkspace(),
-        loadRegistrationData(),
-        refreshReadiness(),
+        loadWorkspace({ force: true }),
+        loadRegistrationData({ force: true }),
+        refreshReadiness({ force: true }),
       ]);
       const statuses = results.map((r) => r.status);
       console.log(
@@ -1163,6 +1190,7 @@ export default function FestivalDetail() {
             festivalId={festivalId}
             revision={rosterRevision}
             onLoaded={setReadiness}
+            initialReadiness={readiness}
           />}
           {[4, 5, 6, 7].includes(activeStep) && <FestivalAuctionSetup
             festivalId={festivalId}
@@ -1249,6 +1277,7 @@ export default function FestivalDetail() {
             festivalId={festivalId}
             revision={rosterRevision}
             onLoaded={setReadiness}
+            initialReadiness={readiness}
           />
         </Stack>
       )}

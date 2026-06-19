@@ -24,6 +24,7 @@ import {
   extendSportAuction,
   getSportAuctionCurrent,
   getSportAuctionHistory,
+  getSportAuctionSummaries,
   markSportAuctionParticipantUnsold,
   pauseSportAuction,
   placeSportAuctionBid,
@@ -59,6 +60,7 @@ router.use(authMiddleware);
 
 router.get("/sport-tournaments", listSportTournaments);
 router.get("/sport-tournaments/owner-contexts", getSportTournamentOwnerContexts);
+router.get("/sport-tournaments/auction/summaries", getSportAuctionSummaries);
 router.post(
   "/festivals/:festivalId/teams/:festivalTeamId/sport-tournaments",
   validate(createSportTournamentSchema),

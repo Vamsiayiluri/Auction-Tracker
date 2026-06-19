@@ -6,8 +6,12 @@ import {
   SportTeamCaptain,
   SportTournament,
 } from "../models/index.js";
+import {
+  requestCacheGetOrSet,
+  transactionScopedCacheKey,
+} from "./requestPerformance.js";
 
-export const findActiveFestivalTeamOwnerForUser = async ({
+const loadActiveFestivalTeamOwnerForUser = async ({
   userId,
   festivalId,
   festivalTeamId,
@@ -39,6 +43,27 @@ export const findActiveFestivalTeamOwnerForUser = async ({
     transaction,
   });
 };
+
+export const findActiveFestivalTeamOwnerForUser = ({
+  userId,
+  festivalId,
+  festivalTeamId,
+  transaction,
+}) =>
+  requestCacheGetOrSet(
+    transactionScopedCacheKey(
+      "festival-team-owner-for-user",
+      `${userId}:${festivalId}:${festivalTeamId}`,
+      transaction
+    ),
+    () =>
+      loadActiveFestivalTeamOwnerForUser({
+        userId,
+        festivalId,
+        festivalTeamId,
+        transaction,
+      })
+  );
 
 export const canManageFestivalTeamSports = async ({
   user,
@@ -80,7 +105,7 @@ export const loadAuthorizedSportTournament = async ({
   return { tournament, authorized };
 };
 
-export const findActiveSportCaptainForUser = async ({
+const loadActiveSportCaptainForUser = async ({
   userId,
   sportTournamentId,
   transaction,
@@ -120,3 +145,25 @@ export const findActiveSportCaptainForUser = async ({
     ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
   });
 };
+
+export const findActiveSportCaptainForUser = ({
+  userId,
+  sportTournamentId,
+  transaction,
+  lock = false,
+}) =>
+  requestCacheGetOrSet(
+    transactionScopedCacheKey(
+      "sport-captain-for-user",
+      `${userId}:${sportTournamentId}`,
+      transaction,
+      lock ? "lock" : "read"
+    ),
+    () =>
+      loadActiveSportCaptainForUser({
+        userId,
+        sportTournamentId,
+        transaction,
+        lock,
+      })
+  );

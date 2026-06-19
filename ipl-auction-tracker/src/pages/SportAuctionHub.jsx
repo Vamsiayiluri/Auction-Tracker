@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
@@ -14,6 +14,7 @@ import {
   Select,
   Stack,
   Tab,
+  TextField,
   Table,
   TableBody,
   TableCell,
@@ -27,7 +28,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import api from "../utils/api";
 import { socket } from "../webSocket/socket";
-import { mergeAuctionSnapshotState } from "../utils/auctionSynchronization";
+import { mergeAuctionSnapshotState, shouldApplyAuctionSnapshot } from "../utils/auctionSynchronization";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   AuctionActivityFeed,
@@ -68,9 +69,12 @@ function SportAuctionHub({ initialSection = null }) {
   const [auction, setAuction] = useState(null);
   const [history, setHistory] = useState([]);
   const [tournament, setTournament] = useState(null);
+  const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastRevision = useRef(0);
   const [teamFilter, setTeamFilter] = useState("all");
+  const [participantSearch, setParticipantSearch] = useState("");
   const [selectedBidRound, setSelectedBidRound] = useState(null);
 
   const requestedSection = initialSection || searchParams.get("section") || "Overview";
@@ -79,20 +83,22 @@ function SportAuctionHub({ initialSection = null }) {
   const loadHub = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoading(true);
     setError("");
-    try {
-      const [currentResponse, historyResponse, tournamentResponse] = await Promise.all([
+    const [currentResult, historyResult, tournamentResult, readinessResult] =
+      await Promise.allSettled([
         api.get(`/v2/sport-tournaments/${id}/auction/current`),
         api.get(`/v2/sport-tournaments/${id}/auction/history`),
         api.get(`/v2/sport-tournaments/${id}`),
+        api.get(`/v2/sport-tournaments/${id}/readiness`),
       ]);
-      setAuction(currentResponse.data.data);
-      setHistory(normalizeHistory(historyResponse.data.data));
-      setTournament(tournamentResponse.data.data);
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "We could not load the Sport auction details. Try again.");
-    } finally {
-      if (!quiet) setLoading(false);
+    if (currentResult.status === "fulfilled") setAuction(currentResult.value.data.data);
+    if (historyResult.status === "fulfilled") setHistory(normalizeHistory(historyResult.value.data.data));
+    if (tournamentResult.status === "fulfilled") {
+      setTournament(tournamentResult.value.data.data);
+    } else {
+      setError(tournamentResult.reason?.response?.data?.message || "We could not load the Sport auction details. Try again.");
     }
+    if (readinessResult.status === "fulfilled") setReadiness(readinessResult.value.data.data);
+    if (!quiet) setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -102,18 +108,23 @@ function SportAuctionHub({ initialSection = null }) {
   useEffect(() => {
     const refresh = (payload) => {
       if (payload?.scopeType !== "sport" || Number(payload?.scopeId) !== Number(id)) return;
+      if (!shouldApplyAuctionSnapshot(lastRevision.current, payload)) return;
+      lastRevision.current = payload.revision;
       setAuction((current) => mergeAuctionSnapshotState(current, payload));
       setHistory(payload.history || []);
     };
+    const rejoin = () => socket.emit("join-sport-auction", { sportTournamentId: Number(id) });
 
-    socket.emit("join-sport-auction", { sportTournamentId: Number(id) });
     socket.on("auction-state", refresh);
+    socket.on("connect", rejoin);
+    if (socket.connected) rejoin();
 
     return () => {
       socket.emit("leave-sport-auction", { sportTournamentId: Number(id) });
       socket.off("auction-state", refresh);
+      socket.off("connect", rejoin);
     };
-  }, [id]); // loadHub intentionally excluded: this effect only manages socket room membership
+  }, [id]);
 
   const teams = useMemo(() => {
     const source = auction?.teams || tournament?.teams || [];
@@ -127,13 +138,17 @@ function SportAuctionHub({ initialSection = null }) {
     });
   }, [auction?.teams, auction?.viewer?.sportTeamId, tournament?.teams]);
 
-  const rounds = useMemo(
-    () => history.filter((round) => teamFilter === "all"
-      || Number(round?.result?.sportTeamId ?? round?.sportTeamId)
-        === Number(teamFilter)
-      || round?.bids?.some((bid) => Number(bid?.sportTeamId) === Number(teamFilter))),
-    [history, teamFilter],
-  );
+  const rounds = useMemo(() => {
+    const search = participantSearch.trim().toLowerCase();
+    return history.filter((round) => {
+      const teamMatch =
+        teamFilter === "all" ||
+        Number(round?.result?.sportTeamId ?? round?.sportTeamId) === Number(teamFilter) ||
+        round?.bids?.some((bid) => Number(bid?.sportTeamId) === Number(teamFilter));
+      const nameMatch = !search || getParticipantName(round).toLowerCase().includes(search);
+      return teamMatch && nameMatch;
+    });
+  }, [history, teamFilter, participantSearch]);
 
   const soldRounds = useMemo(
     () => history.filter(isSold),
@@ -206,6 +221,7 @@ function SportAuctionHub({ initialSection = null }) {
   const sportStage = getSportAuctionStageFromState({
     tournament,
     auction,
+    readiness,
     status: auctionStatus,
   });
   const hasResults = soldRounds.length > 0 || unsoldRounds.length > 0;
@@ -432,17 +448,26 @@ function SportAuctionHub({ initialSection = null }) {
                 <Typography variant="h6">Bid History</Typography>
                 <Typography color="text.secondary">Participant-level summaries keep the main page readable.</Typography>
               </Box>
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <InputLabel>Team</InputLabel>
-                <Select value={teamFilter} label="Team" onChange={(event) => setTeamFilter(event.target.value)}>
-                  <MenuItem value="all">All teams</MenuItem>
-                  {teams.map((team) => (
-                    <MenuItem key={getTeamId(team)} value={String(getTeamId(team))}>
-                      {team.teamName || team.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                <TextField
+                  size="small"
+                  placeholder="Search participant…"
+                  value={participantSearch}
+                  onChange={(event) => setParticipantSearch(event.target.value)}
+                  sx={{ minWidth: 200 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>Winning Team</InputLabel>
+                  <Select value={teamFilter} label="Winning Team" onChange={(event) => setTeamFilter(event.target.value)}>
+                    <MenuItem value="all">All teams</MenuItem>
+                    {teams.map((team) => (
+                      <MenuItem key={getTeamId(team)} value={String(getTeamId(team))}>
+                        {team.teamName || team.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
             </Stack>
             <BidHistorySummary
               rounds={rounds}

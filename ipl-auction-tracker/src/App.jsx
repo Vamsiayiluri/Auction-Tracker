@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
   Navigate,
@@ -5,40 +6,41 @@ import {
   Route,
   useParams,
 } from "react-router-dom";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import ChangePassword from "./pages/ChangePassword";
-import AuctionPage from "./pages/AuctionPage";
 
 import AuthProvider from "./context/AuthContext";
-import Dashboard from "./pages/Dashboard";
-import LiveAuctionPage from "./pages/LiveAuctionPage";
-import SpectatorAuctionPage from "./pages/SpectatorAuctionPage";
-import FestivalDashboard from "./pages/FestivalDashboard";
-import FestivalDetail from "./pages/FestivalDetail";
-import FestivalLiveAuctionPage from "./pages/FestivalLiveAuctionPage";
-import FestivalAuctionResultsPage from "./pages/FestivalAuctionResultsPage";
-import FestivalAuctionHub from "./pages/FestivalAuctionHub";
-import FestivalCommandCenter from "./pages/FestivalCommandCenter";
-import AuctionDirectory from "./pages/AuctionDirectory";
-import EmployeeDirectory from "./pages/EmployeeDirectory";
-import SportTournamentDirectory from "./pages/SportTournamentDirectory";
-import SportTournamentWorkspace from "./pages/SportTournamentWorkspace";
-import SportTournamentCommandCenter from "./pages/SportTournamentCommandCenter";
-import SportAuctionArena from "./pages/SportAuctionArena";
-import SportAuctionHub from "./pages/SportAuctionHub";
-import SportAuctionResultsPage from "./pages/SportAuctionResultsPage";
-import ProfilePage from "./pages/ProfilePage";
-import AccountSettingsPage from "./pages/AccountSettingsPage";
 import AppShell from "./components/AppShell";
 import {
   DefaultRoute,
   GuestRoute,
   ProtectedRoute,
 } from "./components/RouteGuards";
+
+const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage"));
+const AuctionDirectory = lazy(() => import("./pages/AuctionDirectory"));
+const AuctionPage = lazy(() => import("./pages/AuctionPage"));
+const ChangePassword = lazy(() => import("./pages/ChangePassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const EmployeeDirectory = lazy(() => import("./pages/EmployeeDirectory"));
+const FestivalAuctionHub = lazy(() => import("./pages/FestivalAuctionHub"));
+const FestivalAuctionResultsPage = lazy(() => import("./pages/FestivalAuctionResultsPage"));
+const FestivalCommandCenter = lazy(() => import("./pages/FestivalCommandCenter"));
+const FestivalDashboard = lazy(() => import("./pages/FestivalDashboard"));
+const FestivalDetail = lazy(() => import("./pages/FestivalDetail"));
+const FestivalLiveAuctionPage = lazy(() => import("./pages/FestivalLiveAuctionPage"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const LiveAuctionPage = lazy(() => import("./pages/LiveAuctionPage"));
+const Login = lazy(() => import("./pages/Login"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const Register = lazy(() => import("./pages/Register"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const SpectatorAuctionPage = lazy(() => import("./pages/SpectatorAuctionPage"));
+const SportAuctionArena = lazy(() => import("./pages/SportAuctionArena"));
+const SportAuctionHub = lazy(() => import("./pages/SportAuctionHub"));
+const SportAuctionResultsPage = lazy(() => import("./pages/SportAuctionResultsPage"));
+const SportTournamentCommandCenter = lazy(() => import("./pages/SportTournamentCommandCenter"));
+const SportTournamentDirectory = lazy(() => import("./pages/SportTournamentDirectory"));
+const SportTournamentWorkspace = lazy(() => import("./pages/SportTournamentWorkspace"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 
 const FestivalAuctionCompatibilityRedirect = () => {
   const { festivalId } = useParams();
@@ -59,6 +61,7 @@ export default function AppRouter() {
   return (
     <AuthProvider>
       <Router>
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -353,6 +356,7 @@ export default function AppRouter() {
           />
           <Route path="*" element={<DefaultRoute />} />
         </Routes>
+        </Suspense>
       </Router>
     </AuthProvider>
   );

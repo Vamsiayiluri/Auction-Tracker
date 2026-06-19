@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -13,6 +13,11 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../utils/api";
+import {
+  cachedRequest,
+  refreshCachedRequest,
+  stableCacheKey,
+} from "../utils/clientCache";
 
 const labels = {
   employees: "Employees",
@@ -32,17 +37,21 @@ export default function FestivalReadiness({
   festivalId,
   revision = 0,
   onLoaded,
+  initialReadiness = null,
 }) {
-  const [readiness, setReadiness] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState(initialReadiness);
+  const [loading, setLoading] = useState(!initialReadiness);
   const [error, setError] = useState("");
+  const loadedRevisionRef = useRef(null);
 
-  const loadReadiness = useCallback(async () => {
+  const loadReadiness = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
     setError("");
     try {
-      const response = await api.get(
-        `/v2/festivals/${festivalId}/auction/readiness`
+      const response = await (force ? refreshCachedRequest : cachedRequest)(
+        stableCacheKey("GET", `/v2/festivals/${festivalId}/auction/readiness`),
+        () => api.get(`/v2/festivals/${festivalId}/auction/readiness`),
+        { ttlMs: 45_000 }
       );
       setReadiness(response.data.data);
       onLoaded?.(response.data.data);
@@ -57,8 +66,16 @@ export default function FestivalReadiness({
   }, [festivalId, onLoaded]);
 
   useEffect(() => {
-    loadReadiness();
-  }, [loadReadiness, revision]);
+    if (loadedRevisionRef.current === revision) return;
+    if (initialReadiness && revision === 0) {
+      loadedRevisionRef.current = revision;
+      setReadiness(initialReadiness);
+      setLoading(false);
+      return;
+    }
+    loadedRevisionRef.current = revision;
+    loadReadiness({ force: revision > 0 });
+  }, [initialReadiness, loadReadiness, revision]);
 
   return (
     <Card id="festival-readiness" variant="outlined" sx={{ mb: 3 }}>
@@ -84,7 +101,7 @@ export default function FestivalReadiness({
                 label={readiness.overallStatus.replace("_", " ")}
               />
             )}
-            <Button onClick={loadReadiness} disabled={loading}>
+            <Button onClick={() => loadReadiness({ force: true })} disabled={loading}>
               Refresh
             </Button>
           </Stack>

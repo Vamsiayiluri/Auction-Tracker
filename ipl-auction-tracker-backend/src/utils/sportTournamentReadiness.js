@@ -5,15 +5,20 @@ import {
   SportAuctionConfig,
   SportTournament,
 } from "../models/index.js";
+import {
+  requestCacheGetOrSet,
+  transactionScopedCacheKey,
+} from "./requestPerformance.js";
 import { getSportTournamentBudgetSummary } from "./sportTeamBudget.js";
 import { getSportTournamentEligibility } from "./sportTournamentEligibility.js";
 
-export const getSportTournamentReadiness = async (
+const calculateSportTournamentReadiness = async (
   sportTournamentId,
   transaction,
   { persistStatus = true } = {}
 ) => {
   const tournament = await SportTournament.findByPk(sportTournamentId, {
+    attributes: ["id", "teamCount", "status"],
     transaction,
   });
   if (!tournament) return null;
@@ -22,11 +27,13 @@ export const getSportTournamentReadiness = async (
     await Promise.all([
     SportTeam.findAll({
       where: { sportTournamentId, status: "active" },
+      attributes: ["id", "name"],
       order: [["name", "ASC"]],
       transaction,
     }),
     SportTeamCaptain.findAll({
       where: { sportTournamentId, status: "active" },
+      attributes: ["id", "sportTeamId", "festivalParticipantId", "status"],
       transaction,
     }),
     getSportTournamentEligibility(sportTournamentId, transaction),
@@ -192,3 +199,18 @@ export const getSportTournamentReadiness = async (
     teams: teamReadiness,
   };
 };
+
+export const getSportTournamentReadiness = (
+  sportTournamentId,
+  transaction,
+  options = {}
+) =>
+  requestCacheGetOrSet(
+    transactionScopedCacheKey(
+      "sport-readiness",
+      sportTournamentId,
+      transaction,
+      options.persistStatus === false ? "read" : "persist"
+    ),
+    () => calculateSportTournamentReadiness(sportTournamentId, transaction, options)
+  );
