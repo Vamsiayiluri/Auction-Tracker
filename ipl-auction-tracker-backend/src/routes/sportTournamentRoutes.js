@@ -35,7 +35,8 @@ import {
   startSportAuctionParticipant,
   updateSportAuctionConfig,
 } from "../controllers/sportLiveAuction.controller.js";
-import { authMiddleware } from "../middleware/auth.middleware.js";
+import { exportSportTournamentTeamsToExcel } from "../controllers/teamExport.controller.js";
+import { adminMiddleware, authMiddleware } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
 import {
   assignSportTeamCaptainSchema,
@@ -70,6 +71,11 @@ router.get(
   "/sport-tournaments/:sportTournamentId",
   validate(sportTournamentIdSchema),
   getSportTournament
+);
+router.get(
+  "/sport-tournaments/:sportTournamentId/export/excel",
+  validate(sportTournamentIdSchema),
+  exportSportTournamentTeamsToExcel
 );
 router.patch(
   "/sport-tournaments/:sportTournamentId",

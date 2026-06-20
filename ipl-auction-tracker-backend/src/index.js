@@ -14,6 +14,7 @@ import TournamentRoutes from "./routes/tournmentRoutes.js";
 import FestivalRoutes from "./routes/festivalRoutes.js";
 import EmployeeRoutes from "./routes/employeeRoutes.js";
 import SportTournamentRoutes from "./routes/sportTournamentRoutes.js";
+import TeamExportRoutes from "./routes/teamExportRoutes.js";
 import DebugRoutes from "./routes/debugRoutes.js";
 import {
   isBiddingOpen,
@@ -76,6 +77,7 @@ app.use("/api/tournament", TournamentRoutes);
 app.use("/api/v2/festivals", FestivalRoutes);
 app.use("/api/v2/employees", EmployeeRoutes);
 app.use("/api/v2", SportTournamentRoutes);
+app.use("/api", TeamExportRoutes);
 app.use("/api/debug", DebugRoutes);
 
 app.get("/", (req, res) => {

@@ -34,6 +34,7 @@ import {
   userCacheScope,
 } from "../utils/clientCache";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
+import TeamExportButton from "../components/TeamExportButton";
 import {
   getSportAuctionStageFromState,
   isReadyStage,
@@ -54,6 +55,13 @@ const sections = [
 ];
 
 const WORKSPACE_TTL_MS = 45_000;
+const sportExportStatuses = new Set([
+  "auction_completed",
+  "competition_pending",
+  "competition_live",
+  "competition_completed",
+  "archived",
+]);
 
 const participantLabel = (participant) => {
   const employee = participant?.employee;
@@ -359,6 +367,9 @@ export default function SportTournamentWorkspace() {
   const hasResults =
     Number(auctionState?.counts?.sold ?? 0) > 0 ||
     Number(auctionState?.counts?.unsold ?? 0) > 0;
+  const canExport =
+    (user?.role === "admin" || auctionState?.viewer?.canBid) &&
+    sportExportStatuses.has(tournament?.status);
   const headerCta = isCompletedStage(sportStage)
     ? { label: "View Results", route: `/sport-tournaments/${sportTournamentId}/results` }
     : isLiveStage(sportStage)
@@ -585,12 +596,19 @@ export default function SportTournamentWorkspace() {
                 Configure teams, captains, budgets, eligibility, and the player pool.
               </Typography>
             </Box>
-            <Button
-              variant="contained"
-              onClick={() => navigate(headerCta.route)}
-            >
-              {headerCta.label}
-            </Button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <TeamExportButton
+                endpoint={`/v2/sport-tournaments/${sportTournamentId}/export/excel`}
+                tournamentName={tournament.name}
+                allowed={canExport}
+              />
+              <Button
+                variant="contained"
+                onClick={() => navigate(headerCta.route)}
+              >
+                {headerCta.label}
+              </Button>
+            </Stack>
           </Stack>
           <Box sx={{ mt: 1.25 }}>
             <AuctionContextNavigation
@@ -643,11 +661,18 @@ export default function SportTournamentWorkspace() {
       {activeSection === "Overview" && (
         <Card variant="outlined">
           <CardContent>
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-              <Chip label={`${readiness?.counts?.configuredTeams ?? 0} teams configured`} />
-              <Chip label={`${readiness?.counts?.captainsAssigned ?? 0} captains assigned`} />
-              <Chip label={`${readiness?.counts?.eligibleParticipants ?? 0} eligible employees`} />
-              <Chip label={`${readiness?.counts?.availableParticipantPool ?? 0} in pool`} />
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={1.5}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip label={`${readiness?.counts?.configuredTeams ?? 0} teams configured`} />
+                <Chip label={`${readiness?.counts?.captainsAssigned ?? 0} captains assigned`} />
+                <Chip label={`${readiness?.counts?.eligibleParticipants ?? 0} eligible employees`} />
+                <Chip label={`${readiness?.counts?.availableParticipantPool ?? 0} in pool`} />
+              </Stack>
+              <TeamExportButton
+                endpoint={`/v2/sport-tournaments/${sportTournamentId}/export/excel`}
+                tournamentName={tournament.name}
+                allowed={canExport}
+              />
             </Stack>
             <Typography color="text.secondary" sx={{ mt: 1.5 }}>
               Use the setup sections above to finish required items. Auction status, bid history, and results are available in Auction Details.

@@ -74,6 +74,8 @@ import {
   isCompletedStage,
 } from "../utils/auctionStages";
 import { LoadingStateCard } from "../components/ProductState";
+import TeamExportButton from "../components/TeamExportButton";
+import { useAuth } from "../context/auth-context";
 
 const FestivalTeamBuilder = lazy(() => import("../components/FestivalTeamBuilder"));
 const FestivalAuctionSetup = lazy(() => import("../components/FestivalAuctionSetup"));
@@ -92,6 +94,7 @@ const FESTIVAL_DETAIL_TTL_MS = 45_000;
 export default function FestivalDetail() {
   const { festivalId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [festival, setFestival] = useState(null);
   const [catalogSports, setCatalogSports] = useState([]);
@@ -120,6 +123,7 @@ export default function FestivalDetail() {
   const [activeAction, setActiveAction] = useState("");
   const [rosterRevision, setRosterRevision] = useState(0);
   const [readiness, setReadiness] = useState(null);
+  const [viewerCanExportTeams, setViewerCanExportTeams] = useState(user?.role === "admin");
   const [sportDialogOpen, setSportDialogOpen] = useState(false);
   const [participantSearch, setParticipantSearch] = useState("");
   const [participantSportFilter, setParticipantSportFilter] = useState("");
@@ -142,16 +146,18 @@ export default function FestivalDetail() {
       ? storedTab
       : "Overview";
   });
-  const [adminWorkspaceMode, setAdminWorkspaceMode] = useState("auto");
+  const [adminWorkspaceMode, setAdminWorkspaceMode] = useState(() =>
+    FESTIVAL_OPERATION_TABS.includes(searchParams.get("section"))
+      ? "operations"
+      : "configuration"
+  );
   const festivalStage = getFestivalAuctionStageFromState({
     festival,
     readiness,
     auctionStatus,
   });
   const setupStage = isSetupStage(festivalStage);
-  const configurationView =
-    adminWorkspaceMode === "configuration" ||
-    (adminWorkspaceMode === "auto" && setupStage);
+  const configurationView = adminWorkspaceMode === "configuration";
   const operationsView = !configurationView;
   const visibleOperationTabs = useMemo(
     () =>
@@ -881,6 +887,7 @@ export default function FestivalDetail() {
           onNavigate={setActiveTab}
           onReadiness={setReadiness}
           onAuctionStatus={setAuctionStatus}
+          onExportPermission={setViewerCanExportTeams}
         />
       )}
 
@@ -922,7 +929,13 @@ export default function FestivalDetail() {
       >
 
       {operationsView && activeTab === "Overview" && (
-        <FestivalOverview readiness={readiness} />
+        <FestivalOverview
+          readiness={readiness}
+          festival={festival}
+          festivalId={festivalId}
+          auctionStatus={auctionStatus}
+          canExportTeams={viewerCanExportTeams}
+        />
       )}
 
       {configurationView && activeStep === 0 && (
@@ -1287,10 +1300,22 @@ export default function FestivalDetail() {
       )}
 
       {operationsView && !setupStage && activeTab === "Results" && (
-        <FestivalHistory
-          festivalId={festivalId}
-          sections={["Auction Results"]}
-        />
+        <Stack spacing={2}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+            <TeamExportButton
+              endpoint={`/v2/festivals/${festivalId}/export/excel`}
+              tournamentName={festival?.name}
+              allowed={
+                viewerCanExportTeams &&
+                auctionStatus === "completed"
+              }
+            />
+          </Box>
+          <FestivalHistory
+            festivalId={festivalId}
+            sections={["Auction Results"]}
+          />
+        </Stack>
       )}
 
       {operationsView && activeTab === "Audit" && (

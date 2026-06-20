@@ -3,16 +3,25 @@ import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import TeamExportButton from "../components/TeamExportButton";
+import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
-import { getFestivalAuctionStage, isSetupStage } from "../utils/auctionStages";
+import {
+  getFestivalAuctionStage,
+  isCompletedStage,
+  isSetupStage,
+} from "../utils/auctionStages";
 
 const FestivalHistory = lazy(() => import("../components/FestivalHistory"));
 
 export default function FestivalAuctionResultsPage() {
   const { festivalId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [auctionStatus, setAuctionStatus] = useState(null);
   const [festivalStatus, setFestivalStatus] = useState(null);
+  const [festivalName, setFestivalName] = useState("");
+  const [viewerCanExport, setViewerCanExport] = useState(false);
   const [stageLoading, setStageLoading] = useState(true);
 
   const loadStage = useCallback(async () => {
@@ -22,10 +31,14 @@ export default function FestivalAuctionResultsPage() {
         api.get(`/v2/festivals/${festivalId}`),
       ]);
       if (auctionRes.status === "fulfilled") {
-        setAuctionStatus(auctionRes.value.data.data?.config?.auctionStatus || "setup");
+        const auctionData = auctionRes.value.data.data;
+        setAuctionStatus(auctionData?.config?.auctionStatus || "setup");
+        setViewerCanExport(Boolean(auctionData?.viewer?.isOwner));
       }
       if (festivalRes.status === "fulfilled") {
-        setFestivalStatus(festivalRes.value.data.data?.status);
+        const festival = festivalRes.value.data.data;
+        setFestivalStatus(festival?.status);
+        setFestivalName(festival?.name || "");
       }
     } catch {
       // non-blocking — fall through and show results
@@ -68,10 +81,22 @@ export default function FestivalAuctionResultsPage() {
     <Stack spacing={2}>
       <Card variant="outlined">
         <CardContent sx={{ py: 1.75, "&:last-child": { pb: 1.75 } }}>
-          <Typography variant="h5" fontWeight={800}>Festival Auction Results</Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Final assignments and completed auction outcomes.
-          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1.5}>
+            <Box>
+              <Typography variant="h5" fontWeight={800}>Festival Auction Results</Typography>
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                Final assignments and completed auction outcomes.
+              </Typography>
+            </Box>
+            <TeamExportButton
+              endpoint={`/v2/festivals/${festivalId}/export/excel`}
+              tournamentName={festivalName}
+              allowed={
+                (user?.role === "admin" || viewerCanExport) &&
+                isCompletedStage(festivalStage)
+              }
+            />
+          </Stack>
           <Box sx={{ mt: 1.25 }}>
             <AuctionContextNavigation
               hub={`/festivals/${festivalId}/auction-hub`}

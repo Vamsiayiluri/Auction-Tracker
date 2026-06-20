@@ -1,4 +1,4 @@
-export const FESTIVAL_INCREMENT_PERCENTAGES = [20, 25];
+export const FESTIVAL_INCREMENT_PERCENTAGES = [10, 15, 20, 25, 30];
 
 export const getFestivalBidProgression = ({
   basePrice,

@@ -4,7 +4,7 @@ const BrandLogo = ({ inverse = false, compact = false }) => (
   <Stack direction="row" alignItems="center" spacing={1.5}>
     <Box
       component="img"
-      src="/auctionarena-mark.svg"
+      src="/auctionarena-mark.png"
       alt="AuctionArena logo"
       sx={{ width: compact ? 44 : 52, height: compact ? 44 : 52 }}
     />

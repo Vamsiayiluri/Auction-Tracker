@@ -19,6 +19,8 @@ import {
 import RefreshIcon from "@mui/icons-material/Refresh";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
+import TeamExportButton from "../components/TeamExportButton";
+import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
 import { formatAuctionValue } from "../utils/auctionHub";
 import {
@@ -36,9 +38,18 @@ const getParticipantName = (round) =>
 const isSold = (round) =>
   String(round?.result?.outcome || round?.status || "").toUpperCase() === "SOLD";
 
+const sportExportStatuses = new Set([
+  "auction_completed",
+  "competition_pending",
+  "competition_live",
+  "competition_completed",
+  "archived",
+]);
+
 export default function SportAuctionResultsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tournament, setTournament] = useState(null);
   const [readiness, setReadiness] = useState(null);
   const [auction, setAuction] = useState(null);
@@ -137,6 +148,14 @@ export default function SportAuctionResultsPage() {
               >
                 Auction Details
               </Button>
+              <TeamExportButton
+                endpoint={`/v2/sport-tournaments/${id}/export/excel`}
+                tournamentName={tournament?.name}
+                allowed={
+                  (user?.role === "admin" || auction?.viewer?.canBid) &&
+                  sportExportStatuses.has(tournament?.status)
+                }
+              />
             </Stack>
           </Stack>
           <Box sx={{ mt: 1.25 }}>

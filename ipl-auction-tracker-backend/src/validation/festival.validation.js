@@ -340,8 +340,8 @@ export const updateFestivalAuctionConfigSchema = z.object({
       incrementPercentage: z.coerce
         .number()
         .int()
-        .refine((value) => [20, 25].includes(value), {
-          message: "Bid increment percentage must be 20 or 25",
+        .refine((value) => [10, 15, 20, 25, 30].includes(value), {
+          message: "Bid increment percentage must be 10, 15, 20, 25, or 30",
         })
         .optional(),
     })

@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import { LoadingStateCard } from "../components/ProductState";
+import TeamExportButton from "../components/TeamExportButton";
 import {
   getSportAuctionStageFromState,
   AUCTION_STAGE,
@@ -29,6 +30,13 @@ import {
 } from "../utils/clientCache";
 
 const COMMAND_CENTER_TTL_MS = 45_000;
+const sportExportStatuses = new Set([
+  "auction_completed",
+  "competition_pending",
+  "competition_live",
+  "competition_completed",
+  "archived",
+]);
 
 export default function SportTournamentCommandCenter() {
   const { sportTournamentId } = useParams();
@@ -106,6 +114,9 @@ export default function SportTournamentCommandCenter() {
   const blockers = readiness?.blockers || [];
   const canManage = Boolean(tournament?.permissions?.canManage);
   const canBid = Boolean(auction?.viewer?.canBid);
+  const canExport =
+    (user?.role === "admin" || auction?.viewer?.canBid) &&
+    sportExportStatuses.has(tournament?.status);
   const stage = getSportAuctionStageFromState({ tournament, readiness, auction });
   const primaryAction = useMemo(() => {
     if (stage === AUCTION_STAGE.COMPLETED) {
@@ -182,9 +193,16 @@ export default function SportTournamentCommandCenter() {
                   : "Sport auction overview and current status."}
               </Typography>
             </Box>
-            <Button variant="contained" onClick={() => navigate(primaryAction.route)}>
-              {primaryAction.label}
-            </Button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <TeamExportButton
+                endpoint={`/v2/sport-tournaments/${sportTournamentId}/export/excel`}
+                tournamentName={tournament.name}
+                allowed={canExport}
+              />
+              <Button variant="contained" onClick={() => navigate(primaryAction.route)}>
+                {primaryAction.label}
+              </Button>
+            </Stack>
           </Stack>
           <Box sx={{ mt: 1.5 }}>
             <AuctionContextNavigation
@@ -256,9 +274,16 @@ export default function SportTournamentCommandCenter() {
                 </Button>
               )}
               {canManage && stage === AUCTION_STAGE.COMPLETED && (
-                <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}>
-                  View Results
-                </Button>
+                <>
+                  <TeamExportButton
+                    endpoint={`/v2/sport-tournaments/${sportTournamentId}/export/excel`}
+                    tournamentName={tournament.name}
+                    allowed={canExport}
+                  />
+                  <Button variant="contained" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/results`)}>
+                    View Results
+                  </Button>
+                </>
               )}
               {canManage && stage !== AUCTION_STAGE.SETUP && (
                 <Button variant="outlined" onClick={() => navigate(`/sport-tournaments/${sportTournamentId}/manage`)}>

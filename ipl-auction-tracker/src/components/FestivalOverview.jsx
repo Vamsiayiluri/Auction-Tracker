@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { LoadingStateCard } from "./ProductState";
+import TeamExportButton from "./TeamExportButton";
 
 const metrics = [
   ["sportsEnabled", "Sports Enabled"],
@@ -22,7 +23,14 @@ const metrics = [
   ["auctionPoolSize", "Auction Pool Size"],
 ];
 
-export default function FestivalOverview({ readiness }) {
+export default function FestivalOverview({
+  readiness,
+  festival,
+  festivalId,
+  auctionStatus,
+  canExportTeams = false,
+}) {
+
   if (!readiness) {
     return (
       <LoadingStateCard
@@ -53,7 +61,25 @@ export default function FestivalOverview({ readiness }) {
       </Box>
       <Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 1 }}>Setup Status</Typography>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 1.5,
+              flexWrap: "wrap",
+              mb: 1,
+            }}
+          >
+            <Typography variant="h6">Setup Status</Typography>
+            <TeamExportButton
+              endpoint={`/v2/festivals/${festivalId}/export/excel`}
+              tournamentName={festival?.name}
+              allowed={
+                canExportTeams &&
+                auctionStatus === "completed"
+              }
+            />
+          </Box>
           <Chip
             color={readiness.overallStatus === "READY" ? "success" : "error"}
             label={readiness.overallStatus.replaceAll("_", " ")}

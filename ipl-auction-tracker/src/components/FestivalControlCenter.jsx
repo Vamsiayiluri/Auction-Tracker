@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -10,12 +10,10 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
-import {
-  getAuctionDisplayStatus,
-  getQuickActions,
-} from "../utils/festivalWorkspace";
+import { useAuth } from "../context/auth-context";
+import TeamExportButton from "./TeamExportButton";
+import { getAuctionDisplayStatus } from "../utils/festivalWorkspace";
 
 const metrics = [
   ["participants", "Participants"],
@@ -29,17 +27,16 @@ export default function FestivalControlCenter({
   festival,
   festivalId,
   revision = 0,
-  onNavigate,
   onReadiness,
   onAuctionStatus,
+  onExportPermission,
 }) {
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [readiness, setReadiness] = useState(null);
+  const [viewerCanExport, setViewerCanExport] = useState(isAdmin);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [activeAction, setActiveAction] = useState("");
   const [error, setError] = useState("");
-  const actionInFlight = useRef(false);
 
   const loadStatus = useCallback(async () => {
     setError("");
@@ -53,9 +50,14 @@ export default function FestivalControlCenter({
         auctionResponse?.data?.data?.config?.auctionStatus ||
         nextReadiness.counts?.auctionStatus ||
         "setup";
+      const canExport =
+        isAdmin ||
+        Boolean(auctionResponse?.data?.data?.viewer?.isOwner);
       setReadiness(nextReadiness);
+      setViewerCanExport(canExport);
       onReadiness?.(nextReadiness);
       onAuctionStatus?.(auctionStatus);
+      onExportPermission?.(canExport);
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -64,48 +66,13 @@ export default function FestivalControlCenter({
     } finally {
       setLoading(false);
     }
-  }, [festivalId, onAuctionStatus, onReadiness]);
+  }, [festivalId, isAdmin, onAuctionStatus, onExportPermission, onReadiness]);
 
   useEffect(() => {
     loadStatus();
   }, [loadStatus, revision]);
 
   const auctionStatus = readiness?.counts?.auctionStatus || "setup";
-  const runAction = async (action) => {
-    if (["open", "results", "history"].includes(action)) {
-      if (action === "open") {
-        navigate(`/auctions/festivals/${festivalId}`);
-        return;
-      }
-      onNavigate(
-        action === "history"
-          ? "Bid History"
-          : action === "results"
-            ? "Results"
-            : "Auction"
-      );
-      return;
-    }
-    if (actionInFlight.current) return;
-    actionInFlight.current = true;
-    setBusy(true);
-    setActiveAction(action);
-    setError("");
-    try {
-      await api.post(`/v2/festivals/${festivalId}/auction/${action}`);
-      await loadStatus();
-      navigate(`/auctions/festivals/${festivalId}`);
-    } catch (requestError) {
-      setError(
-        requestError.response?.data?.message || "We could not update the auction. Try again."
-      );
-    } finally {
-      actionInFlight.current = false;
-      setBusy(false);
-      setActiveAction("");
-    }
-  };
-
   return (
     <Card
       variant="outlined"
@@ -172,6 +139,17 @@ export default function FestivalControlCenter({
               </Button>
             ))}
           </Stack> */}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignSelf={{ lg: "center" }}>
+            {loading && <CircularProgress size={24} />}
+            <TeamExportButton
+              endpoint={`/v2/festivals/${festivalId}/export/excel`}
+              tournamentName={festival?.name}
+              allowed={
+                viewerCanExport &&
+                auctionStatus === "completed"
+              }
+            />
+          </Stack>
         </Stack>
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </CardContent>

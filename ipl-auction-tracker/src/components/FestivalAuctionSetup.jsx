@@ -388,8 +388,11 @@ export default function FestivalAuctionSetup({
                 }))
               }
             >
-              <MenuItem value={20}>20%</MenuItem>
-              <MenuItem value={25}>25%</MenuItem>
+              {[10, 15, 20, 25, 30].map((percentage) => (
+                <MenuItem key={percentage} value={percentage}>
+                  {percentage}%
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           <TextField

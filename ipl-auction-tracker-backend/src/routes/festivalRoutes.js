@@ -60,6 +60,7 @@ import {
   startFestivalAuction,
   startFestivalAuctionParticipant,
 } from "../controllers/festivalLiveAuction.controller.js";
+import { exportFestivalTeamsToExcel } from "../controllers/teamExport.controller.js";
 import {
   adminMiddleware,
   authMiddleware,
@@ -108,6 +109,11 @@ router.post("/", adminMiddleware, validate(createFestivalSchema), createFestival
 router.get("/", getFestivals);
 router.get("/auction/summaries", getFestivalAuctionSummaries);
 router.get("/:festivalId", validate(festivalIdSchema), getFestivalById);
+router.get(
+  "/:festivalId/export/excel",
+  validate(festivalIdSchema),
+  exportFestivalTeamsToExcel
+);
 router.patch(
   "/:festivalId",
   adminMiddleware,
