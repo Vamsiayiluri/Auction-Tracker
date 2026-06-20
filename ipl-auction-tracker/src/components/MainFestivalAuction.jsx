@@ -14,7 +14,10 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
+import { getApiMessage, getArrayData, getData } from "../utils/apiResponse";
+import { safeApplySocketEvent } from "../utils/safeSocketEvent";
 import { socket } from "../webSocket/socket";
+import useSocketHealth from "../hooks/useSocketHealth";
 import {
   getAuctionRemainingSeconds,
   getServerClockOffsetMs,
@@ -81,6 +84,7 @@ export default function MainFestivalAuction({
   const [expiryConfirmationDelayed, setExpiryConfirmationDelayed] =
     useState(false);
   const [resultToast, setResultToast] = useState(null); // { message, severity }
+  const socketHealth = useSocketHealth();
 
   const actionInFlight = useRef(false);
   const expiryRefreshInFlight = useRef(false);
@@ -96,12 +100,17 @@ export default function MainFestivalAuction({
       setError("");
       const requestRevision = lastRevision.current;
       try {
-        const [currentResponse, historyResponse] = await Promise.all([
+        const [currentResult, historyResult] = await Promise.allSettled([
           api.get(`/v2/festivals/${festivalId}/auction/current`),
           refreshHistory
             ? api.get(`/v2/festivals/${festivalId}/auction/history`)
             : null,
         ]);
+        if (currentResult.status !== "fulfilled") throw currentResult.reason;
+        const currentResponse = currentResult.value;
+        const historyResponse =
+          historyResult.status === "fulfilled" ? historyResult.value : null;
+        const currentData = getData(currentResponse, null);
         const socketAdvancedDuringRequest =
           lastRevision.current > requestRevision;
         const preserveSocketState =
@@ -112,22 +121,19 @@ export default function MainFestivalAuction({
           preserveSocketState
             ? {
                 ...previous,
-                viewer: currentResponse.data.data?.viewer,
+                viewer: currentData?.viewer,
               }
-            : currentResponse.data.data
+            : currentData
         );
         if (!preserveSocketState && historyResponse) {
-          setHistory(historyResponse.data.data || []);
+          setHistory(getArrayData(historyResponse));
         }
         setClockOffsetMs(
-          getServerClockOffsetMs(currentResponse.data.data?.serverTime)
+          getServerClockOffsetMs(currentData?.serverTime)
         );
         return true;
       } catch (requestError) {
-        setError(
-          requestError.response?.data?.message ||
-            "Unable to load the Main Festival Auction."
-        );
+        setError(getApiMessage(requestError, "Unable to load the Main Festival Auction."));
         return false;
       } finally {
         setLoading(false);
@@ -169,7 +175,7 @@ export default function MainFestivalAuction({
     api
       .get(`/v2/festivals/${festivalId}`)
       .then((response) => {
-        if (active) setFestival(response.data.data);
+        if (active) setFestival(getData(response, null));
       })
       .catch(() => {});
     return () => {
@@ -187,7 +193,7 @@ export default function MainFestivalAuction({
       .get(`/v2/festivals/${festivalId}/auction/readiness`)
       .then((response) => {
         if (active) {
-          setReadiness(response.data.data);
+          setReadiness(getData(response, null));
           setReadinessLoaded(true);
         }
       })
@@ -224,9 +230,17 @@ export default function MainFestivalAuction({
         });
       }
       lastRevision.current = payload.revision;
-      setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
-      setState((previous) => applyAuctionSnapshotEvent(previous, payload));
-      setHistory(payload.history || []);
+      safeApplySocketEvent({
+        eventName: "festival:auction-state",
+        payload,
+        fallbackRefresh: () => void loadAuction({ forceState: true }),
+        setError,
+        apply: () => {
+          setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
+          setState((previous) => applyAuctionSnapshotEvent(previous, payload));
+          setHistory(payload.history || []);
+        },
+      });
       if (payload.reason === "bid-placed") {
         logBidUiTrace({
           scopeType: "festival",
@@ -245,7 +259,13 @@ export default function MainFestivalAuction({
     const applyBidPlaced = (payload) => {
       const updateStartedAt = performance.now();
       if (payload?.festivalAuctionId !== currentAuctionId.current) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      safeApplySocketEvent({
+        eventName: "festival:bid-placed",
+        payload,
+        fallbackRefresh: () => void loadAuction({ forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
       logBidUiTrace({
         scopeType: "festival",
         festivalId,
@@ -253,7 +273,9 @@ export default function MainFestivalAuction({
         auctionId: payload.festivalAuctionId,
         bidId: payload.id,
       });
-      setState((previous) => applyFestivalBidEvent(previous, payload));
+          setState((previous) => applyFestivalBidEvent(previous, payload));
+        },
+      });
       logBidUiTrace({
         scopeType: "festival",
         festivalId,
@@ -271,14 +293,30 @@ export default function MainFestivalAuction({
     };
     const applyParticipantStarted = (payload) => {
       if (payload?.festivalId && payload.festivalId !== festivalId) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
-      setState((previous) => applyFestivalParticipantStartedEvent(previous, payload));
+      safeApplySocketEvent({
+        eventName: "festival:participant-started",
+        payload,
+        fallbackRefresh: () => void loadAuction({ forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+          setState((previous) => applyFestivalParticipantStartedEvent(previous, payload));
+        },
+      });
     };
     const applyTimerUpdated = (payload) => {
       if (payload?.festivalId !== festivalId) return;
       if (payload?.auctionId !== currentAuctionId.current) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
-      setState((previous) => applyFestivalTimerEvent(previous, payload));
+      safeApplySocketEvent({
+        eventName: "festival:timer-updated",
+        payload,
+        fallbackRefresh: () => void loadAuction({ forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+          setState((previous) => applyFestivalTimerEvent(previous, payload));
+        },
+      });
     };
     const joinRoom = () => {
       setConnected(true);
@@ -345,6 +383,14 @@ export default function MainFestivalAuction({
     const timer = setInterval(updateTimer, 250);
     return () => clearInterval(timer);
   }, [clockOffsetMs, currentEndsAt, timerDurationSeconds]);
+
+  useEffect(() => {
+    if (socketHealth.status === "connected") return undefined;
+    const timer = window.setInterval(() => {
+      void loadAuction({ refreshHistory: true, forceState: true });
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [loadAuction, socketHealth.status]);
 
   const runAction = async (
     path,
@@ -735,7 +781,7 @@ export default function MainFestivalAuction({
       <ArenaHeader
         festivalName={festival?.name}
         status={arenaStatus}
-        connected={connected}
+        connected={socketHealth.status === "connected" && connected}
         roomJoined={roomJoined}
         progress={progress}
         highestBid={highestBid}
@@ -750,6 +796,16 @@ export default function MainFestivalAuction({
           {preLaunch
             ? "The Festival Auction is configured and ready to launch. Click \"Start Auction\" in the Auction Controls above to begin."
             : "The Festival Auction is configured and ready. Select a participant below to start the first bidding round."}
+        </Alert>
+      )}
+
+      {socketHealth.status !== "connected" && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={<Button onClick={manualRefresh}>Refresh</Button>}
+        >
+          Live updates are {socketHealth.status}. The auction remains visible and will refresh automatically.
         </Alert>
       )}
 

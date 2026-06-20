@@ -1,9 +1,12 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { useParams } from "react-router-dom";
 import { LoadingStateCard } from "../components/ProductState";
+import RouteBoundary from "../components/RouteBoundary";
+import { lazyWithRetry } from "../utils/lazyWithRetry";
 
-const MainFestivalAuction = lazy(
-  () => import("../components/MainFestivalAuction")
+const MainFestivalAuction = lazyWithRetry(
+  () => import("../components/MainFestivalAuction"),
+  "MainFestivalAuction"
 );
 
 export default function FestivalLiveAuctionPage() {
@@ -18,7 +21,9 @@ export default function FestivalLiveAuctionPage() {
         />
       }
     >
-      <MainFestivalAuction festivalId={festivalId} />
+      <RouteBoundary name="Festival Live Auction Workspace">
+        <MainFestivalAuction festivalId={festivalId} />
+      </RouteBoundary>
     </Suspense>
   );
 }

@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -58,6 +56,13 @@ import FestivalSetupWizard from "../components/FestivalSetupWizard";
 import FestivalConfigurationStatus from "../components/FestivalConfigurationStatus";
 import FestivalControlCenter from "../components/FestivalControlCenter";
 import FestivalDetailsConfiguration from "../components/FestivalDetailsConfiguration";
+import FestivalTeamBuilder from "../components/FestivalTeamBuilder";
+import FestivalAuctionSetup from "../components/FestivalAuctionSetup";
+import FestivalReadiness from "../components/FestivalReadiness";
+import FestivalOverview from "../components/FestivalOverview";
+import FestivalHistory from "../components/FestivalHistory";
+import FestivalBidHistory from "../components/FestivalBidHistory";
+import FestivalTeamsDirectory from "../components/FestivalTeamsDirectory";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import {
   FESTIVAL_OPERATION_TABS,
@@ -76,18 +81,7 @@ import {
 import { LoadingStateCard } from "../components/ProductState";
 import TeamExportButton from "../components/TeamExportButton";
 import { useAuth } from "../context/auth-context";
-
-const FestivalTeamBuilder = lazy(() => import("../components/FestivalTeamBuilder"));
-const FestivalAuctionSetup = lazy(() => import("../components/FestivalAuctionSetup"));
-const FestivalReadiness = lazy(() => import("../components/FestivalReadiness"));
-const FestivalOverview = lazy(() => import("../components/FestivalOverview"));
-const FestivalHistory = lazy(() => import("../components/FestivalHistory"));
-const FestivalBidHistory = lazy(
-  () => import("../components/FestivalBidHistory")
-);
-const FestivalTeamsDirectory = lazy(
-  () => import("../components/FestivalTeamsDirectory")
-);
+import RouteBoundary from "../components/RouteBoundary";
 
 const FESTIVAL_DETAIL_TTL_MS = 45_000;
 
@@ -919,23 +913,16 @@ export default function FestivalDetail() {
         />
       )}
 
-      <Suspense
-        fallback={
-          <LoadingStateCard
-            title="Loading Setup Section"
-            message="Preparing the selected Festival setup section."
-          />
-        }
-      >
-
       {operationsView && activeTab === "Overview" && (
-        <FestivalOverview
-          readiness={readiness}
-          festival={festival}
-          festivalId={festivalId}
-          auctionStatus={auctionStatus}
-          canExportTeams={viewerCanExportTeams}
-        />
+        <RouteBoundary name="Festival Overview">
+          <FestivalOverview
+            readiness={readiness}
+            festival={festival}
+            festivalId={festivalId}
+            auctionStatus={auctionStatus}
+            canExportTeams={viewerCanExportTeams}
+          />
+        </RouteBoundary>
       )}
 
       {configurationView && activeStep === 0 && (
@@ -1174,64 +1161,78 @@ export default function FestivalDetail() {
       )}
 
       {configurationView && activeStep === 3 && (
-      <FestivalTeamBuilder
-        festivalId={festivalId}
-        rosterFormationMode={festival?.rosterFormationMode || "auction"}
-        participantRevision={participants
-          .map(
-            (participant) =>
-              `${participant.id}:${participant.status}:${(participant.sports || [])
-                .map(({ sportId }) => sportId)
-                .sort()
-                .join(",")}`
-          )
-          .join("|")
-          .concat(`:${rosterRevision}`)}
-        operationRevision={rosterRevision}
-        locked={locked}
-        onTeamsChanged={invalidateFestivalSetup}
-      />
+      <RouteBoundary name="Festival Team Builder">
+        <FestivalTeamBuilder
+          festivalId={festivalId}
+          rosterFormationMode={festival?.rosterFormationMode || "auction"}
+          participantRevision={participants
+            .map(
+              (participant) =>
+                `${participant.id}:${participant.status}:${(participant.sports || [])
+                  .map(({ sportId }) => sportId)
+                  .sort()
+                  .join(",")}`
+            )
+            .join("|")
+            .concat(`:${rosterRevision}`)}
+          operationRevision={rosterRevision}
+          locked={locked}
+          onTeamsChanged={invalidateFestivalSetup}
+        />
+      </RouteBoundary>
       )}
 
       {operationsView && activeTab === "Teams" && (
-        <FestivalTeamsDirectory festivalId={festivalId} />
+        <RouteBoundary name="Festival Teams Directory">
+          <FestivalTeamsDirectory festivalId={festivalId} />
+        </RouteBoundary>
       )}
 
       {festival?.rosterFormationMode === "auction" && configurationView && (
         <>
-          {activeStep === 8 && <FestivalReadiness
-            festivalId={festivalId}
-            revision={rosterRevision}
-            onLoaded={setReadiness}
-            initialReadiness={readiness}
-          />}
-          {[4, 5, 6, 7].includes(activeStep) && <FestivalAuctionSetup
-            festivalId={festivalId}
-            onRosterChanged={invalidateFestivalSetup}
-            operationRevision={rosterRevision}
-            locked={locked}
-            section={
-              activeStep === 4
-                ? "budget"
-                : activeStep === 5
-                  ? "owners"
-                  : activeStep === 6
-                    ? "retentions"
-                    : "pool"
-            }
-          />}
+          {activeStep === 8 && (
+            <RouteBoundary name="Festival Readiness">
+              <FestivalReadiness
+                festivalId={festivalId}
+                revision={rosterRevision}
+                onLoaded={setReadiness}
+                initialReadiness={readiness}
+              />
+            </RouteBoundary>
+          )}
+          {[4, 5, 6, 7].includes(activeStep) && (
+            <RouteBoundary name="Festival Auction Setup">
+              <FestivalAuctionSetup
+                festivalId={festivalId}
+                onRosterChanged={invalidateFestivalSetup}
+                operationRevision={rosterRevision}
+                locked={locked}
+                section={
+                  activeStep === 4
+                    ? "budget"
+                    : activeStep === 5
+                      ? "owners"
+                      : activeStep === 6
+                        ? "retentions"
+                        : "pool"
+                }
+              />
+            </RouteBoundary>
+          )}
         </>
       )}
 
       {operationsView &&
         ["Owners", "Retentions"].includes(activeTab) && (
-          <FestivalAuctionSetup
-            festivalId={festivalId}
-            onRosterChanged={invalidateFestivalSetup}
-            operationRevision={rosterRevision}
-            locked={locked}
-            section={activeTab.toLowerCase()}
-          />
+          <RouteBoundary name="Festival Auction Setup">
+            <FestivalAuctionSetup
+              festivalId={festivalId}
+              onRosterChanged={invalidateFestivalSetup}
+              operationRevision={rosterRevision}
+              locked={locked}
+              section={activeTab.toLowerCase()}
+            />
+          </RouteBoundary>
         )}
 
       {operationsView && !setupStage && activeTab === "Auction Preparation" && (
@@ -1286,17 +1287,21 @@ export default function FestivalDetail() {
               </Stack>
             </CardContent>
           </Card>
-          <FestivalReadiness
-            festivalId={festivalId}
-            revision={rosterRevision}
-            onLoaded={setReadiness}
-            initialReadiness={readiness}
-          />
+          <RouteBoundary name="Festival Readiness">
+            <FestivalReadiness
+              festivalId={festivalId}
+              revision={rosterRevision}
+              onLoaded={setReadiness}
+              initialReadiness={readiness}
+            />
+          </RouteBoundary>
         </Stack>
       )}
 
       {operationsView && !setupStage && activeTab === "Bid History" && (
-        <FestivalBidHistory festivalId={festivalId} />
+        <RouteBoundary name="Festival Bid History">
+          <FestivalBidHistory festivalId={festivalId} />
+        </RouteBoundary>
       )}
 
       {operationsView && !setupStage && activeTab === "Results" && (
@@ -1311,15 +1316,19 @@ export default function FestivalDetail() {
               }
             />
           </Box>
-          <FestivalHistory
-            festivalId={festivalId}
-            sections={["Auction Results"]}
-          />
+          <RouteBoundary name="Festival Results History">
+            <FestivalHistory
+              festivalId={festivalId}
+              sections={["Auction Results"]}
+            />
+          </RouteBoundary>
         </Stack>
       )}
 
       {operationsView && activeTab === "Audit" && (
-        <FestivalHistory festivalId={festivalId} sections={["Audit Log"]} />
+        <RouteBoundary name="Festival Audit History">
+          <FestivalHistory festivalId={festivalId} sections={["Audit Log"]} />
+        </RouteBoundary>
       )}
 
       {((configurationView && activeStep === 2) ||
@@ -1479,7 +1488,6 @@ export default function FestivalDetail() {
         </CardContent>
       </Card>
       )}
-      </Suspense>
 
       <Dialog
         open={sportDialogOpen}

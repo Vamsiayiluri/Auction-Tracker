@@ -14,6 +14,7 @@ import api from "../utils/api";
 import { useAuth } from "../context/auth-context";
 import TeamExportButton from "./TeamExportButton";
 import { getAuctionDisplayStatus } from "../utils/festivalWorkspace";
+import { getApiMessage, requireObjectData } from "../utils/apiResponse";
 
 const metrics = [
   ["participants", "Participants"],
@@ -40,12 +41,17 @@ export default function FestivalControlCenter({
 
   const loadStatus = useCallback(async () => {
     setError("");
+    const [readinessResult, auctionResult] = await Promise.allSettled([
+      api.get(`/v2/festivals/${festivalId}/auction/readiness`),
+      api.get(`/v2/festivals/${festivalId}/auction/current`),
+    ]);
     try {
-      const [readinessResponse, auctionResponse] = await Promise.all([
-        api.get(`/v2/festivals/${festivalId}/auction/readiness`),
-        api.get(`/v2/festivals/${festivalId}/auction/current`).catch(() => null),
-      ]);
-      const nextReadiness = readinessResponse.data.data;
+      if (readinessResult.status !== "fulfilled") {
+        throw readinessResult.reason;
+      }
+      const nextReadiness = requireObjectData(readinessResult.value, "Festival readiness");
+      const auctionResponse =
+        auctionResult.status === "fulfilled" ? auctionResult.value : null;
       const auctionStatus =
         auctionResponse?.data?.data?.config?.auctionStatus ||
         nextReadiness.counts?.auctionStatus ||
@@ -59,10 +65,7 @@ export default function FestivalControlCenter({
       onAuctionStatus?.(auctionStatus);
       onExportPermission?.(canExport);
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.message ||
-          "Unable to load Festival control status."
-      );
+      setError(getApiMessage(requestError, "Unable to load Festival control status."));
     } finally {
       setLoading(false);
     }

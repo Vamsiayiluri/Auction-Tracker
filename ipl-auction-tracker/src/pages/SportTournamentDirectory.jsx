@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
+import { getApiMessage, getArrayData, requireObjectData } from "../utils/apiResponse";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 
 const emptyForm = {
@@ -53,18 +54,25 @@ export default function SportTournamentDirectory() {
   const loadData = async () => {
     setLoading(true);
     setError("");
-    try {
-      const [tournamentResponse, contextResponse] = await Promise.all([
-        api.get("/v2/sport-tournaments"),
-        api.get("/v2/sport-tournaments/owner-contexts"),
-      ]);
-      setTournaments(tournamentResponse.data.data || []);
-      setContexts(contextResponse.data.data || []);
-    } catch {
-      setError("Unable to load Sport Tournaments.");
-    } finally {
-      setLoading(false);
+    const [tournamentResult, contextResult] = await Promise.allSettled([
+      api.get("/v2/sport-tournaments"),
+      api.get("/v2/sport-tournaments/owner-contexts"),
+    ]);
+    const warnings = [];
+    if (tournamentResult.status === "fulfilled") {
+      setTournaments(getArrayData(tournamentResult.value));
+    } else {
+      setTournaments([]);
+      warnings.push(getApiMessage(tournamentResult.reason, "Unable to load Sport Tournaments."));
     }
+    if (contextResult.status === "fulfilled") {
+      setContexts(getArrayData(contextResult.value));
+    } else {
+      setContexts([]);
+      warnings.push(getApiMessage(contextResult.reason, "Unable to load Sport Tournament owner contexts."));
+    }
+    setError(warnings.join(" "));
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -128,13 +136,10 @@ export default function SportTournamentDirectory() {
       setDialogOpen(false);
       setForm(emptyForm);
       await loadData();
-      navigate(`/sport-tournaments/${response.data.data.id}/manage`);
+      const created = requireObjectData(response, "Created Sport Tournament");
+      navigate(`/sport-tournaments/${created.id}/manage`);
     } catch (requestError) {
-      setFormError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.errors?.[0]?.message ||
-          "Unable to create Sport Tournament."
-      );
+      setFormError(getApiMessage(requestError, "Unable to create Sport Tournament."));
     } finally {
       saveInFlight.current = false;
       setSaving(false);

@@ -26,6 +26,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../utils/api";
+import {
+  getApiMessage,
+  getData,
+  requireObjectData,
+} from "../utils/apiResponse";
 import { useAuth } from "../context/auth-context";
 import {
   cachedRequest,
@@ -123,7 +128,10 @@ export default function SportTournamentWorkspace() {
       ]);
 
     if (tournamentResult.status === "fulfilled") {
-      const nextTournament = tournamentResult.value.data.data;
+      const nextTournament = requireObjectData(
+        tournamentResult.value,
+        "Sport Tournament"
+      );
       setTournament(nextTournament);
       setSettings({
         name: nextTournament.name,
@@ -142,17 +150,19 @@ export default function SportTournamentWorkspace() {
       );
     } else {
       setError(
-        tournamentResult.reason?.response?.data?.message ||
+        getApiMessage(
+          tournamentResult.reason,
           "Unable to load Sport Tournament workspace."
+        )
       );
     }
 
     if (readinessResult.status === "fulfilled") {
-      setReadiness(readinessResult.value.data.data);
+      setReadiness(getData(readinessResult.value, null));
     }
 
     if (auctionResult.status === "fulfilled") {
-      const auctionData = auctionResult.value.data.data;
+      const auctionData = getData(auctionResult.value, null);
       setAuctionState(auctionData);
       if (auctionData?.config) {
         setAuctionConfig({
@@ -177,7 +187,7 @@ export default function SportTournamentWorkspace() {
       () => api.get(`/v2/sport-tournaments/${sportTournamentId}`),
       { ttlMs: WORKSPACE_TTL_MS }
     );
-    const nextTournament = response.data.data;
+    const nextTournament = requireObjectData(response, "Sport Tournament");
     setTournament(nextTournament);
     setSettings({
       name: nextTournament.name,
@@ -202,7 +212,7 @@ export default function SportTournamentWorkspace() {
       () => api.get(`/v2/sport-tournaments/${sportTournamentId}/readiness`),
       { ttlMs: WORKSPACE_TTL_MS }
     );
-    setReadiness(response.data.data);
+    setReadiness(getData(response, null));
   }, [sportTournamentId, user]);
 
   const refreshEligibility = useCallback(async () => {
@@ -211,7 +221,7 @@ export default function SportTournamentWorkspace() {
       () => api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`),
       { ttlMs: WORKSPACE_TTL_MS }
     );
-    setEligibility(response.data.data);
+    setEligibility(getData(response, null));
   }, [sportTournamentId, user]);
 
   const refreshBudgets = useCallback(async () => {
@@ -220,7 +230,7 @@ export default function SportTournamentWorkspace() {
       () => api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`),
       { ttlMs: WORKSPACE_TTL_MS }
     );
-    const data = response.data.data;
+    const data = getData(response, null);
     setBudgets(data);
     setBudgetEdits(
       Object.fromEntries(
@@ -242,12 +252,12 @@ export default function SportTournamentWorkspace() {
       () => api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`),
       { ttlMs: WORKSPACE_TTL_MS }
     );
-    setPool(response.data.data);
+    setPool(getData(response, null));
   }, [sportTournamentId, user]);
 
   const refreshAuction = useCallback(async () => {
     const response = await api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`);
-    const data = response.data.data;
+    const data = getData(response, null);
     setAuctionState(data);
     if (data?.config) {
       setAuctionConfig({
@@ -278,7 +288,7 @@ export default function SportTournamentWorkspace() {
             () => api.get(`/v2/sport-tournaments/${sportTournamentId}/eligibility`),
             { ttlMs: WORKSPACE_TTL_MS }
           );
-          setEligibility(response.data.data);
+          setEligibility(getData(response, null));
         },
       });
     }
@@ -291,7 +301,7 @@ export default function SportTournamentWorkspace() {
             () => api.get(`/v2/sport-tournaments/${sportTournamentId}/budgets`),
             { ttlMs: WORKSPACE_TTL_MS }
           );
-          const data = response.data.data;
+          const data = getData(response, null);
           setBudgets(data);
           setBudgetEdits(
             Object.fromEntries(
@@ -317,7 +327,7 @@ export default function SportTournamentWorkspace() {
             () => api.get(`/v2/sport-tournaments/${sportTournamentId}/pool`),
             { ttlMs: WORKSPACE_TTL_MS }
           );
-          setPool(response.data.data);
+          setPool(getData(response, null));
         },
       });
     }

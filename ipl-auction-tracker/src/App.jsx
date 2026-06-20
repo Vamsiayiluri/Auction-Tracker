@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import {
   BrowserRouter as Router,
   Navigate,
@@ -9,38 +9,41 @@ import {
 
 import AuthProvider from "./context/AuthContext";
 import AppShell from "./components/AppShell";
+import RouteBoundary from "./components/RouteBoundary";
+import { LoadingStateCard } from "./components/ProductState";
 import {
   DefaultRoute,
   GuestRoute,
   ProtectedRoute,
 } from "./components/RouteGuards";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
+import AccountSettingsPage from "./pages/AccountSettingsPage";
+import AuctionDirectory from "./pages/AuctionDirectory";
+import ChangePassword from "./pages/ChangePassword";
+import Dashboard from "./pages/Dashboard";
+import EmployeeDirectory from "./pages/EmployeeDirectory";
+import FestivalAuctionHub from "./pages/FestivalAuctionHub";
+import FestivalAuctionResultsPage from "./pages/FestivalAuctionResultsPage";
+import FestivalCommandCenter from "./pages/FestivalCommandCenter";
+import FestivalDashboard from "./pages/FestivalDashboard";
+import FestivalDetail from "./pages/FestivalDetail";
+import ForgotPassword from "./pages/ForgotPassword";
+import Login from "./pages/Login";
+import ProfilePage from "./pages/ProfilePage";
+import Register from "./pages/Register";
+import ResetPassword from "./pages/ResetPassword";
+import SportAuctionHub from "./pages/SportAuctionHub";
+import SportAuctionResultsPage from "./pages/SportAuctionResultsPage";
+import SportTournamentCommandCenter from "./pages/SportTournamentCommandCenter";
+import SportTournamentDirectory from "./pages/SportTournamentDirectory";
+import SportTournamentWorkspace from "./pages/SportTournamentWorkspace";
+import VerifyEmail from "./pages/VerifyEmail";
 
-const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage"));
-const AuctionDirectory = lazy(() => import("./pages/AuctionDirectory"));
-const AuctionPage = lazy(() => import("./pages/AuctionPage"));
-const ChangePassword = lazy(() => import("./pages/ChangePassword"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const EmployeeDirectory = lazy(() => import("./pages/EmployeeDirectory"));
-const FestivalAuctionHub = lazy(() => import("./pages/FestivalAuctionHub"));
-const FestivalAuctionResultsPage = lazy(() => import("./pages/FestivalAuctionResultsPage"));
-const FestivalCommandCenter = lazy(() => import("./pages/FestivalCommandCenter"));
-const FestivalDashboard = lazy(() => import("./pages/FestivalDashboard"));
-const FestivalDetail = lazy(() => import("./pages/FestivalDetail"));
-const FestivalLiveAuctionPage = lazy(() => import("./pages/FestivalLiveAuctionPage"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const LiveAuctionPage = lazy(() => import("./pages/LiveAuctionPage"));
-const Login = lazy(() => import("./pages/Login"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const Register = lazy(() => import("./pages/Register"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const SpectatorAuctionPage = lazy(() => import("./pages/SpectatorAuctionPage"));
-const SportAuctionArena = lazy(() => import("./pages/SportAuctionArena"));
-const SportAuctionHub = lazy(() => import("./pages/SportAuctionHub"));
-const SportAuctionResultsPage = lazy(() => import("./pages/SportAuctionResultsPage"));
-const SportTournamentCommandCenter = lazy(() => import("./pages/SportTournamentCommandCenter"));
-const SportTournamentDirectory = lazy(() => import("./pages/SportTournamentDirectory"));
-const SportTournamentWorkspace = lazy(() => import("./pages/SportTournamentWorkspace"));
-const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const AuctionPage = lazyWithRetry(() => import("./pages/AuctionPage"), "AuctionPage");
+const FestivalLiveAuctionPage = lazyWithRetry(() => import("./pages/FestivalLiveAuctionPage"), "FestivalLiveAuctionPage");
+const LiveAuctionPage = lazyWithRetry(() => import("./pages/LiveAuctionPage"), "LiveAuctionPage");
+const SpectatorAuctionPage = lazyWithRetry(() => import("./pages/SpectatorAuctionPage"), "SpectatorAuctionPage");
+const SportAuctionArena = lazyWithRetry(() => import("./pages/SportAuctionArena"), "SportAuctionArena");
 
 const FestivalAuctionCompatibilityRedirect = () => {
   const { festivalId } = useParams();
@@ -57,18 +60,29 @@ const SportAuctionCompatibilityRedirect = () => {
   return <Navigate to={`/auctions/sports/${sportTournamentId}`} replace />;
 };
 
+const page = (name, children) => (
+  <RouteBoundary name={name}>{children}</RouteBoundary>
+);
+
 export default function AppRouter() {
   return (
     <AuthProvider>
       <Router>
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <LoadingStateCard
+              title="Loading Page"
+              message="Preparing the latest application screen."
+            />
+          }
+        >
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
             path="/login"
             element={
               <GuestRoute>
-                <Login />
+                {page("Login", <Login />)}
               </GuestRoute>
             }
           />
@@ -76,7 +90,7 @@ export default function AppRouter() {
             path="/register"
             element={
               <GuestRoute>
-                <Register />
+                {page("Register", <Register />)}
               </GuestRoute>
             }
           />
@@ -84,7 +98,7 @@ export default function AppRouter() {
             path="/forgot-password"
             element={
               <GuestRoute>
-                <ForgotPassword />
+                {page("Forgot Password", <ForgotPassword />)}
               </GuestRoute>
             }
           />
@@ -92,21 +106,19 @@ export default function AppRouter() {
             path="/reset-password/:token"
             element={
               <GuestRoute>
-                <ResetPassword />
+                {page("Reset Password", <ResetPassword />)}
               </GuestRoute>
             }
           />
           <Route
             path="/verify-email/:token"
-            element={
-              <VerifyEmail />
-            }
+            element={page("Verify Email", <VerifyEmail />)}
           />
           <Route
             path="/change-password"
             element={
               <ProtectedRoute>
-                <ChangePassword />
+                {page("Change Password", <ChangePassword />)}
               </ProtectedRoute>
             }
           />
@@ -115,7 +127,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <AppShell>
-                  <Dashboard />
+                  {page("Dashboard", <Dashboard />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -125,7 +137,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <AppShell>
-                  <ProfilePage />
+                  {page("Profile", <ProfilePage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -135,7 +147,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <AppShell>
-                  <AccountSettingsPage />
+                  {page("Settings", <AccountSettingsPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -145,7 +157,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
-                  <LiveAuctionPage />
+                  {page("Live Auction", <LiveAuctionPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -155,7 +167,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
-                  <FestivalDashboard />
+                  {page("Festivals", <FestivalDashboard />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -164,7 +176,7 @@ export default function AppRouter() {
             path="/festivals/:festivalId"
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
-                <FestivalRootRedirect />
+                {page("Festival Redirect", <FestivalRootRedirect />)}
               </ProtectedRoute>
             }
           />
@@ -173,7 +185,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
-                  <FestivalCommandCenter />
+                  {page("Festival Command Center", <FestivalCommandCenter />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -183,7 +195,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
-                  <FestivalDetail />
+                  {page("Festival Management", <FestivalDetail />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -194,7 +206,7 @@ export default function AppRouter() {
               <ProtectedRoute
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
-                <FestivalAuctionCompatibilityRedirect />
+                {page("Festival Auction Redirect", <FestivalAuctionCompatibilityRedirect />)}
               </ProtectedRoute>
             }
           />
@@ -204,7 +216,7 @@ export default function AppRouter() {
               <ProtectedRoute
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
-                <Navigate to="/auctions?type=festival" replace />
+                {page("Festival Auctions Redirect", <Navigate to="/auctions?type=festival" replace />)}
               </ProtectedRoute>
             }
           />
@@ -215,7 +227,7 @@ export default function AppRouter() {
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
                 <AppShell>
-                  <AuctionDirectory />
+                  {page("Auctions", <AuctionDirectory />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -227,7 +239,7 @@ export default function AppRouter() {
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
                 <AppShell>
-                  <FestivalAuctionHub />
+                  {page("Festival Auction Hub", <FestivalAuctionHub />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -239,7 +251,7 @@ export default function AppRouter() {
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
                 <AppShell>
-                  <FestivalLiveAuctionPage />
+                  {page("Festival Live Auction", <FestivalLiveAuctionPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -251,7 +263,7 @@ export default function AppRouter() {
                 allowedRoles={["admin", "team_owner", "spectator"]}
               >
                 <AppShell>
-                  <FestivalAuctionResultsPage />
+                  {page("Festival Results", <FestivalAuctionResultsPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -261,7 +273,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportAuctionHub />
+                  {page("Sport Auction Hub", <SportAuctionHub />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -271,7 +283,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportAuctionResultsPage />
+                  {page("Sport Results", <SportAuctionResultsPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -281,7 +293,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportAuctionArena />
+                  {page("Sport Live Auction", <SportAuctionArena />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -291,7 +303,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppShell>
-                  <EmployeeDirectory />
+                  {page("Employees", <EmployeeDirectory />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -301,7 +313,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportTournamentDirectory />
+                  {page("Sport Tournaments", <SportTournamentDirectory />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -310,7 +322,7 @@ export default function AppRouter() {
             path="/sport-tournaments/:sportTournamentId/auction"
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
-                <SportAuctionCompatibilityRedirect />
+                {page("Sport Auction Redirect", <SportAuctionCompatibilityRedirect />)}
               </ProtectedRoute>
             }
           />
@@ -319,7 +331,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportTournamentCommandCenter />
+                  {page("Sport Command Center", <SportTournamentCommandCenter />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -329,7 +341,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["admin", "team_owner", "spectator"]}>
                 <AppShell>
-                  <SportTournamentWorkspace />
+                  {page("Sport Workspace", <SportTournamentWorkspace />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -339,7 +351,7 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["team_owner"]}>
                 <AppShell>
-                  <AuctionPage />
+                  {page("Team Owner Auction", <AuctionPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
@@ -349,12 +361,12 @@ export default function AppRouter() {
             element={
               <ProtectedRoute allowedRoles={["spectator"]}>
                 <AppShell>
-                  <SpectatorAuctionPage />
+                  {page("Spectator Auction", <SpectatorAuctionPage />)}
                 </AppShell>
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<DefaultRoute />} />
+          <Route path="*" element={page("Not Found", <DefaultRoute />)} />
         </Routes>
         </Suspense>
       </Router>

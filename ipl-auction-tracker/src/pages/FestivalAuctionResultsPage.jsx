@@ -1,9 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import AuctionContextNavigation from "../components/AuctionContextNavigation";
 import { LoadingStateCard, ProductStateCard } from "../components/ProductState";
 import TeamExportButton from "../components/TeamExportButton";
+import RouteBoundary from "../components/RouteBoundary";
+import FestivalHistory from "../components/FestivalHistory";
 import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
 import {
@@ -11,8 +13,6 @@ import {
   isCompletedStage,
   isSetupStage,
 } from "../utils/auctionStages";
-
-const FestivalHistory = lazy(() => import("../components/FestivalHistory"));
 
 export default function FestivalAuctionResultsPage() {
   const { festivalId } = useParams();
@@ -108,19 +108,12 @@ export default function FestivalAuctionResultsPage() {
           </Box>
         </CardContent>
       </Card>
-      <Suspense
-        fallback={
-          <LoadingStateCard
-            title="Loading Results"
-            message="Preparing completed auction outcomes and team purchases."
-          />
-        }
-      >
+      <RouteBoundary name="Festival Results History">
         <FestivalHistory
           festivalId={festivalId}
           sections={["Auction Results"]}
         />
-      </Suspense>
+      </RouteBoundary>
     </Stack>
   );
 }

@@ -32,7 +32,10 @@ import {
   PendingFinalizationControls,
 } from "../components/SportAuctionArena/SportRoleControls";
 import api from "../utils/api";
+import { getApiMessage, getArrayData, getData } from "../utils/apiResponse";
+import { safeApplySocketEvent } from "../utils/safeSocketEvent";
 import { socket } from "../webSocket/socket";
+import useSocketHealth from "../hooks/useSocketHealth";
 import {
   getAuctionRemainingSeconds,
   getServerClockOffsetMs,
@@ -99,6 +102,7 @@ export default function SportAuctionArena() {
   const [contextWarning, setContextWarning] = useState("");
   const [notice, setNotice] = useState("");
   const [resultToast, setResultToast] = useState(null);
+  const socketHealth = useSocketHealth();
   const lastResultId = useRef(null);
   const [confirmation, setConfirmation] = useState(null);
 
@@ -112,11 +116,14 @@ export default function SportAuctionArena() {
     if (background) setRefreshing(true);
     const requestRevision = lastRevision.current;
     try {
-      const [currentResponse, historyResponse] = await Promise.all([
+      const [currentResult, historyResult] = await Promise.allSettled([
           api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/current`),
           api.get(`/v2/sport-tournaments/${sportTournamentId}/auction/history`),
         ]);
-      const nextState = currentResponse.data.data;
+      if (currentResult.status !== "fulfilled") throw currentResult.reason;
+      const nextState = getData(currentResult.value, null);
+      const historyResponse =
+        historyResult.status === "fulfilled" ? historyResult.value : null;
       const socketAdvancedDuringRequest =
         lastRevision.current > requestRevision;
       const preserveSocketState =
@@ -129,7 +136,7 @@ export default function SportAuctionArena() {
           : nextState
       );
       if (!preserveSocketState) {
-        setHistory(historyResponse.data.data || []);
+        setHistory(getArrayData(historyResponse));
       }
       if (nextState.serverTime) {
         setClockOffsetMs(getServerClockOffsetMs(nextState.serverTime));
@@ -138,8 +145,7 @@ export default function SportAuctionArena() {
       return true;
     } catch (requestError) {
       setError(
-        requestError.response?.data?.message ||
-          "Unable to synchronize the Sport Auction."
+        getApiMessage(requestError, "Unable to synchronize the Sport Auction.")
       );
       return false;
     } finally {
@@ -187,7 +193,7 @@ export default function SportAuctionArena() {
       .get(`/v2/sport-tournaments/${sportTournamentId}`)
       .then((response) => {
         if (!active) return;
-        setTournamentDetails(response.data.data);
+        setTournamentDetails(getData(response, null));
         setContextWarning("");
       })
       .catch(() => {
@@ -221,10 +227,18 @@ export default function SportAuctionArena() {
         });
       }
       lastRevision.current = payload.revision;
-      setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
-      setState((previous) => applyAuctionSnapshotEvent(previous, payload));
-      setHistory(payload.history || []);
-      setRefreshing(false);
+      safeApplySocketEvent({
+        eventName: "sport:auction-state",
+        payload,
+        fallbackRefresh: () => void load({ background: true, forceState: true }),
+        setError,
+        apply: () => {
+          setClockOffsetMs(getServerClockOffsetMs(payload.serverTime));
+          setState((previous) => applyAuctionSnapshotEvent(previous, payload));
+          setHistory(payload.history || []);
+          setRefreshing(false);
+        },
+      });
       if (payload.reason === "bid-placed") {
         logBidUiTrace({
           scopeType: "sport",
@@ -244,7 +258,13 @@ export default function SportAuctionArena() {
       const updateStartedAt = performance.now();
       if (payload?.sportTournamentId !== sportTournamentId) return;
       if (payload?.sportAuctionId !== currentAuctionId.current) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+      safeApplySocketEvent({
+        eventName: "sport:bid-placed",
+        payload,
+        fallbackRefresh: () => void load({ background: true, forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
       logBidUiTrace({
         scopeType: "sport",
         sportTournamentId,
@@ -252,7 +272,9 @@ export default function SportAuctionArena() {
         auctionId: payload.sportAuctionId,
         bidId: payload.id,
       });
-      setState((previous) => applySportBidEvent(previous, payload));
+          setState((previous) => applySportBidEvent(previous, payload));
+        },
+      });
       logBidUiTrace({
         scopeType: "sport",
         sportTournamentId,
@@ -270,14 +292,30 @@ export default function SportAuctionArena() {
     };
     const applyParticipantStarted = (payload) => {
       if (payload?.sportTournamentId !== sportTournamentId) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
-      setState((previous) => applySportParticipantStartedEvent(previous, payload));
+      safeApplySocketEvent({
+        eventName: "sport:participant-started",
+        payload,
+        fallbackRefresh: () => void load({ background: true, forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+          setState((previous) => applySportParticipantStartedEvent(previous, payload));
+        },
+      });
     };
     const applyTimerUpdated = (payload) => {
       if (payload?.sportTournamentId !== sportTournamentId) return;
       if (payload?.auctionId !== currentAuctionId.current) return;
-      applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
-      setState((previous) => applySportTimerEvent(previous, payload));
+      safeApplySocketEvent({
+        eventName: "sport:timer-updated",
+        payload,
+        fallbackRefresh: () => void load({ background: true, forceState: true }),
+        setError,
+        apply: () => {
+          applySynchronizedClock(payload, setClockOffsetMs, clockOffsetRef.current);
+          setState((previous) => applySportTimerEvent(previous, payload));
+        },
+      });
     };
     const joinRoom = () => {
       setConnected(true);
@@ -576,7 +614,14 @@ export default function SportAuctionArena() {
     return () => window.clearInterval(retryTimer);
   }, [current?.id, load, locallyExpired]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (socketHealth.status === "connected") return undefined;
+    const timer = window.setInterval(() => {
+      void load({ background: true, forceState: true });
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [load, socketHealth.status]);
+
   useEffect(() => {
     const latest = history.find(({ result }) => Boolean(result));
     if (lastResultId.current === null) {
@@ -704,7 +749,7 @@ export default function SportAuctionArena() {
       <SportArenaHeader
         tournamentName={state?.tournament?.name}
         stage={sportStage}
-        connected={connected}
+        connected={socketHealth.status === "connected" && connected}
         roomJoined={roomJoined}
         progress={progress}
         highestBid={highestBid}
@@ -714,6 +759,16 @@ export default function SportAuctionArena() {
           navigate(`/sport-tournaments/${sportTournamentId}/auction-hub`)
         }
       />
+
+      {socketHealth.status !== "connected" && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={<Button onClick={manualRefresh}>Refresh</Button>}
+        >
+          Live updates are {socketHealth.status}. The auction remains visible and will refresh automatically.
+        </Alert>
+      )}
 
       {error && (
         <Alert

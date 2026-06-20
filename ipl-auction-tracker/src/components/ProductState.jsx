@@ -8,6 +8,8 @@ export function ProductStateCard({
   onAction,
   secondaryActionLabel,
   onSecondaryAction,
+  tertiaryActionLabel,
+  onTertiaryAction,
   minHeight = 280,
 }) {
   return (
@@ -34,7 +36,7 @@ export function ProductStateCard({
             {message && (
               <Typography color="text.secondary">{message}</Typography>
             )}
-            {(actionLabel || secondaryActionLabel) && (
+            {(actionLabel || secondaryActionLabel || tertiaryActionLabel) && (
               <Stack
                 direction={{ xs: "column", sm: "row" }}
                 spacing={1}
@@ -48,6 +50,11 @@ export function ProductStateCard({
                 {secondaryActionLabel && (
                   <Button variant="outlined" onClick={onSecondaryAction}>
                     {secondaryActionLabel}
+                  </Button>
+                )}
+                {tertiaryActionLabel && (
+                  <Button color="inherit" onClick={onTertiaryAction}>
+                    {tertiaryActionLabel}
                   </Button>
                 )}
               </Stack>
