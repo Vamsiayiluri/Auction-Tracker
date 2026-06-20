@@ -518,7 +518,7 @@ export default function MainFestivalAuction({
     const name = latest.participant?.employee?.name || latest.participant?.name || "Participant";
     const outcome = latest.result?.outcome;
     if (outcome === "sold") {
-      setResultToast({ message: `🏏 ${name} sold to ${latest.result.teamName} for ₹${formatMoney(latest.result.finalAmount)}`, severity: "success" });
+      setResultToast({ message: `${name} sold to ${latest.result.teamName} for ₹${formatMoney(latest.result.finalAmount)}`, severity: "success" });
     } else if (outcome === "unsold") {
       setResultToast({ message: `${name} went unsold`, severity: "warning" });
     }
