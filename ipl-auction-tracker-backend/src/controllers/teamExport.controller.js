@@ -285,7 +285,7 @@ export const exportSportTournamentTeamsToExcel = async (req, res) => {
       return res.status(403).json({ message: EXPORT_FORBIDDEN_MESSAGE });
     }
 
-    const [teams, results] = await Promise.all([
+    const [teams, results, captains] = await Promise.all([
       SportTeam.findAll({
         where: { sportTournamentId },
         order: [["name", "ASC"]],
@@ -309,6 +309,28 @@ export const exportSportTournamentTeamsToExcel = async (req, res) => {
         ],
         order: [["finalizedAt", "ASC"]],
       }),
+      SportTeamCaptain.findAll({
+        where: {
+          sportTournamentId,
+          status: "active",
+        },
+        include: [
+          { model: SportTeam, as: "team" },
+          {
+            model: FestivalParticipant,
+            as: "participant",
+            include: [
+              { model: Employee, as: "employee" },
+              {
+                model: FestivalTeamMembership,
+                as: "teamMembership",
+                include: [{ model: FestivalTeam, as: "team" }],
+              },
+            ],
+          },
+        ],
+        order: [["assignedAt", "ASC"]],
+      }),
     ]);
     const scoped = filterExportDataByTeamIds({
       teams,
@@ -316,11 +338,17 @@ export const exportSportTournamentTeamsToExcel = async (req, res) => {
       teamIds: exportTeamIds,
       resultTeamIdKey: "sportTeamId",
     });
+    const scopedCaptains =
+      exportTeamIds === null
+        ? captains
+        : captains.filter((captain) =>
+            exportTeamIds.has(String(captain.sportTeamId))
+          );
 
     if (!scoped.teams.length) {
       return res.status(409).json({ message: "No teams found for export." });
     }
-    if (!scoped.results.length) {
+    if (!scoped.results.length && !scopedCaptains.length) {
       return res.status(409).json({ message: "No players assigned for export." });
     }
 
@@ -328,6 +356,7 @@ export const exportSportTournamentTeamsToExcel = async (req, res) => {
       tournament,
       teams: scoped.teams,
       results: scoped.results,
+      captains: scopedCaptains,
     });
     await streamWorkbook(
       res,

@@ -31,7 +31,7 @@ All endpoints stream an XLSX response using ExcelJS. No temporary server files a
 
 ## Permission Model
 
-Exports require authentication and `admin` role.
+Exports require authentication. Admins can export all teams. Festival team owners and Sport captains can export only the teams they own or manage.
 
 Festival export is allowed when the Festival Auction resolves to completed from the auction lifecycle state.
 
@@ -73,15 +73,15 @@ Sheets:
 
 Team sheet columns:
 
-| Team Name | Player Name | Employee ID | Email | Department | Base Price | Sold Price |
-|---|---|---|---|---|---|---|
+| Team Name | Player Name | Employee ID | Email | Department | Role | Base Price | Sold Price |
+|---|---|---|---|---|---|---|---|
 
 `ImportData` columns:
 
-| Team Name | Player Name | Employee ID | Email | Department | Base Price | Sold Price |
-|---|---|---|---|---|---|---|
+| Team Name | Player Name | Employee ID | Email | Department | Role | Base Price | Sold Price |
+|---|---|---|---|---|---|---|---|
 
-Festival rows populate Team Name, Player Name, Employee ID, Email, Department, Base Price, and Sold Price. Festival Team and Credits Used are not included because they are not applicable to Festival auctions.
+Festival rows populate Team Name, Player Name, Employee ID, Email, Department, Role, Base Price, and Sold Price. Festival Role is always `Player`. Festival Team and Credits Used are not included because they are not applicable to Festival auctions.
 
 ### Sport Tournament
 
@@ -103,19 +103,19 @@ Sheets:
 | Tournament Name | Sport Tournament name |
 | Export Date | Current date |
 | Total Teams | Team count |
-| Total Players | Sold/assigned player count |
+| Total Players | Final roster count, including captains |
 
 Team sheet columns:
 
-| Team Name | Player Name | Employee ID | Festival Team | Credits Used |
-|---|---|---|---|---|
+| Team Name | Player Name | Employee ID | Email | Department | Festival Team | Credits Used | Role |
+|---|---|---|---|---|---|---|---|
 
 `ImportData` columns:
 
-| Team Name | Player Name | Employee ID | Email | Department | Festival Team | Credits Used |
-|---|---|---|---|---|---|---|
+| Team Name | Player Name | Employee ID | Email | Department | Festival Team | Credits Used | Role |
+|---|---|---|---|---|---|---|---|
 
-Sport rows populate Team Name, Player Name, Employee ID, Email, Department, Festival Team, and Credits Used.
+Sport rows populate Team Name, Player Name, Employee ID, Email, Department, Festival Team, Credits Used, and Role. Role is `Captain` for active sport captains and `Player` for auction-assigned players. If a captain also appears in auction allocations, the export emits one row with `Role = Captain`.
 
 ## Example Generated Workbook Structure
 
@@ -140,7 +140,7 @@ Sport Tournament:
 
 Rules:
 
-- Every exported player appears exactly once.
+- Every exported player or captain appears exactly once.
 - `ImportData` row count equals the Total Players value in `Tournament Info`.
 - Rows are independent and contain the team assignment needed by a scorecard importer.
 - Future scorecard applications should read only `ImportData`; team sheets remain human-readable reports.
@@ -194,6 +194,7 @@ Festival required fields:
 - Employee ID
 - Email
 - Department
+- Role
 - Base Price
 - Sold Price
 
@@ -206,6 +207,7 @@ Sport required fields:
 - Department
 - Festival Team
 - Credits Used
+- Role
 
 Example import process:
 
@@ -215,6 +217,7 @@ Example import process:
 4. Create or find the Player from `Employee ID` and `Player Name`.
 5. Attach optional profile data from `Email`, `Department`, and `Festival Team`.
 6. Assign the Player to the Team.
-7. Optionally store Festival `Base Price` / `Sold Price` or Sport `Credits Used` as auction metadata.
+7. Use `Role` to preserve captain designation.
+8. Optionally store Festival `Base Price` / `Sold Price` or Sport `Credits Used` as auction metadata.
 
 The export intentionally uses finalized sold results, not draft roster setup or live auction state. This keeps the workbook stable as a future Cricket Scorecard import contract and avoids changing auction or allocation behavior. `ImportData` is the machine-readable format; team sheets remain the human-readable format.

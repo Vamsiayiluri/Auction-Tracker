@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  buildSportExportRosterRows,
   createFestivalTeamsWorkbook,
   createSportTournamentTeamsWorkbook,
 } from "../src/utils/teamExportWorkbook.js";
@@ -55,6 +56,7 @@ test("team export workbook keeps scorecard-compatible columns", async () => {
     "Sold Price",
     "Festival Team",
     "Credits Used",
+    "Role",
   ]) {
     assert.match(workbook, new RegExp(column));
   }
@@ -207,6 +209,7 @@ test("ImportData sheet is flat, second, and matches Festival exported player cou
     "Employee ID",
     "Email",
     "Department",
+    "Role",
     "Base Price",
     "Sold Price",
   ]);
@@ -218,6 +221,7 @@ test("ImportData sheet is flat, second, and matches Festival exported player cou
     "EMP001",
     "vamsi@example.com",
     "Engineering",
+    "Player",
     100,
     250,
   ]);
@@ -227,12 +231,13 @@ test("ImportData sheet is flat, second, and matches Festival exported player cou
     "Employee ID",
     "Email",
     "Department",
+    "Role",
     "Base Price",
     "Sold Price",
   ]);
 });
 
-test("ImportData sheet matches Sport exported players and keeps Festival Team and credits", () => {
+test("ImportData sheet matches Sport exported roster and includes role", () => {
   const workbook = createSportTournamentTeamsWorkbook({
     tournament: { name: "Cricket League" },
     teams: [
@@ -271,6 +276,22 @@ test("ImportData sheet matches Sport exported players and keeps Festival Team an
         finalCredits: 30,
       },
     ],
+    captains: [
+      {
+        sportTeamId: "warriors",
+        participant: {
+          id: "participant-captain",
+          employee: {
+            id: "employee-3",
+            employeeNumber: "EMP003",
+            name: "Kiran",
+            email: "kiran@example.com",
+            department: "Operations",
+          },
+          teamMembership: { team: { name: "Trojans" } },
+        },
+      },
+    ],
   });
 
   assert.deepEqual(
@@ -278,8 +299,18 @@ test("ImportData sheet matches Sport exported players and keeps Festival Team an
     ["Tournament Info", "ImportData", "Warriors", "Titans"]
   );
   const importData = workbook.getWorksheet("ImportData");
-  assert.equal(importData.actualRowCount - 1, 2);
+  assert.equal(importData.actualRowCount - 1, 3);
   assert.deepEqual(importData.getRow(2).values.slice(1), [
+    "Warriors",
+    "Kiran",
+    "EMP003",
+    "kiran@example.com",
+    "Operations",
+    "Trojans",
+    "",
+    "Captain",
+  ]);
+  assert.deepEqual(importData.getRow(3).values.slice(1), [
     "Warriors",
     "Vamsi",
     "EMP001",
@@ -287,6 +318,7 @@ test("ImportData sheet matches Sport exported players and keeps Festival Team an
     "Engineering",
     "Trojans",
     45,
+    "Player",
   ]);
   assert.deepEqual(importData.getRow(1).values.slice(1), [
     "Team Name",
@@ -296,14 +328,92 @@ test("ImportData sheet matches Sport exported players and keeps Festival Team an
     "Department",
     "Festival Team",
     "Credits Used",
+    "Role",
   ]);
   assert.deepEqual(workbook.getWorksheet("Warriors").getRow(1).values.slice(1), [
     "Team Name",
     "Player Name",
     "Employee ID",
+    "Email",
+    "Department",
     "Festival Team",
     "Credits Used",
+    "Role",
   ]);
+});
+
+test("Sport export roster includes captains and suppresses duplicate player rows", () => {
+  const teams = [
+    { id: "warriors", name: "Warriors" },
+    { id: "titans", name: "Titans" },
+  ];
+  const captainParticipant = {
+    id: "participant-captain",
+    employee: {
+      id: "employee-1",
+      employeeNumber: "EMP001",
+      name: "Vamsi",
+      email: "vamsi@example.com",
+      department: "Engineering",
+    },
+    teamMembership: { team: { name: "Trojans" } },
+  };
+  const rows = buildSportExportRosterRows({
+    teams,
+    captains: [
+      {
+        sportTeamId: "warriors",
+        participant: captainParticipant,
+      },
+      {
+        sportTeamId: "titans",
+        participant: {
+          id: "participant-titans-captain",
+          employee: {
+            id: "employee-2",
+            employeeNumber: "EMP002",
+            name: "Ravi",
+            email: "ravi@example.com",
+            department: "Finance",
+          },
+          teamMembership: { team: { name: "Demons" } },
+        },
+      },
+    ],
+    results: [
+      {
+        sportTeamId: "warriors",
+        participant: captainParticipant,
+        finalCredits: 50,
+      },
+      {
+        sportTeamId: "warriors",
+        participant: {
+          id: "participant-player",
+          employee: {
+            id: "employee-3",
+            employeeNumber: "EMP003",
+            name: "Kiran",
+            email: "kiran@example.com",
+            department: "Operations",
+          },
+          teamMembership: { team: { name: "Trojans" } },
+        },
+        finalCredits: 35,
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 3);
+  assert.deepEqual(
+    rows.map((row) => [row.teamName, row.playerName, row.role, row.creditsUsed]),
+    [
+      ["Warriors", "Vamsi", "Captain", 50],
+      ["Titans", "Ravi", "Captain", ""],
+      ["Warriors", "Kiran", "Player", 35],
+    ]
+  );
+  assert.equal(rows.filter((row) => row.employeeId === "EMP001").length, 1);
 });
 
 test("completed auction screens expose export download actions", async () => {

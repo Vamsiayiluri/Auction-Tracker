@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import {
   BrowserRouter as Router,
   Navigate,
@@ -10,14 +9,13 @@ import {
 import AuthProvider from "./context/AuthContext";
 import AppShell from "./components/AppShell";
 import RouteBoundary from "./components/RouteBoundary";
-import { LoadingStateCard } from "./components/ProductState";
 import {
   DefaultRoute,
   GuestRoute,
   ProtectedRoute,
 } from "./components/RouteGuards";
-import { lazyWithRetry } from "./utils/lazyWithRetry";
 import AccountSettingsPage from "./pages/AccountSettingsPage";
+import AuctionPage from "./pages/AuctionPage";
 import AuctionDirectory from "./pages/AuctionDirectory";
 import ChangePassword from "./pages/ChangePassword";
 import Dashboard from "./pages/Dashboard";
@@ -27,23 +25,21 @@ import FestivalAuctionResultsPage from "./pages/FestivalAuctionResultsPage";
 import FestivalCommandCenter from "./pages/FestivalCommandCenter";
 import FestivalDashboard from "./pages/FestivalDashboard";
 import FestivalDetail from "./pages/FestivalDetail";
+import FestivalLiveAuctionPage from "./pages/FestivalLiveAuctionPage";
 import ForgotPassword from "./pages/ForgotPassword";
+import LiveAuctionPage from "./pages/LiveAuctionPage";
 import Login from "./pages/Login";
 import ProfilePage from "./pages/ProfilePage";
 import Register from "./pages/Register";
 import ResetPassword from "./pages/ResetPassword";
+import SpectatorAuctionPage from "./pages/SpectatorAuctionPage";
 import SportAuctionHub from "./pages/SportAuctionHub";
+import SportAuctionArena from "./pages/SportAuctionArena";
 import SportAuctionResultsPage from "./pages/SportAuctionResultsPage";
 import SportTournamentCommandCenter from "./pages/SportTournamentCommandCenter";
 import SportTournamentDirectory from "./pages/SportTournamentDirectory";
 import SportTournamentWorkspace from "./pages/SportTournamentWorkspace";
 import VerifyEmail from "./pages/VerifyEmail";
-
-const AuctionPage = lazyWithRetry(() => import("./pages/AuctionPage"), "AuctionPage");
-const FestivalLiveAuctionPage = lazyWithRetry(() => import("./pages/FestivalLiveAuctionPage"), "FestivalLiveAuctionPage");
-const LiveAuctionPage = lazyWithRetry(() => import("./pages/LiveAuctionPage"), "LiveAuctionPage");
-const SpectatorAuctionPage = lazyWithRetry(() => import("./pages/SpectatorAuctionPage"), "SpectatorAuctionPage");
-const SportAuctionArena = lazyWithRetry(() => import("./pages/SportAuctionArena"), "SportAuctionArena");
 
 const FestivalAuctionCompatibilityRedirect = () => {
   const { festivalId } = useParams();
@@ -68,14 +64,6 @@ export default function AppRouter() {
   return (
     <AuthProvider>
       <Router>
-        <Suspense
-          fallback={
-            <LoadingStateCard
-              title="Loading Page"
-              message="Preparing the latest application screen."
-            />
-          }
-        >
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -368,7 +356,6 @@ export default function AppRouter() {
           />
           <Route path="*" element={page("Not Found", <DefaultRoute />)} />
         </Routes>
-        </Suspense>
       </Router>
     </AuthProvider>
   );

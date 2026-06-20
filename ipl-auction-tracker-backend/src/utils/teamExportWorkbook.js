@@ -72,6 +72,7 @@ const festivalImportColumns = [
   { header: "Employee ID", key: "employeeId" },
   { header: "Email", key: "email" },
   { header: "Department", key: "department" },
+  { header: "Role", key: "role" },
   { header: "Base Price", key: "basePrice" },
   { header: "Sold Price", key: "soldPrice" },
 ];
@@ -84,7 +85,100 @@ const sportImportColumns = [
   { header: "Department", key: "department" },
   { header: "Festival Team", key: "festivalTeam" },
   { header: "Credits Used", key: "creditsUsed" },
+  { header: "Role", key: "role" },
 ];
+
+const getParticipantKey = (participant) => {
+  const employee = participant?.employee;
+  return String(
+    participant?.id ||
+      employee?.id ||
+      employee?.employeeNumber ||
+      employee?.email ||
+      employee?.name ||
+      ""
+  );
+};
+
+const createSportResultRow = ({ result, team }) => {
+  const employee = result.participant?.employee;
+  return {
+    teamId: result.sportTeamId,
+    teamName: team?.name || "",
+    playerName: employee?.name || "",
+    employeeId: employee?.employeeNumber || employee?.id || "",
+    email: employee?.email || "",
+    department: employee?.department || "",
+    festivalTeam: result.participant?.teamMembership?.team?.name || "",
+    creditsUsed: toNumberOrBlank(result.finalCredits),
+    role: "Player",
+    participantKey: getParticipantKey(result.participant),
+  };
+};
+
+const createSportCaptainRow = ({ captain, team, matchingResult }) => {
+  const participant = captain.participant || matchingResult?.participant;
+  const employee = participant?.employee;
+  return {
+    teamId: captain.sportTeamId,
+    teamName: team?.name || captain.team?.name || "",
+    playerName: employee?.name || "",
+    employeeId: employee?.employeeNumber || employee?.id || "",
+    email: employee?.email || "",
+    department: employee?.department || "",
+    festivalTeam: participant?.teamMembership?.team?.name || "",
+    creditsUsed: matchingResult ? toNumberOrBlank(matchingResult.finalCredits) : "",
+    role: "Captain",
+    participantKey: getParticipantKey(participant),
+  };
+};
+
+export const buildSportExportRosterRows = ({ teams, results, captains = [] }) => {
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+  const resultByParticipantKey = new Map();
+  results.forEach((result) => {
+    const participantKey = getParticipantKey(result.participant);
+    if (participantKey && !resultByParticipantKey.has(participantKey)) {
+      resultByParticipantKey.set(participantKey, result);
+    }
+  });
+
+  const rowsByParticipantKey = new Map();
+  const rowsWithoutParticipantKey = [];
+
+  captains.forEach((captain) => {
+    const participantKey = getParticipantKey(captain.participant);
+    const matchingResult = participantKey
+      ? resultByParticipantKey.get(participantKey)
+      : null;
+    const row = createSportCaptainRow({
+      captain,
+      team: teamById.get(captain.sportTeamId),
+      matchingResult,
+    });
+    if (participantKey) {
+      rowsByParticipantKey.set(participantKey, row);
+    } else {
+      rowsWithoutParticipantKey.push(row);
+    }
+  });
+
+  results.forEach((result) => {
+    const participantKey = getParticipantKey(result.participant);
+    if (participantKey && rowsByParticipantKey.has(participantKey)) return;
+    const row = createSportResultRow({
+      result,
+      team: result.team || teamById.get(result.sportTeamId),
+    });
+    if (participantKey) {
+      rowsByParticipantKey.set(participantKey, row);
+    } else {
+      rowsWithoutParticipantKey.push(row);
+    }
+  });
+
+  return [...rowsByParticipantKey.values(), ...rowsWithoutParticipantKey];
+};
 
 const buildWorkbook = ({ creator, subject, company = "Auction Tracker" }) => {
   const workbook = new ExcelJS.Workbook();
@@ -136,6 +230,7 @@ export const createFestivalTeamsWorkbook = ({
         employeeId: employee?.employeeNumber || employee?.id || "",
         email: employee?.email || "",
         department: employee?.department || "",
+        role: "Player",
         basePrice: toNumberOrBlank(result.auction?.basePrice),
         soldPrice: toNumberOrBlank(result.finalAmount),
       };
@@ -153,6 +248,7 @@ export const createFestivalTeamsWorkbook = ({
       { header: "Employee ID", key: "employeeId" },
       { header: "Email", key: "email" },
       { header: "Department", key: "department" },
+      { header: "Role", key: "role" },
       { header: "Base Price", key: "basePrice" },
       { header: "Sold Price", key: "soldPrice" },
     ];
@@ -164,6 +260,7 @@ export const createFestivalTeamsWorkbook = ({
         employeeId: employee?.employeeNumber || employee?.id || "",
         email: employee?.email || "",
         department: employee?.department || "",
+        role: "Player",
         basePrice: toNumberOrBlank(result.auction?.basePrice),
         soldPrice: toNumberOrBlank(result.finalAmount),
       });
@@ -178,18 +275,19 @@ export const createSportTournamentTeamsWorkbook = ({
   tournament,
   teams,
   results,
+  captains = [],
   exportDate = new Date(),
 }) => {
   const workbook = buildWorkbook({
     creator: "Auction Tracker",
     subject: "Sport Tournament finalized team allocations",
   });
-  const resultsByTeamId = new Map();
-  const teamById = new Map(teams.map((team) => [team.id, team]));
-  results.forEach((result) => {
-    const list = resultsByTeamId.get(result.sportTeamId) || [];
-    list.push(result);
-    resultsByTeamId.set(result.sportTeamId, list);
+  const rosterRows = buildSportExportRosterRows({ teams, results, captains });
+  const rosterRowsByTeamId = new Map();
+  rosterRows.forEach((row) => {
+    const list = rosterRowsByTeamId.get(row.teamId) || [];
+    list.push(row);
+    rosterRowsByTeamId.set(row.teamId, list);
   });
 
   addTournamentInfoSheet(workbook, [
@@ -197,26 +295,10 @@ export const createSportTournamentTeamsWorkbook = ({
     ["Tournament Name", tournament.name],
     ["Export Date", exportDate],
     ["Total Teams", teams.length],
-    ["Total Players", results.length],
+    ["Total Players", rosterRows.length],
   ]);
 
-  addImportDataSheet(
-    workbook,
-    sportImportColumns,
-    results.map((result) => {
-      const employee = result.participant?.employee;
-      const team = result.team || teamById.get(result.sportTeamId);
-      return {
-        teamName: team?.name || "",
-        playerName: employee?.name || "",
-        employeeId: employee?.employeeNumber || employee?.id || "",
-        email: employee?.email || "",
-        department: employee?.department || "",
-        festivalTeam: result.participant?.teamMembership?.team?.name || "",
-        creditsUsed: toNumberOrBlank(result.finalCredits),
-      };
-    })
-  );
+  addImportDataSheet(workbook, sportImportColumns, rosterRows);
 
   const usedNames = new Set(["tournament info", "importdata"]);
   teams.forEach((team, index) => {
@@ -227,17 +309,22 @@ export const createSportTournamentTeamsWorkbook = ({
       { header: "Team Name", key: "teamName" },
       { header: "Player Name", key: "playerName" },
       { header: "Employee ID", key: "employeeId" },
+      { header: "Email", key: "email" },
+      { header: "Department", key: "department" },
       { header: "Festival Team", key: "festivalTeam" },
       { header: "Credits Used", key: "creditsUsed" },
+      { header: "Role", key: "role" },
     ];
-    (resultsByTeamId.get(team.id) || []).forEach((result) => {
-      const employee = result.participant?.employee;
+    (rosterRowsByTeamId.get(team.id) || []).forEach((row) => {
       worksheet.addRow({
         teamName: team.name,
-        playerName: employee?.name || "",
-        employeeId: employee?.employeeNumber || employee?.id || "",
-        festivalTeam: result.participant?.teamMembership?.team?.name || "",
-        creditsUsed: toNumberOrBlank(result.finalCredits),
+        playerName: row.playerName,
+        employeeId: row.employeeId,
+        email: row.email,
+        department: row.department,
+        festivalTeam: row.festivalTeam,
+        creditsUsed: row.creditsUsed,
+        role: row.role,
       });
     });
     formatWorksheet(worksheet);
