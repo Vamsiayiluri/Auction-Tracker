@@ -38,14 +38,6 @@ const getParticipantName = (round) =>
 const isSold = (round) =>
   String(round?.result?.outcome || round?.status || "").toUpperCase() === "SOLD";
 
-const sportExportStatuses = new Set([
-  "auction_completed",
-  "competition_pending",
-  "competition_live",
-  "competition_completed",
-  "archived",
-]);
-
 export default function SportAuctionResultsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -151,10 +143,7 @@ export default function SportAuctionResultsPage() {
               <TeamExportButton
                 endpoint={`/v2/sport-tournaments/${id}/export/excel`}
                 tournamentName={tournament?.name}
-                allowed={
-                  (user?.role === "admin" || auction?.viewer?.canBid) &&
-                  sportExportStatuses.has(tournament?.status)
-                }
+                allowed={["admin", "team_owner"].includes(user?.role)}
               />
             </Stack>
           </Stack>

@@ -10,7 +10,6 @@ import { useAuth } from "../context/auth-context";
 import api from "../utils/api";
 import {
   getFestivalAuctionStage,
-  isCompletedStage,
   isSetupStage,
 } from "../utils/auctionStages";
 
@@ -21,7 +20,6 @@ export default function FestivalAuctionResultsPage() {
   const [auctionStatus, setAuctionStatus] = useState(null);
   const [festivalStatus, setFestivalStatus] = useState(null);
   const [festivalName, setFestivalName] = useState("");
-  const [viewerCanExport, setViewerCanExport] = useState(false);
   const [stageLoading, setStageLoading] = useState(true);
 
   const loadStage = useCallback(async () => {
@@ -33,7 +31,6 @@ export default function FestivalAuctionResultsPage() {
       if (auctionRes.status === "fulfilled") {
         const auctionData = auctionRes.value.data.data;
         setAuctionStatus(auctionData?.config?.auctionStatus || "setup");
-        setViewerCanExport(Boolean(auctionData?.viewer?.isOwner));
       }
       if (festivalRes.status === "fulfilled") {
         const festival = festivalRes.value.data.data;
@@ -91,10 +88,7 @@ export default function FestivalAuctionResultsPage() {
             <TeamExportButton
               endpoint={`/v2/festivals/${festivalId}/export/excel`}
               tournamentName={festivalName}
-              allowed={
-                (user?.role === "admin" || viewerCanExport) &&
-                isCompletedStage(festivalStage)
-              }
+              allowed={["admin", "team_owner"].includes(user?.role)}
             />
           </Stack>
           <Box sx={{ mt: 1.25 }}>
