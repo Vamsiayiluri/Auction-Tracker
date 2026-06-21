@@ -66,6 +66,8 @@ test("team export workbook keeps scorecard-compatible columns", async () => {
   assert.match(workbook, /worksheet\.getRow\(1\)\.font = \{ bold: true \}/);
   assert.match(controller, /Auction must be completed before export\./);
   assert.match(controller, /workbook\.xlsx\.write\(res\)/);
+  assert.match(controller, /getFestivalOwnerTeamIdsForUser/);
+  assert.match(controller, /FestivalParticipant\.findAll/);
 });
 
 test("Festival export validation uses auction completion state, not Festival status alone", async () => {

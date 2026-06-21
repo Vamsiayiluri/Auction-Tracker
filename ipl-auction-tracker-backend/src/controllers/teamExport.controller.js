@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import {
   Employee,
   Festival,
@@ -95,59 +96,84 @@ const streamWorkbook = async (res, workbook, filename) => {
   res.end();
 };
 
-const getActiveEmployeeParticipant = async ({ userId, festivalId }) => {
-  const employee = await Employee.findOne({
-    where: { userId, employmentStatus: "active" },
-  });
-  if (!employee) return null;
+const getRegisteredParticipantIdsForUser = async ({ userId, festivalId }) => {
+  const employee = await Employee.findOne({ where: { userId } });
+  const identityClauses = [{ userId }];
+  if (employee) identityClauses.push({ employeeId: employee.id });
 
-  return FestivalParticipant.findOne({
+  const participants = await FestivalParticipant.findAll({
     where: {
       festivalId,
-      employeeId: employee.id,
       status: "registered",
+      [Op.or]: identityClauses,
     },
+    attributes: ["id"],
   });
+
+  return participants.map(({ id }) => id);
 };
 
 const toIdSet = (ids) => new Set(ids.filter(Boolean).map((id) => String(id)));
 
-const getFestivalExportTeamIdsForUser = async ({ user, festivalId }) => {
-  if (user?.role === "admin") return null;
-  if (user?.role !== "team_owner") return new Set();
-
-  const participant = await getActiveEmployeeParticipant({
-    userId: user.id,
+const getFestivalOwnerTeamIdsForUser = async ({
+  userId,
+  festivalId,
+  festivalTeamId,
+}) => {
+  const participantIds = await getRegisteredParticipantIdsForUser({
+    userId,
     festivalId,
   });
-  if (!participant) return new Set();
+  if (!participantIds.length) return new Set();
+
+  const where = {
+    festivalId,
+    festivalParticipantId: participantIds,
+    status: "active",
+  };
+  if (festivalTeamId) where.festivalTeamId = festivalTeamId;
 
   const owners = await FestivalTeamOwner.findAll({
-    where: {
-      festivalId,
-      festivalParticipantId: participant.id,
-      status: "active",
-    },
+    where,
     attributes: ["festivalTeamId"],
   });
 
   return toIdSet(owners.map((owner) => owner.festivalTeamId));
 };
 
+const getFestivalExportTeamIdsForUser = async ({ user, festivalId }) => {
+  if (user?.role === "admin") return null;
+  if (user?.role !== "team_owner") return new Set();
+
+  return getFestivalOwnerTeamIdsForUser({
+    userId: user.id,
+    festivalId,
+  });
+};
+
 const getSportExportTeamIdsForUser = async ({ user, tournament }) => {
   if (user?.role === "admin") return null;
   if (user?.role !== "team_owner") return new Set();
 
-  const participant = await getActiveEmployeeParticipant({
+  const ownedFestivalTeamIds = await getFestivalOwnerTeamIdsForUser({
+    userId: user.id,
+    festivalId: tournament.festivalId,
+    festivalTeamId: tournament.festivalTeamId,
+  });
+  if (ownedFestivalTeamIds.size) {
+    return null;
+  }
+
+  const participantIds = await getRegisteredParticipantIdsForUser({
     userId: user.id,
     festivalId: tournament.festivalId,
   });
-  if (!participant) return new Set();
+  if (!participantIds.length) return new Set();
 
   const captains = await SportTeamCaptain.findAll({
     where: {
       sportTournamentId: tournament.id,
-      festivalParticipantId: participant.id,
+      festivalParticipantId: participantIds,
       status: "active",
     },
     attributes: ["sportTeamId"],
